@@ -1,5 +1,9 @@
 import { supabase } from "@/lib/supabase";
 
+// Impede o Next.js de tentar buscar esse dado durante a publicação (build) —
+// só busca quando alguém visita o site de verdade.
+export const dynamic = "force-dynamic";
+
 export default async function Home() {
   const { count, error } = await supabase
     .from("stores")
