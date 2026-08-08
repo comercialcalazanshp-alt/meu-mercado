@@ -46,3 +46,6 @@ next-env.d.ts
 
 # supabase (arquivos locais/cache, não commitar)
 supabase/.temp
+
+.vercel
+.env*
