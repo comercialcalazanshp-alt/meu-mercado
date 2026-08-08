@@ -42,3 +42,7 @@ next-env.d.ts
 
 .vercel
 .env*
+.supabase-db-password.txt
+
+# supabase (arquivos locais/cache, não commitar)
+supabase/.temp

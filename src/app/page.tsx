@@ -1,4 +1,10 @@
-export default function Home() {
+import { supabase } from "@/lib/supabase";
+
+export default async function Home() {
+  const { count, error } = await supabase
+    .from("stores")
+    .select("*", { count: "exact", head: true });
+
   return (
     <div className="flex flex-1 flex-col items-center justify-center bg-slate-50 px-6 py-24 text-center dark:bg-slate-950">
       <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-900 text-2xl font-bold text-amber-300 dark:bg-blue-800">
@@ -10,6 +16,11 @@ export default function Home() {
       <p className="mt-3 max-w-md text-base text-slate-600 dark:text-slate-400">
         A plataforma que ajuda donos de mercadinho a vender online — em
         construção.
+      </p>
+      <p className="mt-6 text-xs text-slate-400 dark:text-slate-600">
+        {error
+          ? `Banco de dados: erro ao conectar (${error.message})`
+          : `Banco de dados conectado — ${count ?? 0} loja(s) cadastrada(s)`}
       </p>
     </div>
   );
