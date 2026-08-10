@@ -17,13 +17,20 @@ export default async function Loja({ params }: { params: Promise<{ slug: string 
 
   if (!store) notFound();
 
-  const { data: products } = await supabase
-    .from("products")
-    .select("id, name, category, price, image_url, stock")
-    .eq("store_id", store.id)
-    .eq("active", true)
-    .order("category", { ascending: true })
-    .order("name", { ascending: true });
+  const [{ data: products }, { data: banners }] = await Promise.all([
+    supabase
+      .from("products")
+      .select("id, name, category, price, image_url, stock")
+      .eq("store_id", store.id)
+      .eq("active", true)
+      .order("category", { ascending: true })
+      .order("name", { ascending: true }),
+    supabase
+      .from("banners")
+      .select("id, title, image_url, link_url")
+      .eq("store_id", store.id)
+      .order("created_at", { ascending: false }),
+  ]);
 
-  return <StorefrontClient store={store} products={products ?? []} />;
+  return <StorefrontClient store={store} products={products ?? []} banners={banners ?? []} />;
 }

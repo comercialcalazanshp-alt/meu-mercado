@@ -19,6 +19,13 @@ type Store = {
   whatsapp: string | null;
 };
 
+type Banner = {
+  id: string;
+  title: string;
+  image_url: string;
+  link_url: string | null;
+};
+
 function formatCurrency(value: number) {
   return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
@@ -26,9 +33,11 @@ function formatCurrency(value: number) {
 export default function StorefrontClient({
   store,
   products,
+  banners,
 }: {
   store: Store;
   products: Product[];
+  banners: Banner[];
 }) {
   const [cart, setCart] = useState<Record<string, number>>({});
   const [view, setView] = useState<"catalogo" | "checkout" | "confirmado">("catalogo");
@@ -284,6 +293,38 @@ export default function StorefrontClient({
         </div>
         <h1 className="mt-3 text-xl font-bold text-slate-900 dark:text-slate-50">{store.name}</h1>
       </header>
+
+      {banners.length > 0 && (
+        <div className="mx-auto w-full max-w-2xl px-4 pt-4">
+          <div className="flex snap-x gap-3 overflow-x-auto pb-1">
+            {banners.map((banner) => {
+              const content = (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={banner.image_url}
+                  alt={banner.title}
+                  className="h-32 w-full shrink-0 snap-start rounded-xl object-cover sm:w-80"
+                />
+              );
+              return banner.link_url ? (
+                <a
+                  key={banner.id}
+                  href={banner.link_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="shrink-0"
+                >
+                  {content}
+                </a>
+              ) : (
+                <div key={banner.id} className="shrink-0">
+                  {content}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       <div className="mx-auto w-full max-w-2xl flex-1 px-4 py-6">
         {products.length === 0 && (
