@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useSearchParams } from "next/navigation";
 import { getSupabase } from "@/lib/supabase";
 
 type Product = {
@@ -39,6 +40,15 @@ export type Kit = {
   kit_items: KitComponent[];
 };
 
+export type Review = {
+  id: string;
+  product_id: string;
+  customer_name: string;
+  rating: number;
+  comment: string | null;
+  created_at: string;
+};
+
 type CartLine = {
   key: string;
   kind: "product" | "kit";
@@ -64,13 +74,25 @@ export default function StorefrontClient({
   products,
   banners,
   kits,
+  reviews: initialReviews,
 }: {
   store: Store;
   products: Product[];
   banners: Banner[];
   kits: Kit[];
+  reviews: Review[];
 }) {
+  const searchParams = useSearchParams();
   const [cart, setCart] = useState<Record<string, number>>({});
+  const [reviews, setReviews] = useState<Review[]>(initialReviews);
+  const [expandedProductId, setExpandedProductId] = useState<string | null>(null);
+  const [reviewerName, setReviewerName] = useState("");
+  const [reviewerRating, setReviewerRating] = useState(5);
+  const [reviewerComment, setReviewerComment] = useState("");
+  const [submittingReview, setSubmittingReview] = useState(false);
+  const [shareUrl, setShareUrl] = useState<string | null>(null);
+  const [sharing, setSharing] = useState(false);
+  const [copied, setCopied] = useState(false);
   const [view, setView] = useState<"catalogo" | "checkout" | "confirmado">("catalogo");
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
@@ -117,6 +139,88 @@ export default function StorefrontClient({
 
   function setQuantity(key: string, quantity: number) {
     setCart((prev) => ({ ...prev, [key]: Math.max(0, quantity) }));
+  }
+
+  const ratingsByProduct = useMemo(() => {
+    const map = new Map<string, { avg: number; count: number }>();
+    for (const review of reviews) {
+      const cur = map.get(review.product_id) ?? { avg: 0, count: 0 };
+      cur.avg = (cur.avg * cur.count + review.rating) / (cur.count + 1);
+      cur.count += 1;
+      map.set(review.product_id, cur);
+    }
+    return map;
+  }, [reviews]);
+
+  useEffect(() => {
+    const listaId = searchParams.get("lista");
+    if (!listaId) return;
+
+    (async () => {
+      const { data } = await getSupabase()
+        .from("shared_lists")
+        .select("items")
+        .eq("id", listaId)
+        .eq("store_id", store.id)
+        .maybeSingle();
+
+      if (data?.items) {
+        const restored: Record<string, number> = {};
+        for (const item of data.items as { kind: string; id: string; quantity: number }[]) {
+          restored[`${item.kind}:${item.id}`] = item.quantity;
+        }
+        setCart(restored);
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, store.id]);
+
+  async function handleSubmitReview(productId: string) {
+    if (!reviewerName.trim() || submittingReview) return;
+    setSubmittingReview(true);
+    const { data, error: reviewError } = await getSupabase()
+      .from("reviews")
+      .insert({
+        store_id: store.id,
+        product_id: productId,
+        customer_name: reviewerName.trim(),
+        rating: reviewerRating,
+        comment: reviewerComment.trim() || null,
+      })
+      .select("id, product_id, customer_name, rating, comment, created_at")
+      .single();
+    setSubmittingReview(false);
+
+    if (!reviewError && data) {
+      setReviews((prev) => [data, ...prev]);
+      setReviewerName("");
+      setReviewerComment("");
+      setReviewerRating(5);
+    }
+  }
+
+  async function handleShareList() {
+    if (cartItems.length === 0 || sharing) return;
+    setSharing(true);
+    const { data } = await getSupabase()
+      .from("shared_lists")
+      .insert({
+        store_id: store.id,
+        items: cartItems.map((item) => ({ kind: item.kind, id: item.id, quantity: item.quantity })),
+      })
+      .select("id")
+      .single();
+    setSharing(false);
+    if (data) {
+      setShareUrl(`${window.location.origin}/loja/${store.slug}?lista=${data.id}`);
+      setCopied(false);
+    }
+  }
+
+  function handleCopyShareUrl() {
+    if (!shareUrl) return;
+    navigator.clipboard.writeText(shareUrl);
+    setCopied(true);
   }
 
   async function handleApplyCoupon() {
@@ -220,6 +324,33 @@ export default function StorefrontClient({
               </li>
             ))}
           </ul>
+
+          <div className="mt-3">
+            {shareUrl ? (
+              <div className="flex items-center gap-2 rounded-lg bg-slate-100 px-3 py-2 text-xs dark:bg-slate-800">
+                <span className="min-w-0 flex-1 truncate text-slate-600 dark:text-slate-400">
+                  {shareUrl}
+                </span>
+                <button
+                  type="button"
+                  onClick={handleCopyShareUrl}
+                  className="shrink-0 font-medium text-blue-900 dark:text-blue-400"
+                >
+                  {copied ? "Copiado!" : "Copiar"}
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={handleShareList}
+                disabled={sharing}
+                className="text-sm font-medium text-blue-900 underline disabled:opacity-50 dark:text-blue-400"
+              >
+                {sharing ? "Gerando link…" : "Compartilhar esta lista"}
+              </button>
+            )}
+          </div>
+
           <div className="mt-3 border-t border-slate-200 pt-3 dark:border-slate-800">
             <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
               Cupom de desconto
@@ -452,60 +583,133 @@ export default function StorefrontClient({
               {items.map((product) => {
                 const key = `product:${product.id}`;
                 const quantity = cart[key] ?? 0;
+                const rating = ratingsByProduct.get(product.id);
+                const productReviews = reviews.filter((r) => r.product_id === product.id);
+                const isExpanded = expandedProductId === product.id;
                 return (
                   <div
                     key={product.id}
-                    className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900"
+                    className="rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900"
                   >
-                    {product.image_url ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={product.image_url}
-                        alt={product.name}
-                        className="h-14 w-14 shrink-0 rounded-lg object-cover"
-                      />
-                    ) : (
-                      <div className="h-14 w-14 shrink-0 rounded-lg bg-slate-100 dark:bg-slate-800" />
-                    )}
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium text-slate-900 dark:text-slate-50">
-                        {product.name}
-                      </p>
-                      <p className="text-sm text-slate-600 dark:text-slate-400">
-                        {formatCurrency(product.price)}
-                      </p>
-                      {product.stock <= 0 && (
-                        <p className="text-xs text-red-500">Sem estoque</p>
+                    <div className="flex items-center gap-3 p-3">
+                      {product.image_url ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={product.image_url}
+                          alt={product.name}
+                          className="h-14 w-14 shrink-0 rounded-lg object-cover"
+                        />
+                      ) : (
+                        <div className="h-14 w-14 shrink-0 rounded-lg bg-slate-100 dark:bg-slate-800" />
+                      )}
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium text-slate-900 dark:text-slate-50">
+                          {product.name}
+                        </p>
+                        <p className="text-sm text-slate-600 dark:text-slate-400">
+                          {formatCurrency(product.price)}
+                        </p>
+                        {product.stock <= 0 && (
+                          <p className="text-xs text-red-500">Sem estoque</p>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => setExpandedProductId(isExpanded ? null : product.id)}
+                          className="text-xs text-blue-900 underline dark:text-blue-400"
+                        >
+                          {rating
+                            ? `${"★".repeat(Math.round(rating.avg))}${"☆".repeat(5 - Math.round(rating.avg))} (${rating.count})`
+                            : "Avaliar produto"}
+                        </button>
+                      </div>
+                      {quantity === 0 ? (
+                        <button
+                          onClick={() => setQuantity(key, 1)}
+                          disabled={product.stock <= 0}
+                          className="shrink-0 rounded-lg bg-blue-900 px-3 py-1.5 text-sm font-semibold text-amber-300 disabled:opacity-40 dark:bg-blue-800"
+                        >
+                          Adicionar
+                        </button>
+                      ) : (
+                        <div className="flex shrink-0 items-center gap-2">
+                          <button
+                            onClick={() => setQuantity(key, quantity - 1)}
+                            className="h-7 w-7 rounded-full bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-200"
+                            aria-label="Diminuir quantidade"
+                          >
+                            −
+                          </button>
+                          <span className="w-4 text-center text-sm text-slate-900 dark:text-slate-50">
+                            {quantity}
+                          </span>
+                          <button
+                            onClick={() => setQuantity(key, Math.min(quantity + 1, product.stock))}
+                            disabled={quantity >= product.stock}
+                            className="h-7 w-7 rounded-full bg-slate-200 text-slate-700 disabled:opacity-40 dark:bg-slate-700 dark:text-slate-200"
+                            aria-label="Aumentar quantidade"
+                          >
+                            +
+                          </button>
+                        </div>
                       )}
                     </div>
-                    {quantity === 0 ? (
-                      <button
-                        onClick={() => setQuantity(key, 1)}
-                        disabled={product.stock <= 0}
-                        className="shrink-0 rounded-lg bg-blue-900 px-3 py-1.5 text-sm font-semibold text-amber-300 disabled:opacity-40 dark:bg-blue-800"
-                      >
-                        Adicionar
-                      </button>
-                    ) : (
-                      <div className="flex shrink-0 items-center gap-2">
-                        <button
-                          onClick={() => setQuantity(key, quantity - 1)}
-                          className="h-7 w-7 rounded-full bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-200"
-                          aria-label="Diminuir quantidade"
-                        >
-                          −
-                        </button>
-                        <span className="w-4 text-center text-sm text-slate-900 dark:text-slate-50">
-                          {quantity}
-                        </span>
-                        <button
-                          onClick={() => setQuantity(key, Math.min(quantity + 1, product.stock))}
-                          disabled={quantity >= product.stock}
-                          className="h-7 w-7 rounded-full bg-slate-200 text-slate-700 disabled:opacity-40 dark:bg-slate-700 dark:text-slate-200"
-                          aria-label="Aumentar quantidade"
-                        >
-                          +
-                        </button>
+
+                    {isExpanded && (
+                      <div className="border-t border-slate-100 p-3 dark:border-slate-800">
+                        <ul className="space-y-2">
+                          {productReviews.length === 0 && (
+                            <li className="text-sm text-slate-400 dark:text-slate-500">
+                              Nenhuma avaliação ainda.
+                            </li>
+                          )}
+                          {productReviews.map((r) => (
+                            <li key={r.id} className="text-sm">
+                              <p className="font-medium text-amber-500">
+                                {"★".repeat(r.rating)}
+                                {"☆".repeat(5 - r.rating)}{" "}
+                                <span className="text-slate-700 dark:text-slate-300">{r.customer_name}</span>
+                              </p>
+                              {r.comment && (
+                                <p className="text-slate-500 dark:text-slate-400">{r.comment}</p>
+                              )}
+                            </li>
+                          ))}
+                        </ul>
+
+                        <div className="mt-3 space-y-2 border-t border-slate-100 pt-3 dark:border-slate-800">
+                          <input
+                            value={reviewerName}
+                            onChange={(e) => setReviewerName(e.target.value)}
+                            placeholder="Seu nome"
+                            className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                          />
+                          <select
+                            value={reviewerRating}
+                            onChange={(e) => setReviewerRating(Number(e.target.value))}
+                            className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                          >
+                            {[5, 4, 3, 2, 1].map((n) => (
+                              <option key={n} value={n}>
+                                {"★".repeat(n)} ({n})
+                              </option>
+                            ))}
+                          </select>
+                          <textarea
+                            value={reviewerComment}
+                            onChange={(e) => setReviewerComment(e.target.value)}
+                            placeholder="Comentário (opcional)"
+                            rows={2}
+                            className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => handleSubmitReview(product.id)}
+                            disabled={!reviewerName.trim() || submittingReview}
+                            className="w-full rounded-lg bg-blue-900 px-3 py-2 text-sm font-semibold text-amber-300 disabled:opacity-50 dark:bg-blue-800"
+                          >
+                            {submittingReview ? "Enviando…" : "Enviar avaliação"}
+                          </button>
+                        </div>
                       </div>
                     )}
                   </div>
