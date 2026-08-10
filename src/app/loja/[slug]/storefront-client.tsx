@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useSearchParams } from "next/navigation";
 import { getSupabase } from "@/lib/supabase";
 
@@ -175,6 +175,54 @@ export default function StorefrontClient({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams, store.id]);
 
+  // Registra a visita (uma "sessão" por aba, guardada no sessionStorage —
+  // dura enquanto a aba fica aberta) e mede quanto tempo/quantas telas o
+  // cliente viu antes de comprar ou ir embora. Não usa cookie nem nada que
+  // sirva pra identificar a pessoa entre visitas diferentes.
+  const visitStorageKey = `mm_visit_${store.id}`;
+  const isFirstViewChange = useRef(true);
+
+  useEffect(() => {
+    const supabase = getSupabase();
+    let sessionId = sessionStorage.getItem(visitStorageKey);
+    const isNewSession = !sessionId;
+
+    if (!sessionId) {
+      sessionId = crypto.randomUUID();
+      sessionStorage.setItem(visitStorageKey, sessionId);
+    }
+    supabase
+      .rpc("track_site_visit", {
+        p_store_id: store.id,
+        p_session_id: sessionId,
+        p_count_view: isNewSession,
+      })
+      .then(({ error }) => {
+        if (error) console.error("Erro ao registrar visita:", error.message);
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (isFirstViewChange.current) {
+      isFirstViewChange.current = false;
+      return;
+    }
+    const sessionId = sessionStorage.getItem(visitStorageKey);
+    if (!sessionId) return;
+
+    getSupabase()
+      .rpc("track_site_visit", {
+        p_store_id: store.id,
+        p_session_id: sessionId,
+        p_count_view: true,
+      })
+      .then(({ error }) => {
+        if (error) console.error("Erro ao registrar visualização:", error.message);
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view]);
+
   async function handleSubmitReview(productId: string) {
     if (!reviewerName.trim() || submittingReview) return;
     setSubmittingReview(true);
@@ -271,6 +319,20 @@ export default function StorefrontClient({
     setConfirmedTotal(data?.[0]?.total ?? total);
     setConfirmedDiscount(data?.[0]?.discount ?? 0);
     setView("confirmado");
+
+    const sessionId = sessionStorage.getItem(visitStorageKey);
+    if (sessionId) {
+      getSupabase()
+        .rpc("track_site_visit", {
+          p_store_id: store.id,
+          p_session_id: sessionId,
+          p_mark_converted: true,
+          p_count_view: false,
+        })
+        .then(({ error }) => {
+          if (error) console.error("Erro ao registrar conversão:", error.message);
+        });
+    }
   }
 
   if (view === "confirmado") {
