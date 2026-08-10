@@ -125,6 +125,18 @@ export default function Cadastro() {
             {loading ? "Criando…" : "Criar minha loja"}
           </button>
         </form>
+
+        <p className="mt-4 text-center text-xs text-slate-400 dark:text-slate-600">
+          Ao criar sua loja, você concorda com o{" "}
+          <a href="/termos" className="underline">
+            Termo de uso
+          </a>{" "}
+          e o{" "}
+          <a href="/privacidade" className="underline">
+            Aviso de privacidade
+          </a>
+          .
+        </p>
       </div>
     </div>
   );

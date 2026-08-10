@@ -14,6 +14,7 @@ const NAV_ITEMS = [
   { href: "/painel/fiado", label: "Fiado" },
   { href: "/painel/pedidos", label: "Pedidos" },
   { href: "/painel/relatorios", label: "Relatórios" },
+  { href: "/painel/conta", label: "Minha conta" },
 ];
 
 export default function PainelLayout({ children }: { children: ReactNode }) {
