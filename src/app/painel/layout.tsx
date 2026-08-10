@@ -13,6 +13,7 @@ const NAV_ITEMS = [
   { href: "/painel/cupons", label: "Cupons" },
   { href: "/painel/fiado", label: "Fiado" },
   { href: "/painel/pedidos", label: "Pedidos" },
+  { href: "/painel/relatorios", label: "Relatórios" },
 ];
 
 export default function PainelLayout({ children }: { children: ReactNode }) {
