@@ -13,6 +13,7 @@ const NAV_ITEMS = [
   { href: "/painel/banners", label: "Banners" },
   { href: "/painel/cupons", label: "Cupons" },
   { href: "/painel/fiado", label: "Fiado" },
+  { href: "/painel/despesas", label: "Despesas" },
   { href: "/painel/pedidos", label: "Pedidos" },
   { href: "/painel/relatorios", label: "Relatórios" },
   { href: "/painel/trafego", label: "Tráfego" },
