@@ -27,12 +27,14 @@ function LojaCriadaContent() {
       </p>
       <p className="mt-3 max-w-md text-sm text-slate-600 dark:text-slate-400">
         Enviamos um e-mail de confirmação — clique no link para ativar sua
-        conta antes de acessar o painel.
+        conta. Depois disso você já pode entrar e cadastrar seus produtos.
       </p>
-      <p className="mt-2 max-w-md text-xs text-slate-400 dark:text-slate-600">
-        O painel para gerenciar produtos ainda está sendo construído — em breve
-        você poderá adicionar seus produtos aqui.
-      </p>
+      <a
+        href="/entrar"
+        className="mt-6 rounded-lg bg-blue-900 px-4 py-2.5 text-sm font-semibold text-amber-300 dark:bg-blue-800"
+      >
+        Ir para o login
+      </a>
     </div>
   );
 }

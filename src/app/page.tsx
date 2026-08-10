@@ -5,7 +5,7 @@ import { getSupabase } from "@/lib/supabase";
 export const dynamic = "force-dynamic";
 
 export default async function Home() {
-  const { count, error } = await getSupabase()
+  const { count } = await getSupabase()
     .from("stores")
     .select("*", { count: "exact", head: true });
 
@@ -18,14 +18,29 @@ export default async function Home() {
         Meu Mercado
       </h1>
       <p className="mt-3 max-w-md text-base text-slate-600 dark:text-slate-400">
-        A plataforma que ajuda donos de mercadinho a vender online — em
-        construção.
+        A plataforma que ajuda donos de mercadinho a vender online.
       </p>
-      <p className="mt-6 text-xs text-slate-400 dark:text-slate-600">
-        {error
-          ? `Banco de dados: erro ao conectar (${error.message})`
-          : `Banco de dados conectado — ${count ?? 0} loja(s) cadastrada(s)`}
-      </p>
+
+      <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+        <a
+          href="/cadastro"
+          className="rounded-lg bg-blue-900 px-5 py-2.5 font-semibold text-amber-300 dark:bg-blue-800"
+        >
+          Criar minha loja
+        </a>
+        <a
+          href="/entrar"
+          className="rounded-lg border border-slate-300 px-5 py-2.5 font-semibold text-slate-700 dark:border-slate-700 dark:text-slate-300"
+        >
+          Já tenho loja — entrar
+        </a>
+      </div>
+
+      {!!count && count > 0 && (
+        <p className="mt-8 text-xs text-slate-400 dark:text-slate-600">
+          {count} loja{count === 1 ? "" : "s"} já usando a plataforma
+        </p>
+      )}
     </div>
   );
 }
