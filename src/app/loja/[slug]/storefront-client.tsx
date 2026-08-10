@@ -37,6 +37,14 @@ export default function StorefrontClient({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [confirmedTotal, setConfirmedTotal] = useState<number | null>(null);
+  const [confirmedDiscount, setConfirmedDiscount] = useState(0);
+  const [couponCode, setCouponCode] = useState("");
+  const [couponPreview, setCouponPreview] = useState<{
+    valid: boolean;
+    message: string;
+    discount: number;
+  } | null>(null);
+  const [checkingCoupon, setCheckingCoupon] = useState(false);
 
   const cartItems = useMemo(
     () =>
@@ -66,6 +74,18 @@ export default function StorefrontClient({
     setCart((prev) => ({ ...prev, [productId]: Math.max(0, quantity) }));
   }
 
+  async function handleApplyCoupon() {
+    if (!couponCode.trim() || checkingCoupon) return;
+    setCheckingCoupon(true);
+    const { data } = await getSupabase().rpc("preview_coupon", {
+      p_store_id: store.id,
+      p_code: couponCode.trim(),
+      p_subtotal: total,
+    });
+    setCheckingCoupon(false);
+    setCouponPreview(data?.[0] ?? { valid: false, message: "Cupom inválido", discount: 0 });
+  }
+
   async function handleCheckout(e: FormEvent) {
     e.preventDefault();
     if (saving) return;
@@ -88,6 +108,7 @@ export default function StorefrontClient({
         product_id: item.product.id,
         quantity: item.quantity,
       })),
+      p_coupon_code: couponCode.trim() || undefined,
     });
 
     if (rpcError) {
@@ -98,6 +119,7 @@ export default function StorefrontClient({
 
     setSaving(false);
     setConfirmedTotal(data?.[0]?.total ?? total);
+    setConfirmedDiscount(data?.[0]?.discount ?? 0);
     setView("confirmado");
   }
 
@@ -113,7 +135,8 @@ export default function StorefrontClient({
         </div>
         <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-50">Pedido enviado!</h1>
         <p className="max-w-md text-sm text-slate-600 dark:text-slate-400">
-          A loja {store.name} vai receber seu pedido. Total: {formatCurrency(finalTotal)}.
+          A loja {store.name} vai receber seu pedido. Total: {formatCurrency(finalTotal)}
+          {confirmedDiscount > 0 && ` (com ${formatCurrency(confirmedDiscount)} de desconto)`}.
         </p>
         {store.whatsapp && (
           <a
@@ -154,9 +177,63 @@ export default function StorefrontClient({
               </li>
             ))}
           </ul>
-          <p className="mt-2 border-t border-slate-200 pt-2 text-right font-semibold text-slate-900 dark:border-slate-800 dark:text-slate-50">
-            Total: {formatCurrency(total)}
-          </p>
+          <div className="mt-3 border-t border-slate-200 pt-3 dark:border-slate-800">
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
+              Cupom de desconto
+            </label>
+            <div className="mt-1 flex gap-2">
+              <input
+                value={couponCode}
+                onChange={(e) => {
+                  setCouponCode(e.target.value);
+                  setCouponPreview(null);
+                }}
+                placeholder="Código do cupom"
+                className="min-w-0 flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2 uppercase text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+              />
+              <button
+                type="button"
+                onClick={handleApplyCoupon}
+                disabled={!couponCode.trim() || checkingCoupon}
+                className="shrink-0 rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 disabled:opacity-50 dark:border-slate-700 dark:text-slate-300"
+              >
+                {checkingCoupon ? "Checando…" : "Aplicar"}
+              </button>
+            </div>
+            {couponPreview && (
+              <p
+                className={`mt-1 text-sm ${couponPreview.valid ? "text-green-600" : "text-red-600"}`}
+              >
+                {couponPreview.valid
+                  ? `${couponPreview.message} −${formatCurrency(couponPreview.discount)}`
+                  : couponPreview.message}
+              </p>
+            )}
+          </div>
+
+          <div className="mt-2 space-y-1 border-t border-slate-200 pt-2 text-sm dark:border-slate-800">
+            {couponPreview?.valid ? (
+              <>
+                <p className="flex justify-between text-slate-600 dark:text-slate-400">
+                  <span>Subtotal</span>
+                  <span>{formatCurrency(total)}</span>
+                </p>
+                <p className="flex justify-between text-green-600">
+                  <span>Desconto</span>
+                  <span>−{formatCurrency(couponPreview.discount)}</span>
+                </p>
+                <p className="flex justify-between font-semibold text-slate-900 dark:text-slate-50">
+                  <span>Total</span>
+                  <span>{formatCurrency(total - couponPreview.discount)}</span>
+                </p>
+              </>
+            ) : (
+              <p className="flex justify-between font-semibold text-slate-900 dark:text-slate-50">
+                <span>Total</span>
+                <span>{formatCurrency(total)}</span>
+              </p>
+            )}
+          </div>
 
           <form onSubmit={handleCheckout} className="mt-4 space-y-3">
             <div>

@@ -18,6 +18,8 @@ type Order = {
   total: number;
   status: string;
   created_at: string;
+  coupon_code: string | null;
+  discount_amount: number;
 };
 
 const STATUS_OPTIONS = ["pendente", "confirmado", "entregue", "cancelado"];
@@ -48,7 +50,9 @@ export default function Pedidos() {
     async function load() {
       const { data } = await getSupabase()
         .from("orders")
-        .select("id, customer_name, customer_phone, items, total, status, created_at")
+        .select(
+          "id, customer_name, customer_phone, items, total, status, created_at, coupon_code, discount_amount",
+        )
         .eq("store_id", store.id)
         .order("created_at", { ascending: false });
       if (active) {
@@ -123,7 +127,12 @@ export default function Pedidos() {
                 </li>
               ))}
             </ul>
-            <p className="mt-2 text-right font-semibold text-slate-900 dark:text-slate-50">
+            {order.coupon_code && (
+              <p className="mt-2 text-right text-sm text-green-600">
+                Cupom {order.coupon_code}: −{formatCurrency(order.discount_amount)}
+              </p>
+            )}
+            <p className="mt-1 text-right font-semibold text-slate-900 dark:text-slate-50">
               Total: {formatCurrency(order.total)}
             </p>
           </div>
