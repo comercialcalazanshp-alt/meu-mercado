@@ -36,6 +36,7 @@ export default function StorefrontClient({
   const [customerPhone, setCustomerPhone] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [confirmedTotal, setConfirmedTotal] = useState<number | null>(null);
 
   const cartItems = useMemo(
     () =>
@@ -76,33 +77,34 @@ export default function StorefrontClient({
     }
 
     setSaving(true);
-    const { error: insertError } = await getSupabase()
-      .from("orders")
-      .insert({
-        store_id: store.id,
-        customer_name: customerName.trim(),
-        customer_phone: customerPhone.trim(),
-        items: cartItems.map((item) => ({
-          name: item.product.name,
-          price: item.product.price,
-          quantity: item.quantity,
-        })),
-        total,
-      });
+    // O preço e a baixa de estoque são recalculados no banco (função
+    // "checkout") — o navegador só manda produto e quantidade, nunca preço,
+    // pra ninguém conseguir adulterar o valor do pedido pelo devtools.
+    const { data, error: rpcError } = await getSupabase().rpc("checkout", {
+      p_store_id: store.id,
+      p_customer_name: customerName.trim(),
+      p_customer_phone: customerPhone.trim(),
+      p_items: cartItems.map((item) => ({
+        product_id: item.product.id,
+        quantity: item.quantity,
+      })),
+    });
 
-    if (insertError) {
-      setError("Não deu pra enviar o pedido: " + insertError.message);
+    if (rpcError) {
+      setError(rpcError.message);
       setSaving(false);
       return;
     }
 
     setSaving(false);
+    setConfirmedTotal(data?.[0]?.total ?? total);
     setView("confirmado");
   }
 
   if (view === "confirmado") {
+    const finalTotal = confirmedTotal ?? total;
     const whatsappMessage = encodeURIComponent(
-      `Olá! Acabei de fazer um pedido na ${store.name} no valor de ${formatCurrency(total)}.`,
+      `Olá! Acabei de fazer um pedido na ${store.name} no valor de ${formatCurrency(finalTotal)}.`,
     );
     return (
       <div className="flex flex-1 flex-col items-center justify-center gap-3 bg-slate-50 px-6 py-24 text-center dark:bg-slate-950">
@@ -111,7 +113,7 @@ export default function StorefrontClient({
         </div>
         <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-50">Pedido enviado!</h1>
         <p className="max-w-md text-sm text-slate-600 dark:text-slate-400">
-          A loja {store.name} vai receber seu pedido. Total: {formatCurrency(total)}.
+          A loja {store.name} vai receber seu pedido. Total: {formatCurrency(finalTotal)}.
         </p>
         {store.whatsapp && (
           <a
@@ -268,8 +270,9 @@ export default function StorefrontClient({
                           {quantity}
                         </span>
                         <button
-                          onClick={() => setQuantity(product.id, quantity + 1)}
-                          className="h-7 w-7 rounded-full bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-200"
+                          onClick={() => setQuantity(product.id, Math.min(quantity + 1, product.stock))}
+                          disabled={quantity >= product.stock}
+                          className="h-7 w-7 rounded-full bg-slate-200 text-slate-700 disabled:opacity-40 dark:bg-slate-700 dark:text-slate-200"
                           aria-label="Aumentar quantidade"
                         >
                           +

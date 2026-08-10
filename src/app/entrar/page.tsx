@@ -89,7 +89,13 @@ export default function Entrar() {
           </button>
         </form>
 
-        <p className="mt-6 text-center text-sm text-slate-600 dark:text-slate-400">
+        <p className="mt-4 text-center text-sm">
+          <a href="/esqueci-senha" className="text-slate-500 underline dark:text-slate-400">
+            Esqueci minha senha
+          </a>
+        </p>
+
+        <p className="mt-2 text-center text-sm text-slate-600 dark:text-slate-400">
           Ainda não tem uma loja?{" "}
           <a href="/cadastro" className="font-medium text-blue-900 underline dark:text-blue-400">
             Cadastre a sua
