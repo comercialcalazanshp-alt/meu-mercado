@@ -26,18 +26,49 @@ type Banner = {
   link_url: string | null;
 };
 
+type KitComponent = {
+  quantity: number;
+  products: { name: string; stock: number } | null;
+};
+
+export type Kit = {
+  id: string;
+  name: string;
+  image_url: string | null;
+  price: number;
+  kit_items: KitComponent[];
+};
+
+type CartLine = {
+  key: string;
+  kind: "product" | "kit";
+  id: string;
+  name: string;
+  price: number;
+  quantity: number;
+};
+
 function formatCurrency(value: number) {
   return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+}
+
+function kitMaxQuantity(kit: Kit) {
+  if (kit.kit_items.length === 0) return 0;
+  return Math.min(
+    ...kit.kit_items.map((item) => Math.floor((item.products?.stock ?? 0) / item.quantity)),
+  );
 }
 
 export default function StorefrontClient({
   store,
   products,
   banners,
+  kits,
 }: {
   store: Store;
   products: Product[];
   banners: Banner[];
+  kits: Kit[];
 }) {
   const [cart, setCart] = useState<Record<string, number>>({});
   const [view, setView] = useState<"catalogo" | "checkout" | "confirmado">("catalogo");
@@ -55,18 +86,23 @@ export default function StorefrontClient({
   } | null>(null);
   const [checkingCoupon, setCheckingCoupon] = useState(false);
 
-  const cartItems = useMemo(
-    () =>
-      Object.entries(cart)
-        .map(([productId, quantity]) => {
-          const product = products.find((p) => p.id === productId);
-          return product ? { product, quantity } : null;
-        })
-        .filter((item): item is { product: Product; quantity: number } => item !== null && item.quantity > 0),
-    [cart, products],
-  );
+  const cartItems = useMemo(() => {
+    const lines: CartLine[] = [];
+    for (const [key, quantity] of Object.entries(cart)) {
+      if (quantity <= 0) continue;
+      const [kind, id] = key.split(":") as ["product" | "kit", string];
+      if (kind === "product") {
+        const product = products.find((p) => p.id === id);
+        if (product) lines.push({ key, kind, id, name: product.name, price: product.price, quantity });
+      } else if (kind === "kit") {
+        const kit = kits.find((k) => k.id === id);
+        if (kit) lines.push({ key, kind, id, name: `Kit: ${kit.name}`, price: kit.price, quantity });
+      }
+    }
+    return lines;
+  }, [cart, products, kits]);
 
-  const total = cartItems.reduce((sum, item) => sum + item.product.price * item.quantity, 0);
+  const total = cartItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
   const cartCount = cartItems.reduce((sum, item) => sum + item.quantity, 0);
 
   const categories = useMemo(() => {
@@ -79,8 +115,8 @@ export default function StorefrontClient({
     return Array.from(groups.entries());
   }, [products]);
 
-  function setQuantity(productId: string, quantity: number) {
-    setCart((prev) => ({ ...prev, [productId]: Math.max(0, quantity) }));
+  function setQuantity(key: string, quantity: number) {
+    setCart((prev) => ({ ...prev, [key]: Math.max(0, quantity) }));
   }
 
   async function handleApplyCoupon() {
@@ -113,10 +149,11 @@ export default function StorefrontClient({
       p_store_id: store.id,
       p_customer_name: customerName.trim(),
       p_customer_phone: customerPhone.trim(),
-      p_items: cartItems.map((item) => ({
-        product_id: item.product.id,
-        quantity: item.quantity,
-      })),
+      p_items: cartItems.map((item) =>
+        item.kind === "product"
+          ? { product_id: item.id, quantity: item.quantity }
+          : { kit_id: item.id, quantity: item.quantity },
+      ),
       p_coupon_code: couponCode.trim() || undefined,
     });
 
@@ -175,14 +212,11 @@ export default function StorefrontClient({
 
           <ul className="mt-4 space-y-1 text-sm">
             {cartItems.map((item) => (
-              <li
-                key={item.product.id}
-                className="flex justify-between text-slate-600 dark:text-slate-400"
-              >
+              <li key={item.key} className="flex justify-between text-slate-600 dark:text-slate-400">
                 <span>
-                  {item.quantity}x {item.product.name}
+                  {item.quantity}x {item.name}
                 </span>
-                <span>{formatCurrency(item.product.price * item.quantity)}</span>
+                <span>{formatCurrency(item.price * item.quantity)}</span>
               </li>
             ))}
           </ul>
@@ -327,10 +361,86 @@ export default function StorefrontClient({
       )}
 
       <div className="mx-auto w-full max-w-2xl flex-1 px-4 py-6">
-        {products.length === 0 && (
+        {products.length === 0 && kits.length === 0 && (
           <p className="text-center text-sm text-slate-500 dark:text-slate-400">
             Essa loja ainda não cadastrou produtos.
           </p>
+        )}
+
+        {kits.length > 0 && (
+          <section className="mb-6">
+            <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+              Kits e combos
+            </h2>
+            <div className="space-y-2">
+              {kits.map((kit) => {
+                const key = `kit:${kit.id}`;
+                const quantity = cart[key] ?? 0;
+                const maxQty = kitMaxQuantity(kit);
+                return (
+                  <div
+                    key={kit.id}
+                    className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900"
+                  >
+                    {kit.image_url ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={kit.image_url}
+                        alt={kit.name}
+                        className="h-14 w-14 shrink-0 rounded-lg object-cover"
+                      />
+                    ) : (
+                      <div className="h-14 w-14 shrink-0 rounded-lg bg-slate-100 dark:bg-slate-800" />
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium text-slate-900 dark:text-slate-50">
+                        {kit.name}
+                      </p>
+                      <p className="text-sm text-slate-600 dark:text-slate-400">
+                        {formatCurrency(kit.price)}
+                      </p>
+                      <p className="truncate text-xs text-slate-400 dark:text-slate-500">
+                        {kit.kit_items
+                          .map((item) => `${item.quantity}x ${item.products?.name ?? ""}`)
+                          .join(", ")}
+                      </p>
+                      {maxQty <= 0 && <p className="text-xs text-red-500">Sem estoque</p>}
+                    </div>
+                    {quantity === 0 ? (
+                      <button
+                        onClick={() => setQuantity(key, 1)}
+                        disabled={maxQty <= 0}
+                        className="shrink-0 rounded-lg bg-blue-900 px-3 py-1.5 text-sm font-semibold text-amber-300 disabled:opacity-40 dark:bg-blue-800"
+                      >
+                        Adicionar
+                      </button>
+                    ) : (
+                      <div className="flex shrink-0 items-center gap-2">
+                        <button
+                          onClick={() => setQuantity(key, quantity - 1)}
+                          className="h-7 w-7 rounded-full bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-200"
+                          aria-label="Diminuir quantidade"
+                        >
+                          −
+                        </button>
+                        <span className="w-4 text-center text-sm text-slate-900 dark:text-slate-50">
+                          {quantity}
+                        </span>
+                        <button
+                          onClick={() => setQuantity(key, Math.min(quantity + 1, maxQty))}
+                          disabled={quantity >= maxQty}
+                          className="h-7 w-7 rounded-full bg-slate-200 text-slate-700 disabled:opacity-40 dark:bg-slate-700 dark:text-slate-200"
+                          aria-label="Aumentar quantidade"
+                        >
+                          +
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </section>
         )}
 
         {categories.map(([category, items]) => (
@@ -340,7 +450,8 @@ export default function StorefrontClient({
             </h2>
             <div className="space-y-2">
               {items.map((product) => {
-                const quantity = cart[product.id] ?? 0;
+                const key = `product:${product.id}`;
+                const quantity = cart[key] ?? 0;
                 return (
                   <div
                     key={product.id}
@@ -369,7 +480,7 @@ export default function StorefrontClient({
                     </div>
                     {quantity === 0 ? (
                       <button
-                        onClick={() => setQuantity(product.id, 1)}
+                        onClick={() => setQuantity(key, 1)}
                         disabled={product.stock <= 0}
                         className="shrink-0 rounded-lg bg-blue-900 px-3 py-1.5 text-sm font-semibold text-amber-300 disabled:opacity-40 dark:bg-blue-800"
                       >
@@ -378,7 +489,7 @@ export default function StorefrontClient({
                     ) : (
                       <div className="flex shrink-0 items-center gap-2">
                         <button
-                          onClick={() => setQuantity(product.id, quantity - 1)}
+                          onClick={() => setQuantity(key, quantity - 1)}
                           className="h-7 w-7 rounded-full bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-200"
                           aria-label="Diminuir quantidade"
                         >
@@ -388,7 +499,7 @@ export default function StorefrontClient({
                           {quantity}
                         </span>
                         <button
-                          onClick={() => setQuantity(product.id, Math.min(quantity + 1, product.stock))}
+                          onClick={() => setQuantity(key, Math.min(quantity + 1, product.stock))}
                           disabled={quantity >= product.stock}
                           className="h-7 w-7 rounded-full bg-slate-200 text-slate-700 disabled:opacity-40 dark:bg-slate-700 dark:text-slate-200"
                           aria-label="Aumentar quantidade"

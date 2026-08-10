@@ -8,6 +8,7 @@ import { StoreContext, type Store } from "@/lib/store-context";
 const NAV_ITEMS = [
   { href: "/painel", label: "Início" },
   { href: "/painel/produtos", label: "Produtos" },
+  { href: "/painel/kits", label: "Kits" },
   { href: "/painel/banners", label: "Banners" },
   { href: "/painel/cupons", label: "Cupons" },
   { href: "/painel/pedidos", label: "Pedidos" },
