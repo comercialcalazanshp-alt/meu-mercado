@@ -25,6 +25,10 @@ function LojaCriadaContent() {
           "Sua loja foi registrada com sucesso."
         )}
       </p>
+      <p className="mt-3 max-w-md text-sm text-slate-600 dark:text-slate-400">
+        Enviamos um e-mail de confirmação — clique no link para ativar sua
+        conta antes de acessar o painel.
+      </p>
       <p className="mt-2 max-w-md text-xs text-slate-400 dark:text-slate-600">
         O painel para gerenciar produtos ainda está sendo construído — em breve
         você poderá adicionar seus produtos aqui.
