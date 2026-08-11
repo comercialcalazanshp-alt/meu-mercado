@@ -43,6 +43,8 @@ export default function Banners() {
   const [startAt, setStartAt] = useState("");
   const [endAt, setEndAt] = useState("");
   const [saving, setSaving] = useState(false);
+  const [sharingId, setSharingId] = useState<string | null>(null);
+  const [fallbackFor, setFallbackFor] = useState<string | null>(null);
 
   async function loadBanners() {
     setLoading(true);
@@ -102,6 +104,39 @@ export default function Banners() {
     if (!window.confirm(`Excluir o banner "${bannerTitle}"?`)) return;
     setBanners((prev) => prev.filter((b) => b.id !== id));
     await getSupabase().from("banners").delete().eq("id", id);
+  }
+
+  function shareTextFor(banner: Banner) {
+    const storeUrl = `${window.location.origin}/loja/${store.slug}`;
+    return `${banner.title} — confira na ${store.name}! ${banner.link_url || storeUrl}`;
+  }
+
+  async function handleShareBanner(banner: Banner) {
+    if (!navigator.share) {
+      setFallbackFor(fallbackFor === banner.id ? null : banner.id);
+      return;
+    }
+
+    setSharingId(banner.id);
+    const shareText = shareTextFor(banner);
+    try {
+      try {
+        const response = await fetch(banner.image_url);
+        const blob = await response.blob();
+        const file = new File([blob], "banner.jpg", { type: blob.type || "image/jpeg" });
+        if (navigator.canShare?.({ files: [file] })) {
+          await navigator.share({ files: [file], title: banner.title, text: shareText });
+          return;
+        }
+      } catch {
+        // não deu pra baixar a imagem (CORS, etc.) — compartilha só o texto/link abaixo
+      }
+      await navigator.share({ title: banner.title, text: shareText, url: banner.image_url });
+    } catch (err) {
+      if ((err as Error).name !== "AbortError") setFallbackFor(banner.id);
+    } finally {
+      setSharingId(null);
+    }
   }
 
   return (
@@ -174,39 +209,75 @@ export default function Banners() {
           return (
             <div
               key={banner.id}
-              className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900 sm:flex-row sm:items-center"
+              className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900"
             >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={banner.image_url}
-                alt={banner.title}
-                className="h-20 w-full shrink-0 rounded-lg object-cover sm:w-32"
-              />
-              <div className="min-w-0 flex-1">
-                <p className="font-medium text-slate-900 dark:text-slate-50">{banner.title}</p>
-                <p className="text-xs text-slate-500 dark:text-slate-400">
-                  {banner.start_at || banner.end_at
-                    ? `${banner.start_at ? toDateInputValue(banner.start_at) : "sem início"} até ${
-                        banner.end_at ? toDateInputValue(banner.end_at) : "sem fim"
-                      }`
-                    : "Sem prazo definido"}
-                </p>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={banner.image_url}
+                  alt={banner.title}
+                  className="h-20 w-full shrink-0 rounded-lg object-cover sm:w-32"
+                />
+                <div className="min-w-0 flex-1">
+                  <p className="font-medium text-slate-900 dark:text-slate-50">{banner.title}</p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    {banner.start_at || banner.end_at
+                      ? `${banner.start_at ? toDateInputValue(banner.start_at) : "sem início"} até ${
+                          banner.end_at ? toDateInputValue(banner.end_at) : "sem fim"
+                        }`
+                      : "Sem prazo definido"}
+                  </p>
+                </div>
+                <span
+                  className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-medium ${status.style}`}
+                >
+                  {status.text}
+                </span>
+                <button
+                  onClick={() => handleShareBanner(banner)}
+                  disabled={sharingId === banner.id}
+                  className="shrink-0 rounded-lg bg-green-600 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-60"
+                >
+                  {sharingId === banner.id ? "Abrindo…" : "Publicar"}
+                </button>
+                <button
+                  onClick={() => toggleActive(banner.id, !banner.active)}
+                  className="shrink-0 text-xs font-medium text-slate-500 hover:underline dark:text-slate-400"
+                >
+                  {banner.active ? "Desativar" : "Ativar"}
+                </button>
+                <button
+                  onClick={() => deleteBanner(banner.id, banner.title)}
+                  className="shrink-0 text-xs font-medium text-red-600 hover:underline"
+                >
+                  Excluir
+                </button>
               </div>
-              <span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-medium ${status.style}`}>
-                {status.text}
-              </span>
-              <button
-                onClick={() => toggleActive(banner.id, !banner.active)}
-                className="shrink-0 text-xs font-medium text-slate-500 hover:underline dark:text-slate-400"
-              >
-                {banner.active ? "Desativar" : "Ativar"}
-              </button>
-              <button
-                onClick={() => deleteBanner(banner.id, banner.title)}
-                className="shrink-0 text-xs font-medium text-red-600 hover:underline"
-              >
-                Excluir
-              </button>
+
+              {fallbackFor === banner.id && (
+                <div className="mt-3 flex flex-wrap items-center gap-3 border-t border-slate-100 pt-3 text-sm dark:border-slate-800">
+                  <span className="text-xs text-slate-500 dark:text-slate-400">
+                    Compartilhamento direto não disponível nesse navegador — use:
+                  </span>
+                  <a
+                    href={`https://wa.me/?text=${encodeURIComponent(shareTextFor(banner) + " " + banner.image_url)}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="font-medium text-green-600 hover:underline"
+                  >
+                    Compartilhar no WhatsApp
+                  </a>
+                  <a
+                    href={banner.image_url}
+                    download
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="font-medium text-blue-900 hover:underline dark:text-blue-400"
+                  >
+                    Baixar imagem
+                  </a>
+                </div>
+              )}
             </div>
           );
         })}
