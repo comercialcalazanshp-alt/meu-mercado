@@ -39,7 +39,7 @@ export default async function Loja({ params }: { params: Promise<{ slug: string 
   const { data: store } = await supabase
     .from("stores")
     .select(
-      "id, slug, name, whatsapp, cashback_percent, business_hours_enabled, opens_at, closes_at, open_days, manually_closed",
+      "id, slug, name, whatsapp, cashback_percent, business_hours_enabled, opens_at, closes_at, open_days, manually_closed, scratch_enabled",
     )
     .eq("slug", slug)
     .eq("active", true)

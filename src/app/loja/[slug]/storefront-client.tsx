@@ -56,6 +56,7 @@ type Store = {
   closes_at: string | null;
   open_days: number[];
   manually_closed: boolean;
+  scratch_enabled: boolean;
 };
 
 function isStoreOpenNow(store: Store): { open: boolean; message: string | null } {
@@ -208,6 +209,15 @@ export default function StorefrontClient({
   const [neighborhoodId, setNeighborhoodId] = useState<string>("retirada");
   const [confirmedDeliveryFee, setConfirmedDeliveryFee] = useState(0);
   const [confirmedOrderId, setConfirmedOrderId] = useState<string | null>(null);
+  const [scratchPhone, setScratchPhone] = useState("");
+  const [scratchResult, setScratchResult] = useState<{
+    discount_percent: number;
+    redeemed: boolean;
+    already_existed: boolean;
+  } | null>(null);
+  const [scratchLoading, setScratchLoading] = useState(false);
+  const [scratchError, setScratchError] = useState<string | null>(null);
+  const [confirmedScratchDiscount, setConfirmedScratchDiscount] = useState(0);
   const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [showInstallBanner, setShowInstallBanner] = useState(false);
   const [isIosInstallHint, setIsIosInstallHint] = useState(false);
@@ -269,8 +279,12 @@ export default function StorefrontClient({
     neighborhoodId === "retirada"
       ? 0
       : (neighborhoods.find((n) => n.id === neighborhoodId)?.fee ?? 0);
+  const scratchDiscountPreview =
+    scratchResult && !scratchResult.redeemed
+      ? Math.round(total * (scratchResult.discount_percent / 100) * 100) / 100
+      : 0;
   const totalWithDelivery =
-    total - (couponPreview?.valid ? couponPreview.discount : 0) + deliveryFee;
+    total - (couponPreview?.valid ? couponPreview.discount : 0) - scratchDiscountPreview + deliveryFee;
 
   const storeRatingAvg =
     storeReviews.length > 0
@@ -289,6 +303,27 @@ export default function StorefrontClient({
 
   function setQuantity(key: string, quantity: number) {
     setCart((prev) => ({ ...prev, [key]: Math.max(0, quantity) }));
+  }
+
+  async function handleScratch() {
+    setScratchError(null);
+    const phone = scratchPhone.trim();
+    if (phone.length < 10) {
+      setScratchError("Digite um WhatsApp válido pra raspar.");
+      return;
+    }
+    setScratchLoading(true);
+    const { data, error: scratchRpcError } = await getSupabase().rpc("get_or_create_scratch_card", {
+      p_store_id: store.id,
+      p_customer_phone: phone,
+    });
+    setScratchLoading(false);
+    if (scratchRpcError) {
+      setScratchError(scratchRpcError.message);
+      return;
+    }
+    setScratchResult(data?.[0] ?? null);
+    if (!customerPhone.trim()) setCustomerPhone(phone);
   }
 
   function addRecipeToCart() {
@@ -541,6 +576,7 @@ export default function StorefrontClient({
     setConfirmedReferralCode(data?.[0]?.referral_code ?? null);
     setConfirmedReferralBonus(data?.[0]?.referral_bonus_earned ?? 0);
     setConfirmedDeliveryFee(data?.[0]?.delivery_fee ?? 0);
+    setConfirmedScratchDiscount(data?.[0]?.scratch_discount ?? 0);
     setConfirmedOrderId(data?.[0]?.order_id ?? null);
     setView("confirmado");
 
@@ -590,6 +626,11 @@ export default function StorefrontClient({
         {confirmedDeliveryFee > 0 && (
           <p className="text-sm text-slate-500 dark:text-slate-400">
             Inclui {formatCurrency(confirmedDeliveryFee)} de frete.
+          </p>
+        )}
+        {confirmedScratchDiscount > 0 && (
+          <p className="text-sm text-purple-700 dark:text-purple-400">
+            🎟️ {formatCurrency(confirmedScratchDiscount)} de desconto da raspadinha aplicado nesse pedido!
           </p>
         )}
         {confirmedCashbackUsed > 0 && (
@@ -805,6 +846,12 @@ export default function StorefrontClient({
                 <span>−{formatCurrency(couponPreview.discount)}</span>
               </p>
             )}
+            {scratchDiscountPreview > 0 && (
+              <p className="flex justify-between text-purple-700 dark:text-purple-400">
+                <span>🎟️ Raspadinha ({scratchResult?.discount_percent}%)</span>
+                <span>−{formatCurrency(scratchDiscountPreview)}</span>
+              </p>
+            )}
             {deliveryFee > 0 && (
               <p className="flex justify-between text-slate-600 dark:text-slate-400">
                 <span>Entrega</span>
@@ -952,6 +999,51 @@ export default function StorefrontClient({
             >
               ✕
             </button>
+          </div>
+        </div>
+      )}
+
+      {store.scratch_enabled && (
+        <div className="mx-auto w-full max-w-2xl px-4 pt-4">
+          <div className="rounded-xl border border-purple-200 bg-purple-50 p-3 dark:border-purple-900 dark:bg-purple-950/40">
+            <p className="text-xs font-bold uppercase tracking-wide text-purple-700 dark:text-purple-400">
+              🎟️ Raspadinha semanal
+            </p>
+            {!scratchResult ? (
+              <>
+                <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
+                  Digite seu WhatsApp e raspe pra tentar ganhar um desconto na sua compra dessa semana.
+                </p>
+                <div className="mt-2 flex gap-2">
+                  <input
+                    type="tel"
+                    value={scratchPhone}
+                    onChange={(e) => setScratchPhone(e.target.value)}
+                    placeholder="Seu WhatsApp"
+                    className="min-w-0 flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800"
+                  />
+                  <button
+                    onClick={handleScratch}
+                    disabled={scratchLoading}
+                    className="shrink-0 rounded-lg bg-purple-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
+                  >
+                    {scratchLoading ? "Raspando…" : "Raspar"}
+                  </button>
+                </div>
+                {scratchError && <p className="mt-1 text-sm text-red-600 dark:text-red-400">{scratchError}</p>}
+              </>
+            ) : scratchResult.redeemed ? (
+              <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
+                Você já usou a raspadinha dessa semana ({scratchResult.discount_percent}% de desconto).
+                Volta semana que vem!
+              </p>
+            ) : (
+              <p className="mt-1 text-sm text-purple-800 dark:text-purple-300">
+                🎉 Você ganhou <strong>{scratchResult.discount_percent}% de desconto</strong>! Ele é
+                aplicado automaticamente quando você finalizar o pedido com esse mesmo WhatsApp, até o
+                fim da semana.
+              </p>
+            )}
           </div>
         </div>
       )}

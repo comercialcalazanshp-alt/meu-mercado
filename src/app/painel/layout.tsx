@@ -49,6 +49,7 @@ const NAV_ITEMS = [
   { href: "/painel/receitas", label: "Receitas" },
   { href: "/painel/banners", label: "Banners" },
   { href: "/painel/ofertas", label: "Ofertas" },
+  { href: "/painel/raspadinha", label: "Raspadinha" },
   { href: "/painel/cupons", label: "Cupons" },
   { href: "/painel/bairros", label: "Frete" },
   { href: "/painel/fiado", label: "Fiado" },
