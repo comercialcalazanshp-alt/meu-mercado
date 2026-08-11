@@ -1,8 +1,36 @@
+import type { Metadata, Viewport } from "next";
 import { notFound } from "next/navigation";
 import { getSupabase } from "@/lib/supabase";
 import StorefrontClient from "./storefront-client";
 
 export const dynamic = "force-dynamic";
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ slug: string }>;
+}): Promise<Metadata> {
+  const { slug } = await params;
+  const { data: store } = await getSupabase()
+    .from("stores")
+    .select("name")
+    .eq("slug", slug)
+    .eq("active", true)
+    .maybeSingle();
+
+  if (!store) return {};
+
+  return {
+    title: store.name,
+    manifest: `/loja/${slug}/manifest.webmanifest`,
+    appleWebApp: { capable: true, statusBarStyle: "default", title: store.name },
+    icons: { apple: `/loja/${slug}/icon?size=180` },
+  };
+}
+
+export function generateViewport(): Viewport {
+  return { themeColor: "#1e3a8a" };
+}
 
 export default async function Loja({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;

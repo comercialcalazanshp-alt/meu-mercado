@@ -4,6 +4,11 @@ import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useSearchParams } from "next/navigation";
 import { getSupabase } from "@/lib/supabase";
 
+type BeforeInstallPromptEvent = Event & {
+  prompt: () => Promise<void>;
+  userChoice: Promise<{ outcome: "accepted" | "dismissed" }>;
+};
+
 type Product = {
   id: string;
   name: string;
@@ -174,6 +179,9 @@ export default function StorefrontClient({
   const [neighborhoodId, setNeighborhoodId] = useState<string>("retirada");
   const [confirmedDeliveryFee, setConfirmedDeliveryFee] = useState(0);
   const [confirmedOrderId, setConfirmedOrderId] = useState<string | null>(null);
+  const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
+  const [showInstallBanner, setShowInstallBanner] = useState(false);
+  const [isIosInstallHint, setIsIosInstallHint] = useState(false);
   const [storeRating, setStoreRating] = useState(5);
   const [storeComment, setStoreComment] = useState("");
   const [submittingStoreReview, setSubmittingStoreReview] = useState(false);
@@ -280,6 +288,48 @@ export default function StorefrontClient({
     const ref = searchParams.get("ref");
     if (ref) setReferralCode(ref.toUpperCase());
   }, [searchParams]);
+
+  useEffect(() => {
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.register("/sw.js").catch(() => {});
+    }
+
+    const dismissKey = `mm_install_dismissed_${store.slug}`;
+    if (localStorage.getItem(dismissKey)) return;
+
+    const standalone =
+      window.matchMedia("(display-mode: standalone)").matches ||
+      (window.navigator as Navigator & { standalone?: boolean }).standalone === true;
+    if (standalone) return;
+
+    const isIos = /iPad|iPhone|iPod/.test(window.navigator.userAgent);
+    if (isIos) {
+      setIsIosInstallHint(true);
+      setShowInstallBanner(true);
+      return;
+    }
+
+    function handleBeforeInstallPrompt(e: Event) {
+      e.preventDefault();
+      setInstallPrompt(e as BeforeInstallPromptEvent);
+      setShowInstallBanner(true);
+    }
+    window.addEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
+    return () => window.removeEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
+  }, [store.slug]);
+
+  function dismissInstallBanner() {
+    setShowInstallBanner(false);
+    localStorage.setItem(`mm_install_dismissed_${store.slug}`, "1");
+  }
+
+  async function handleInstallClick() {
+    if (!installPrompt) return;
+    await installPrompt.prompt();
+    await installPrompt.userChoice;
+    setInstallPrompt(null);
+    setShowInstallBanner(false);
+  }
 
   // Registra a visita (uma "sessão" por aba, guardada no sessionStorage —
   // dura enquanto a aba fica aberta) e mede quanto tempo/quantas telas o
@@ -820,6 +870,36 @@ export default function StorefrontClient({
         <div className="bg-amber-100 px-4 py-2 text-center text-sm font-medium text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
           🕒 {storeStatus.message} Você pode ver o catálogo, mas o pedido só é enviado quando a loja
           reabrir.
+        </div>
+      )}
+
+      {showInstallBanner && (
+        <div className="flex items-center justify-between gap-3 bg-blue-900 px-4 py-2.5 text-sm text-amber-50 dark:bg-blue-800">
+          {isIosInstallHint ? (
+            <span>
+              📲 Instale esse site como app: toque em <strong>Compartilhar</strong> e depois em{" "}
+              <strong>Adicionar à Tela de Início</strong>.
+            </span>
+          ) : (
+            <span>📲 Instale a {store.name} como app no seu celular pra acessar mais rápido.</span>
+          )}
+          <div className="flex shrink-0 items-center gap-3">
+            {!isIosInstallHint && (
+              <button
+                onClick={handleInstallClick}
+                className="rounded-lg bg-amber-300 px-3 py-1 text-xs font-semibold text-blue-900"
+              >
+                Instalar
+              </button>
+            )}
+            <button
+              onClick={dismissInstallBanner}
+              aria-label="Fechar"
+              className="text-amber-100 hover:text-white"
+            >
+              ✕
+            </button>
+          </div>
         </div>
       )}
 
