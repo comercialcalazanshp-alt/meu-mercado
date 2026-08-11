@@ -1,4 +1,5 @@
 import { getSupabase } from "@/lib/supabase";
+import ConfirmacaoBanner from "./confirmacao-banner";
 
 // Impede o Next.js de tentar buscar esse dado durante a publicação (build) —
 // só busca quando alguém visita o site de verdade.
@@ -11,6 +12,9 @@ export default async function Home() {
 
   return (
     <div className="flex flex-1 flex-col items-center justify-center bg-slate-50 px-6 py-24 text-center dark:bg-slate-950">
+      <div className="w-full max-w-sm">
+        <ConfirmacaoBanner />
+      </div>
       <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-900 text-2xl font-bold text-amber-300 dark:bg-blue-800">
         MM
       </div>

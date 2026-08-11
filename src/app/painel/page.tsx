@@ -65,6 +65,45 @@ export default function PainelInicio() {
           <p className="text-sm text-slate-600 dark:text-slate-400">pedidos pendentes</p>
         </a>
       </div>
+
+      {productCount === 0 && (
+        <div className="mt-6 rounded-xl border border-blue-200 bg-blue-50 p-4 dark:border-blue-900/50 dark:bg-blue-950/30">
+          <h2 className="font-semibold text-blue-900 dark:text-blue-300">
+            Primeiros passos pra começar a vender
+          </h2>
+          <ul className="mt-3 space-y-2 text-sm">
+            <li className="flex items-center gap-2">
+              <span>{productCount && productCount > 0 ? "✅" : "⬜"}</span>
+              <a href="/painel/produtos" className="text-blue-900 underline dark:text-blue-400">
+                Adicione seu primeiro produto
+              </a>
+            </li>
+            <li className="flex items-center gap-2">
+              <span>{store.whatsapp ? "✅" : "⬜"}</span>
+              <a href="/painel/conta" className="text-blue-900 underline dark:text-blue-400">
+                Confirme o WhatsApp da loja
+              </a>
+            </li>
+            <li className="flex items-center gap-2">
+              <span>⬜</span>
+              <a href="/painel/cartaz" className="text-blue-900 underline dark:text-blue-400">
+                Gere o cartaz com QR code da loja
+              </a>
+            </li>
+            <li className="flex items-center gap-2">
+              <span>⬜</span>
+              <a
+                href={storeUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-blue-900 underline dark:text-blue-400"
+              >
+                Veja como sua vitrine está ficando
+              </a>
+            </li>
+          </ul>
+        </div>
+      )}
     </div>
   );
 }
