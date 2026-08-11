@@ -173,6 +173,7 @@ export default function StorefrontClient({
   const [confirmedReferralBonus, setConfirmedReferralBonus] = useState(0);
   const [neighborhoodId, setNeighborhoodId] = useState<string>("retirada");
   const [confirmedDeliveryFee, setConfirmedDeliveryFee] = useState(0);
+  const [confirmedOrderId, setConfirmedOrderId] = useState<string | null>(null);
   const [storeRating, setStoreRating] = useState(5);
   const [storeComment, setStoreComment] = useState("");
   const [submittingStoreReview, setSubmittingStoreReview] = useState(false);
@@ -437,6 +438,7 @@ export default function StorefrontClient({
     setConfirmedReferralCode(data?.[0]?.referral_code ?? null);
     setConfirmedReferralBonus(data?.[0]?.referral_bonus_earned ?? 0);
     setConfirmedDeliveryFee(data?.[0]?.delivery_fee ?? 0);
+    setConfirmedOrderId(data?.[0]?.order_id ?? null);
     setView("confirmado");
 
     const sessionId = sessionStorage.getItem(visitStorageKey);
@@ -528,6 +530,14 @@ export default function StorefrontClient({
             className="mt-2 rounded-lg bg-green-600 px-4 py-2.5 text-sm font-semibold text-white"
           >
             Avisar a loja no WhatsApp
+          </a>
+        )}
+        {confirmedOrderId && (
+          <a
+            href={`/loja/${store.slug}/pedido/${confirmedOrderId}`}
+            className="text-sm font-medium text-blue-900 underline dark:text-blue-400"
+          >
+            Ver recibo digital
           </a>
         )}
 

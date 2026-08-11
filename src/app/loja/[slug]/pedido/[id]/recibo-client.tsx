@@ -1,0 +1,172 @@
+"use client";
+
+type OrderItem = {
+  name: string;
+  price: number;
+  quantity: number;
+  line_total?: number;
+};
+
+export type OrderReceipt = {
+  order_id: string;
+  store_name: string;
+  store_slug: string;
+  customer_name: string;
+  items: OrderItem[];
+  total: number;
+  discount: number;
+  coupon_code: string | null;
+  delivery_fee: number;
+  neighborhood_name: string | null;
+  cashback_earned: number;
+  cashback_used: number;
+  status: string;
+  channel: string;
+  payment_method: string | null;
+  created_at: string;
+};
+
+const STATUS_LABEL: Record<string, string> = {
+  pendente: "Pendente",
+  confirmado: "Confirmado",
+  entregue: "Entregue",
+  cancelado: "Cancelado",
+};
+
+function formatCurrency(value: number) {
+  return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+}
+
+export default function ReciboClient({ order }: { order: OrderReceipt }) {
+  const subtotal = order.items.reduce(
+    (sum, item) => sum + (item.line_total ?? item.price * item.quantity),
+    0,
+  );
+  const createdAt = new Date(order.created_at).toLocaleString("pt-BR", {
+    dateStyle: "short",
+    timeStyle: "short",
+  });
+
+  return (
+    <div className="flex flex-1 justify-center bg-slate-50 px-6 py-10 dark:bg-slate-950">
+      <div className="w-full max-w-sm">
+        <div className="print:hidden">
+          <a
+            href={`/loja/${order.store_slug}`}
+            className="text-sm text-slate-500 hover:underline dark:text-slate-400"
+          >
+            ← Voltar à loja
+          </a>
+          <button
+            onClick={() => window.print()}
+            className="mt-4 w-full rounded-lg bg-blue-900 px-4 py-2 text-sm font-semibold text-amber-300 dark:bg-blue-800"
+          >
+            Imprimir / salvar como PDF
+          </button>
+        </div>
+
+        <div
+          id="recibo-print-area"
+          className="mt-6 rounded-xl border border-slate-200 bg-white p-6 dark:border-slate-800 dark:bg-slate-900 print:mt-0 print:rounded-none print:border-0 print:p-0"
+        >
+          <div className="text-center">
+            <h1 className="text-lg font-bold text-slate-900 dark:text-slate-50 print:text-slate-900">
+              {order.store_name}
+            </h1>
+            <p className="text-xs text-slate-500 dark:text-slate-400 print:text-slate-500">
+              Recibo do pedido · {createdAt}
+            </p>
+            <p className="text-xs text-slate-400 dark:text-slate-500 print:text-slate-400">
+              #{order.order_id.slice(0, 8).toUpperCase()}
+            </p>
+          </div>
+
+          <div className="mt-4 border-t border-dashed border-slate-300 pt-4 text-sm dark:border-slate-700">
+            <p className="text-slate-700 dark:text-slate-300 print:text-slate-700">
+              Cliente: {order.customer_name}
+            </p>
+            <p className="text-slate-500 dark:text-slate-400 print:text-slate-500">
+              Status: {STATUS_LABEL[order.status] ?? order.status}
+              {order.channel === "balcao" ? " · comprado no balcão" : ""}
+            </p>
+            {order.payment_method && (
+              <p className="text-slate-500 dark:text-slate-400 print:text-slate-500">
+                Pagamento: {order.payment_method}
+              </p>
+            )}
+          </div>
+
+          <ul className="mt-4 space-y-1 border-t border-dashed border-slate-300 pt-4 text-sm dark:border-slate-700">
+            {order.items.map((item, i) => (
+              <li
+                key={i}
+                className="flex justify-between text-slate-700 dark:text-slate-300 print:text-slate-700"
+              >
+                <span>
+                  {item.quantity}x {item.name}
+                </span>
+                <span>{formatCurrency(item.line_total ?? item.price * item.quantity)}</span>
+              </li>
+            ))}
+          </ul>
+
+          <div className="mt-4 space-y-1 border-t border-dashed border-slate-300 pt-4 text-sm dark:border-slate-700">
+            <p className="flex justify-between text-slate-600 dark:text-slate-400 print:text-slate-600">
+              <span>Subtotal</span>
+              <span>{formatCurrency(subtotal)}</span>
+            </p>
+            {order.discount > 0 && (
+              <p className="flex justify-between text-green-600">
+                <span>Desconto{order.coupon_code ? ` (${order.coupon_code})` : ""}</span>
+                <span>−{formatCurrency(order.discount)}</span>
+              </p>
+            )}
+            {order.delivery_fee > 0 && (
+              <p className="flex justify-between text-slate-600 dark:text-slate-400 print:text-slate-600">
+                <span>Entrega{order.neighborhood_name ? ` (${order.neighborhood_name})` : ""}</span>
+                <span>{formatCurrency(order.delivery_fee)}</span>
+              </p>
+            )}
+            {order.cashback_used > 0 && (
+              <p className="flex justify-between text-green-600">
+                <span>Cashback usado</span>
+                <span>−{formatCurrency(order.cashback_used)}</span>
+              </p>
+            )}
+            <p className="flex justify-between text-base font-semibold text-slate-900 dark:text-slate-50 print:text-slate-900">
+              <span>Total</span>
+              <span>{formatCurrency(order.total)}</span>
+            </p>
+            {order.cashback_earned > 0 && (
+              <p className="text-xs text-green-600">
+                + {formatCurrency(order.cashback_earned)} de cashback pra próxima compra
+              </p>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <style jsx global>{`
+        @media print {
+          body * {
+            visibility: hidden;
+          }
+          .print\\:hidden,
+          .print\\:hidden * {
+            visibility: hidden !important;
+          }
+          #recibo-print-area,
+          #recibo-print-area * {
+            visibility: visible;
+          }
+          #recibo-print-area {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+          }
+        }
+      `}</style>
+    </div>
+  );
+}
