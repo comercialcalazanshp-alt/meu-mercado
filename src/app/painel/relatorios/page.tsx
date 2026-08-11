@@ -37,6 +37,24 @@ function dayKey(iso: string) {
   return iso.slice(0, 10);
 }
 
+function toCsvValue(value: string) {
+  if (/[",\n]/.test(value)) return '"' + value.replace(/"/g, '""') + '"';
+  return value;
+}
+
+function currentMonthValue() {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+}
+
+const CHANNEL_LABEL: Record<string, string> = { site: "Site", pdv: "Balcão (PDV)" };
+const PAYMENT_LABEL: Record<string, string> = {
+  dinheiro: "Dinheiro",
+  pix: "Pix",
+  cartao: "Cartão",
+  fiado: "Fiado",
+};
+
 function shortDay(dateStr: string) {
   const [, m, d] = dateStr.split("-");
   return `${d}/${m}`;
@@ -55,6 +73,10 @@ export default function Relatorios() {
   const [goal, setGoal] = useState("");
   const [savingGoal, setSavingGoal] = useState(false);
   const [currentGoal, setCurrentGoal] = useState(0);
+
+  const [exportMonth, setExportMonth] = useState(currentMonthValue());
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
 
   useEffect(() => {
     async function load() {
@@ -152,6 +174,84 @@ export default function Relatorios() {
 
   const goalProgress = currentGoal > 0 ? Math.min(100, (currentMonthTotal / currentGoal) * 100) : 0;
 
+  async function handleExportCsv() {
+    setExportError(null);
+    const [year, month] = exportMonth.split("-").map(Number);
+    if (!year || !month) return;
+    const since = new Date(year, month - 1, 1);
+    const until = new Date(year, month, 1);
+
+    setExporting(true);
+    const { data, error } = await getSupabase()
+      .from("orders")
+      .select(
+        "customer_name, customer_phone, items, total, status, created_at, coupon_code, discount_amount, neighborhood_name, delivery_fee, cashback_used, channel, payment_method",
+      )
+      .eq("store_id", store.id)
+      .gte("created_at", since.toISOString())
+      .lt("created_at", until.toISOString())
+      .order("created_at", { ascending: true });
+    setExporting(false);
+
+    if (error) {
+      setExportError("Não deu pra gerar o arquivo: " + error.message);
+      return;
+    }
+    if (!data || data.length === 0) {
+      setExportError("Nenhuma venda nesse mês.");
+      return;
+    }
+
+    const header = [
+      "Data",
+      "Hora",
+      "Cliente",
+      "Telefone",
+      "Canal",
+      "Forma de pagamento",
+      "Itens",
+      "Cupom",
+      "Desconto",
+      "Bairro",
+      "Frete",
+      "Cashback usado",
+      "Total",
+      "Status",
+    ];
+
+    const rows = data.map((o) => {
+      const created = new Date(o.created_at);
+      const itemsSummary = (o.items as { name: string; quantity: number }[])
+        .map((item) => `${item.quantity}x ${item.name}`)
+        .join("; ");
+      return [
+        created.toLocaleDateString("pt-BR"),
+        created.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }),
+        o.customer_name,
+        o.customer_phone,
+        CHANNEL_LABEL[o.channel as string] ?? o.channel,
+        o.payment_method ? (PAYMENT_LABEL[o.payment_method] ?? o.payment_method) : "",
+        itemsSummary,
+        o.coupon_code ?? "",
+        o.discount_amount.toFixed(2).replace(".", ","),
+        o.neighborhood_name ?? "",
+        o.delivery_fee.toFixed(2).replace(".", ","),
+        o.cashback_used.toFixed(2).replace(".", ","),
+        o.total.toFixed(2).replace(".", ","),
+        o.status,
+      ].map((v) => toCsvValue(String(v)));
+    });
+
+    const lines = [header.map(toCsvValue).join(","), ...rows.map((r) => r.join(","))];
+    const blob = new Blob(["﻿" + lines.join("\n")], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `vendas-${store.slug}-${exportMonth}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
   if (loading) {
     return <p className="text-sm text-slate-500">Carregando…</p>;
   }
@@ -159,6 +259,32 @@ export default function Relatorios() {
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-50">Relatórios</h1>
+
+      <div className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+          Exportar vendas pro contador
+        </h2>
+        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+          Gera uma planilha (CSV) com todas as vendas do mês escolhido, do site e do balcão, pra
+          você mandar pro seu contador.
+        </p>
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <input
+            type="month"
+            value={exportMonth}
+            onChange={(e) => setExportMonth(e.target.value)}
+            className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+          />
+          <button
+            onClick={handleExportCsv}
+            disabled={exporting}
+            className="rounded-lg bg-blue-900 px-4 py-2 text-sm font-semibold text-amber-300 disabled:opacity-60 dark:bg-blue-800"
+          >
+            {exporting ? "Gerando…" : "Baixar CSV"}
+          </button>
+        </div>
+        {exportError && <p className="mt-2 text-sm text-red-600">{exportError}</p>}
+      </div>
 
       <div className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
