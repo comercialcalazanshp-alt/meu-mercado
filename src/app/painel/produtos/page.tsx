@@ -15,6 +15,13 @@ type Product = {
   active: boolean;
   promo_buy_qty: number | null;
   promo_pay_qty: number | null;
+  barcode: string | null;
+  price_fiado: number | null;
+  price_wholesale: number | null;
+  wholesale_min_qty: number | null;
+  stock_alert_threshold: number;
+  expiry_date: string | null;
+  supplier: string | null;
 };
 
 function parseCsv(text: string): string[][] {
@@ -76,14 +83,25 @@ export default function Produtos() {
   const [costPrice, setCostPrice] = useState("");
   const [stock, setStock] = useState("");
   const [imageUrl, setImageUrl] = useState("");
+  const [barcode, setBarcode] = useState("");
+  const [expiryDate, setExpiryDate] = useState("");
+  const [supplier, setSupplier] = useState("");
   const [saving, setSaving] = useState(false);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const photoInputRef = useRef<HTMLInputElement>(null);
   const [promoDrafts, setPromoDrafts] = useState<Record<string, { buy: string; pay: string }>>({});
+  const [wholesaleDrafts, setWholesaleDrafts] = useState<
+    Record<string, { price: string; minQty: string }>
+  >({});
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   async function loadProducts() {
     setLoading(true);
     const { data } = await getSupabase()
       .from("products")
-      .select("id, name, category, price, cost_price, image_url, stock, active, promo_buy_qty, promo_pay_qty")
+      .select(
+        "id, name, category, price, cost_price, image_url, stock, active, promo_buy_qty, promo_pay_qty, barcode, price_fiado, price_wholesale, wholesale_min_qty, stock_alert_threshold, expiry_date, supplier",
+      )
       .eq("store_id", store.id)
       .order("created_at", { ascending: false });
     setProducts(data ?? []);
@@ -116,6 +134,9 @@ export default function Produtos() {
       cost_price: costValue !== null && !Number.isNaN(costValue) ? costValue : null,
       stock: Number.isNaN(stockValue) ? 0 : stockValue,
       image_url: imageUrl.trim() || null,
+      barcode: barcode.trim() || null,
+      expiry_date: expiryDate || null,
+      supplier: supplier.trim() || null,
     });
     setSaving(false);
 
@@ -128,9 +149,78 @@ export default function Produtos() {
     setCategory("");
     setPrice("");
     setCostPrice("");
+    setExpiryDate("");
+    setSupplier("");
     setStock("");
     setImageUrl("");
+    setBarcode("");
     loadProducts();
+  }
+
+  function resizeImage(file: File): Promise<Blob> {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      const url = URL.createObjectURL(file);
+      img.onload = () => {
+        const maxSize = 800;
+        const scale = Math.min(1, maxSize / Math.max(img.width, img.height));
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.round(img.width * scale);
+        canvas.height = Math.round(img.height * scale);
+        const ctx = canvas.getContext("2d");
+        if (!ctx) {
+          URL.revokeObjectURL(url);
+          reject(new Error("Canvas não disponível"));
+          return;
+        }
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        URL.revokeObjectURL(url);
+        canvas.toBlob(
+          (blob) => (blob ? resolve(blob) : reject(new Error("Falha ao gerar imagem"))),
+          "image/jpeg",
+          0.85,
+        );
+      };
+      img.onerror = () => {
+        URL.revokeObjectURL(url);
+        reject(new Error("Não deu pra abrir a imagem"));
+      };
+      img.src = url;
+    });
+  }
+
+  async function uploadProductPhoto(file: File): Promise<string | null> {
+    const blob = await resizeImage(file);
+    const path = `${store.id}/${crypto.randomUUID()}.jpg`;
+    const { error: uploadError } = await getSupabase()
+      .storage.from("product-images")
+      .upload(path, blob, { contentType: "image/jpeg" });
+    if (uploadError) {
+      setError("Não deu pra enviar a foto: " + uploadError.message);
+      return null;
+    }
+    const { data } = getSupabase().storage.from("product-images").getPublicUrl(path);
+    return data.publicUrl;
+  }
+
+  async function handleNewProductPhoto(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setUploadingPhoto(true);
+    const url = await uploadProductPhoto(file);
+    setUploadingPhoto(false);
+    if (url) setImageUrl(url);
+  }
+
+  async function handleExistingProductPhoto(id: string, e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setUploadingPhoto(true);
+    const url = await uploadProductPhoto(file);
+    setUploadingPhoto(false);
+    if (url) await updateProduct(id, { image_url: url });
   }
 
   async function updateProduct(id: string, patch: Partial<Product>) {
@@ -169,6 +259,45 @@ export default function Produtos() {
 
     await updateProduct(p.id, { promo_buy_qty: buy, promo_pay_qty: pay });
     setPromoDrafts((prev) => {
+      const next = { ...prev };
+      delete next[p.id];
+      return next;
+    });
+  }
+
+  function wholesaleDraftFor(p: Product) {
+    return (
+      wholesaleDrafts[p.id] ?? {
+        price: p.price_wholesale ? String(p.price_wholesale) : "",
+        minQty: p.wholesale_min_qty ? String(p.wholesale_min_qty) : "",
+      }
+    );
+  }
+
+  async function handleSaveWholesale(p: Product) {
+    const draft = wholesaleDraftFor(p);
+    const wholesalePrice = draft.price.trim() ? Number(draft.price.replace(",", ".")) : null;
+    const minQty = draft.minQty.trim() ? Number(draft.minQty) : null;
+
+    if (wholesalePrice === null && minQty === null) {
+      await updateProduct(p.id, { price_wholesale: null, wholesale_min_qty: null });
+      setWholesaleDrafts((prev) => {
+        const next = { ...prev };
+        delete next[p.id];
+        return next;
+      });
+      return;
+    }
+
+    if (!wholesalePrice || !minQty || wholesalePrice >= p.price) {
+      window.alert(
+        'Preencha "Preço atacado" e "Qtd mínima" válidos, sendo o preço atacado menor que o preço normal.',
+      );
+      return;
+    }
+
+    await updateProduct(p.id, { price_wholesale: wholesalePrice, wholesale_min_qty: minQty });
+    setWholesaleDrafts((prev) => {
       const next = { ...prev };
       delete next[p.id];
       return next;
@@ -327,11 +456,63 @@ export default function Produtos() {
           className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
         />
         <input
-          value={imageUrl}
-          onChange={(e) => setImageUrl(e.target.value)}
-          placeholder="Link da foto (opcional)"
-          className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50 sm:col-span-2 lg:col-span-5"
+          value={barcode}
+          onChange={(e) => setBarcode(e.target.value)}
+          placeholder="Código de barras (opcional)"
+          className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
         />
+        <input
+          value={supplier}
+          onChange={(e) => setSupplier(e.target.value)}
+          placeholder="Fornecedor (opcional)"
+          className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+        />
+        <div>
+          <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">
+            Validade (opcional, pra perecíveis)
+          </label>
+          <input
+            type="date"
+            value={expiryDate}
+            onChange={(e) => setExpiryDate(e.target.value)}
+            className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+          />
+        </div>
+        <div className="sm:col-span-2 lg:col-span-3">
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => photoInputRef.current?.click()}
+              disabled={uploadingPhoto}
+              className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 disabled:opacity-60 dark:border-slate-700 dark:text-slate-300"
+            >
+              {uploadingPhoto ? "Enviando…" : "📷 Tirar foto / Escolher da galeria"}
+            </button>
+            <input
+              ref={photoInputRef}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              onChange={handleNewProductPhoto}
+              className="hidden"
+            />
+            {imageUrl && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={imageUrl} alt="" className="h-10 w-10 rounded-lg object-cover" />
+            )}
+          </div>
+          <details className="mt-1">
+            <summary className="cursor-pointer text-xs text-slate-500 dark:text-slate-400">
+              Prefiro colar o link de uma imagem
+            </summary>
+            <input
+              value={imageUrl}
+              onChange={(e) => setImageUrl(e.target.value)}
+              placeholder="https://..."
+              className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+            />
+          </details>
+        </div>
         <button
           type="submit"
           disabled={saving}
@@ -445,8 +626,15 @@ export default function Produtos() {
                         const v = Number(e.target.value);
                         if (!Number.isNaN(v) && v >= 0) updateProduct(p.id, { stock: v });
                       }}
-                      className="w-20 rounded border border-slate-300 bg-white px-2 py-1 text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                      className={`w-20 rounded border px-2 py-1 dark:bg-slate-900 ${
+                        p.stock <= p.stock_alert_threshold
+                          ? "border-red-300 bg-red-50 text-red-700 dark:border-red-900/50 dark:text-red-400"
+                          : "border-slate-300 bg-white text-slate-900 dark:border-slate-700 dark:text-slate-50"
+                      }`}
                     />
+                    {p.stock <= p.stock_alert_threshold && (
+                      <p className="mt-0.5 text-[10px] text-red-600 dark:text-red-400">estoque baixo</p>
+                    )}
                   </td>
                   <td className="px-3 py-2">
                     <div className="flex items-center gap-1">
@@ -496,7 +684,13 @@ export default function Produtos() {
                       {p.active ? "Ativo" : "Inativo"}
                     </button>
                   </td>
-                  <td className="px-3 py-2 text-right">
+                  <td className="px-3 py-2 text-right whitespace-nowrap">
+                    <button
+                      onClick={() => setExpandedId(expandedId === p.id ? null : p.id)}
+                      className="mr-3 text-xs font-medium text-blue-900 hover:underline dark:text-blue-400"
+                    >
+                      {expandedId === p.id ? "Fechar" : "Mais detalhes"}
+                    </button>
                     <button
                       onClick={() => deleteProduct(p.id, p.name)}
                       className="text-xs font-medium text-red-600 hover:underline"
@@ -507,6 +701,152 @@ export default function Produtos() {
                 </tr>
               );
             })}
+            {products.map(
+              (p) =>
+                expandedId === p.id && (
+                  <tr key={`${p.id}-detalhes`}>
+                    <td colSpan={9} className="bg-slate-50 px-4 py-4 dark:bg-slate-800/50">
+                      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                        <div>
+                          <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">
+                            Foto
+                          </label>
+                          <div className="mt-1 flex items-center gap-2">
+                            {p.image_url ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img
+                                src={p.image_url}
+                                alt={p.name}
+                                className="h-10 w-10 rounded-lg object-cover"
+                              />
+                            ) : (
+                              <div className="h-10 w-10 rounded-lg bg-slate-200 dark:bg-slate-700" />
+                            )}
+                            <label className="cursor-pointer text-xs font-medium text-blue-900 hover:underline dark:text-blue-400">
+                              {uploadingPhoto ? "Enviando…" : "Trocar foto"}
+                              <input
+                                type="file"
+                                accept="image/*"
+                                capture="environment"
+                                onChange={(e) => handleExistingProductPhoto(p.id, e)}
+                                disabled={uploadingPhoto}
+                                className="hidden"
+                              />
+                            </label>
+                          </div>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">
+                            Código de barras
+                          </label>
+                          <input
+                            key={`barcode-${p.id}-${p.barcode}`}
+                            defaultValue={p.barcode ?? ""}
+                            onBlur={(e) => updateProduct(p.id, { barcode: e.target.value.trim() || null })}
+                            className="mt-1 w-full rounded border border-slate-300 bg-white px-2 py-1 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">
+                            Fornecedor
+                          </label>
+                          <input
+                            key={`supplier-${p.id}-${p.supplier}`}
+                            defaultValue={p.supplier ?? ""}
+                            onBlur={(e) => updateProduct(p.id, { supplier: e.target.value.trim() || null })}
+                            className="mt-1 w-full rounded border border-slate-300 bg-white px-2 py-1 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">
+                            Validade
+                          </label>
+                          <input
+                            key={`expiry-${p.id}-${p.expiry_date}`}
+                            type="date"
+                            defaultValue={p.expiry_date ?? ""}
+                            onBlur={(e) => updateProduct(p.id, { expiry_date: e.target.value || null })}
+                            className="mt-1 w-full rounded border border-slate-300 bg-white px-2 py-1 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">
+                            Preço fiado (R$)
+                          </label>
+                          <input
+                            key={`fiado-${p.id}-${p.price_fiado}`}
+                            type="number"
+                            step="0.01"
+                            defaultValue={p.price_fiado ?? ""}
+                            placeholder="—"
+                            onBlur={(e) => {
+                              const raw = e.target.value.trim();
+                              const v = raw ? Number(raw) : null;
+                              if (v === null || (!Number.isNaN(v) && v >= 0))
+                                updateProduct(p.id, { price_fiado: v });
+                            }}
+                            className="mt-1 w-full rounded border border-slate-300 bg-white px-2 py-1 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">
+                            Preço atacado / qtd mínima
+                          </label>
+                          <div className="mt-1 flex items-center gap-1">
+                            <input
+                              type="number"
+                              step="0.01"
+                              placeholder="R$"
+                              value={wholesaleDraftFor(p).price}
+                              onChange={(e) =>
+                                setWholesaleDrafts((prev) => ({
+                                  ...prev,
+                                  [p.id]: { ...wholesaleDraftFor(p), price: e.target.value },
+                                }))
+                              }
+                              className="w-20 rounded border border-slate-300 bg-white px-2 py-1 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                            />
+                            <input
+                              type="number"
+                              placeholder="qtd"
+                              value={wholesaleDraftFor(p).minQty}
+                              onChange={(e) =>
+                                setWholesaleDrafts((prev) => ({
+                                  ...prev,
+                                  [p.id]: { ...wholesaleDraftFor(p), minQty: e.target.value },
+                                }))
+                              }
+                              className="w-16 rounded border border-slate-300 bg-white px-2 py-1 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                            />
+                            <button
+                              onClick={() => handleSaveWholesale(p)}
+                              className="text-xs font-medium text-blue-900 hover:underline dark:text-blue-400"
+                            >
+                              Salvar
+                            </button>
+                          </div>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">
+                            Alertar quando estoque ≤
+                          </label>
+                          <input
+                            key={`alert-${p.id}-${p.stock_alert_threshold}`}
+                            type="number"
+                            defaultValue={p.stock_alert_threshold}
+                            onBlur={(e) => {
+                              const v = Number(e.target.value);
+                              if (!Number.isNaN(v) && v >= 0)
+                                updateProduct(p.id, { stock_alert_threshold: v });
+                            }}
+                            className="mt-1 w-20 rounded border border-slate-300 bg-white px-2 py-1 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                          />
+                        </div>
+                      </div>
+                    </td>
+                  </tr>
+                ),
+            )}
           </tbody>
         </table>
       </div>
