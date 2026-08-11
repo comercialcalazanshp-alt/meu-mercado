@@ -18,6 +18,20 @@ function formatCurrency(value: number) {
   return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
+type Tier = "Bronze" | "Prata" | "Ouro";
+
+const TIER_STYLES: Record<Tier, string> = {
+  Bronze: "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-400",
+  Prata: "bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-200",
+  Ouro: "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-400",
+};
+
+function tierFor(spent: number, silverThreshold: number, goldThreshold: number): Tier {
+  if (goldThreshold > 0 && spent >= goldThreshold) return "Ouro";
+  if (silverThreshold > 0 && spent >= silverThreshold) return "Prata";
+  return "Bronze";
+}
+
 function endOfMonthIso() {
   const d = new Date();
   const end = new Date(d.getFullYear(), d.getMonth() + 1, 0, 23, 59, 59);
@@ -37,14 +51,34 @@ export default function Cashback() {
   const [generatingFor, setGeneratingFor] = useState<string | null>(null);
   const [generatedCoupon, setGeneratedCoupon] = useState<Record<string, string>>({});
 
+  const [silverThreshold, setSilverThreshold] = useState("");
+  const [goldThreshold, setGoldThreshold] = useState("");
+  const [savingLoyalty, setSavingLoyalty] = useState(false);
+  const [loyaltySaved, setLoyaltySaved] = useState(false);
+  const [spentByCustomer, setSpentByCustomer] = useState<Record<string, number>>({});
+
   async function loadCustomers() {
     setLoading(true);
-    const { data } = await getSupabase()
-      .from("customers")
-      .select("id, name, phone, cashback_balance, referral_code, referred_by, birthday")
-      .eq("store_id", store.id)
-      .order("cashback_balance", { ascending: false });
+    const [{ data }, { data: orderRows }] = await Promise.all([
+      getSupabase()
+        .from("customers")
+        .select("id, name, phone, cashback_balance, referral_code, referred_by, birthday")
+        .eq("store_id", store.id)
+        .order("cashback_balance", { ascending: false }),
+      getSupabase()
+        .from("orders")
+        .select("customer_id, total, status")
+        .eq("store_id", store.id)
+        .not("customer_id", "is", null),
+    ]);
     setCustomers(data ?? []);
+
+    const spent: Record<string, number> = {};
+    for (const order of orderRows ?? []) {
+      if (order.status === "cancelado" || !order.customer_id) continue;
+      spent[order.customer_id] = (spent[order.customer_id] ?? 0) + order.total;
+    }
+    setSpentByCustomer(spent);
     setLoading(false);
   }
 
@@ -52,18 +86,52 @@ export default function Cashback() {
     async function loadSettings() {
       const { data } = await getSupabase()
         .from("stores")
-        .select("cashback_percent, referral_bonus")
+        .select("cashback_percent, referral_bonus, loyalty_silver_threshold, loyalty_gold_threshold")
         .eq("id", store.id)
         .single();
       if (data) {
         setCashbackPercent(data.cashback_percent > 0 ? String(data.cashback_percent) : "");
         setReferralBonus(data.referral_bonus > 0 ? String(data.referral_bonus) : "");
+        setSilverThreshold(
+          data.loyalty_silver_threshold > 0 ? String(data.loyalty_silver_threshold) : "",
+        );
+        setGoldThreshold(data.loyalty_gold_threshold > 0 ? String(data.loyalty_gold_threshold) : "");
       }
     }
     loadSettings();
     loadCustomers();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [store.id]);
+
+  async function handleSaveLoyalty(e: FormEvent) {
+    e.preventDefault();
+    const silver = Number(silverThreshold.replace(",", ".")) || 0;
+    const gold = Number(goldThreshold.replace(",", ".")) || 0;
+    if (silver < 0 || gold < 0) return;
+
+    setSavingLoyalty(true);
+    await getSupabase()
+      .from("stores")
+      .update({ loyalty_silver_threshold: silver, loyalty_gold_threshold: gold })
+      .eq("id", store.id);
+    setSavingLoyalty(false);
+    setLoyaltySaved(true);
+    setTimeout(() => setLoyaltySaved(false), 2500);
+  }
+
+  const loyaltyEnabled =
+    (Number(silverThreshold.replace(",", ".")) || 0) > 0 ||
+    (Number(goldThreshold.replace(",", ".")) || 0) > 0;
+
+  const customersByTier = useMemo(() => {
+    const silver = Number(silverThreshold.replace(",", ".")) || 0;
+    const gold = Number(goldThreshold.replace(",", ".")) || 0;
+    return customers
+      .map((c) => ({ customer: c, spent: spentByCustomer[c.id] ?? 0 }))
+      .filter((c) => c.spent > 0)
+      .sort((a, b) => b.spent - a.spent)
+      .map((c) => ({ ...c, tier: tierFor(c.spent, silver, gold) }));
+  }, [customers, spentByCustomer, silverThreshold, goldThreshold]);
 
   async function handleSaveSettings(e: FormEvent) {
     e.preventDefault();
@@ -114,7 +182,9 @@ export default function Cashback() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-50">Cashback e indicação</h1>
+      <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-50">
+        Cashback, indicação e fidelidade
+      </h1>
 
       <form
         onSubmit={handleSaveSettings}
@@ -161,6 +231,81 @@ export default function Cashback() {
           código.
         </p>
       </form>
+
+      <form
+        onSubmit={handleSaveLoyalty}
+        className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900"
+      >
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+          Níveis de fidelidade
+        </h2>
+        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+          Todo cliente começa Bronze. A partir de quanto ele gastou (no total, na sua loja) ele sobe
+          de nível.
+        </p>
+        <div className="mt-3 flex flex-wrap items-end gap-3">
+          <div>
+            <label className="block text-sm text-slate-600 dark:text-slate-400">
+              Vira Prata a partir de (R$)
+            </label>
+            <input
+              value={silverThreshold}
+              onChange={(e) => setSilverThreshold(e.target.value)}
+              placeholder="0 = desativado"
+              inputMode="decimal"
+              className="mt-1 w-40 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+            />
+          </div>
+          <div>
+            <label className="block text-sm text-slate-600 dark:text-slate-400">
+              Vira Ouro a partir de (R$)
+            </label>
+            <input
+              value={goldThreshold}
+              onChange={(e) => setGoldThreshold(e.target.value)}
+              placeholder="0 = desativado"
+              inputMode="decimal"
+              className="mt-1 w-40 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+            />
+          </div>
+          <button
+            type="submit"
+            disabled={savingLoyalty}
+            className="rounded-lg bg-blue-900 px-4 py-2 text-sm font-semibold text-amber-300 disabled:opacity-60 dark:bg-blue-800"
+          >
+            {savingLoyalty ? "Salvando…" : "Salvar"}
+          </button>
+          {loyaltySaved && <span className="text-sm text-green-600">Salvo!</span>}
+        </div>
+      </form>
+
+      {loyaltyEnabled && (
+        <div className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+            Clientes por nível
+          </h2>
+          {customersByTier.length === 0 && (
+            <p className="mt-2 text-sm text-slate-500">Nenhum cliente com compras ainda.</p>
+          )}
+          <ul className="mt-2 space-y-2">
+            {customersByTier.map(({ customer, spent, tier }) => (
+              <li key={customer.id} className="flex items-center justify-between text-sm">
+                <span className="text-slate-700 dark:text-slate-300">
+                  {customer.name || customer.phone}
+                </span>
+                <span className="flex items-center gap-2">
+                  <span className="text-slate-500 dark:text-slate-400">{formatCurrency(spent)}</span>
+                  <span
+                    className={`rounded-full px-2.5 py-1 text-xs font-medium ${TIER_STYLES[tier]}`}
+                  >
+                    {tier}
+                  </span>
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {birthdaysThisMonth.length > 0 && (
         <div className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
