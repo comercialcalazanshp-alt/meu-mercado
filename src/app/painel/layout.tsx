@@ -55,6 +55,7 @@ const NAV_ITEMS = [
   { href: "/painel/relatorios", label: "Relatórios" },
   { href: "/painel/trafego", label: "Tráfego" },
   { href: "/painel/cartaz", label: "Cartaz" },
+  { href: "/painel/ajuda", label: "Ajuda" },
   { href: "/painel/conta", label: "Minha conta" },
 ];
 
