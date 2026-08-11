@@ -199,12 +199,6 @@ export default function Relatorios() {
       ? storeReviews.reduce((sum, r) => sum + r.rating, 0) / storeReviews.length
       : 0;
 
-  async function handleDeleteReview(id: string) {
-    if (!window.confirm("Excluir essa avaliação?")) return;
-    setStoreReviews((prev) => prev.filter((r) => r.id !== id));
-    await getSupabase().from("store_reviews").delete().eq("id", id);
-  }
-
   async function handleExportCsv() {
     setExportError(null);
     const [year, month] = exportMonth.split("-").map(Number);
@@ -420,33 +414,19 @@ export default function Relatorios() {
             </span>
           )}
         </div>
-        {storeReviews.length === 0 && (
-          <p className="mt-2 text-sm text-slate-500">Nenhuma avaliação ainda.</p>
-        )}
-        <ul className="mt-2 space-y-2">
-          {storeReviews.map((r) => (
-            <li key={r.id} className="border-t border-slate-100 pt-2 text-sm first:border-0 first:pt-0 dark:border-slate-800">
-              <div className="flex items-center justify-between">
-                <span className="font-medium text-amber-500">
-                  {"★".repeat(r.rating)}
-                  {"☆".repeat(5 - r.rating)}{" "}
-                  <span className="font-normal text-slate-700 dark:text-slate-300">
-                    {r.customer_name}
-                  </span>
-                </span>
-                <button
-                  onClick={() => handleDeleteReview(r.id)}
-                  className="text-xs font-medium text-red-600 hover:underline"
-                >
-                  Excluir
-                </button>
-              </div>
-              {r.comment && (
-                <p className="text-slate-500 dark:text-slate-400">{r.comment}</p>
-              )}
-            </li>
-          ))}
-        </ul>
+        <p className="mt-2 text-sm text-slate-500">
+          {storeReviews.length === 0
+            ? "Nenhuma avaliação ainda."
+            : storeReviews.length === 1
+              ? "1 avaliação da loja."
+              : `${storeReviews.length} avaliações da loja.`}
+        </p>
+        <a
+          href="/painel/avaliacoes"
+          className="mt-2 inline-block text-sm font-medium text-blue-900 underline dark:text-blue-400"
+        >
+          Ver e moderar todas as avaliações
+        </a>
       </div>
     </div>
   );
