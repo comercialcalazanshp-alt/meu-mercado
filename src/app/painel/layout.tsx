@@ -45,6 +45,7 @@ const NAV_ITEMS = [
   { href: "/painel/caixa", label: "Caixa" },
   { href: "/painel/produtos", label: "Produtos" },
   { href: "/painel/kits", label: "Kits" },
+  { href: "/painel/assinaturas", label: "Assinaturas" },
   { href: "/painel/banners", label: "Banners" },
   { href: "/painel/ofertas", label: "Ofertas" },
   { href: "/painel/cupons", label: "Cupons" },
