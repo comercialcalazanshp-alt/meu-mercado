@@ -10,7 +10,7 @@ export default async function Loja({ params }: { params: Promise<{ slug: string 
 
   const { data: store } = await supabase
     .from("stores")
-    .select("id, slug, name, whatsapp")
+    .select("id, slug, name, whatsapp, cashback_percent")
     .eq("slug", slug)
     .eq("active", true)
     .maybeSingle();

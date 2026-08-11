@@ -18,6 +18,7 @@ type Store = {
   slug: string;
   name: string;
   whatsapp: string | null;
+  cashback_percent: number;
 };
 
 type Banner = {
@@ -107,6 +108,13 @@ export default function StorefrontClient({
     discount: number;
   } | null>(null);
   const [checkingCoupon, setCheckingCoupon] = useState(false);
+  const [referralCode, setReferralCode] = useState("");
+  const [useCashback, setUseCashback] = useState(false);
+  const [birthday, setBirthday] = useState("");
+  const [confirmedCashbackEarned, setConfirmedCashbackEarned] = useState(0);
+  const [confirmedCashbackUsed, setConfirmedCashbackUsed] = useState(0);
+  const [confirmedReferralCode, setConfirmedReferralCode] = useState<string | null>(null);
+  const [confirmedReferralBonus, setConfirmedReferralBonus] = useState(0);
 
   const cartItems = useMemo(() => {
     const lines: CartLine[] = [];
@@ -174,6 +182,11 @@ export default function StorefrontClient({
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams, store.id]);
+
+  useEffect(() => {
+    const ref = searchParams.get("ref");
+    if (ref) setReferralCode(ref.toUpperCase());
+  }, [searchParams]);
 
   // Registra a visita (uma "sessão" por aba, guardada no sessionStorage —
   // dura enquanto a aba fica aberta) e mede quanto tempo/quantas telas o
@@ -307,6 +320,9 @@ export default function StorefrontClient({
           : { kit_id: item.id, quantity: item.quantity },
       ),
       p_coupon_code: couponCode.trim() || undefined,
+      p_referral_code: referralCode.trim() || undefined,
+      p_use_cashback: useCashback,
+      p_birthday: birthday || undefined,
     });
 
     if (rpcError) {
@@ -318,6 +334,10 @@ export default function StorefrontClient({
     setSaving(false);
     setConfirmedTotal(data?.[0]?.total ?? total);
     setConfirmedDiscount(data?.[0]?.discount ?? 0);
+    setConfirmedCashbackEarned(data?.[0]?.cashback_earned ?? 0);
+    setConfirmedCashbackUsed(data?.[0]?.cashback_used ?? 0);
+    setConfirmedReferralCode(data?.[0]?.referral_code ?? null);
+    setConfirmedReferralBonus(data?.[0]?.referral_bonus_earned ?? 0);
     setView("confirmado");
 
     const sessionId = sessionStorage.getItem(visitStorageKey);
@@ -350,6 +370,39 @@ export default function StorefrontClient({
           A loja {store.name} vai receber seu pedido. Total: {formatCurrency(finalTotal)}
           {confirmedDiscount > 0 && ` (com ${formatCurrency(confirmedDiscount)} de desconto)`}.
         </p>
+        {confirmedCashbackUsed > 0 && (
+          <p className="text-sm text-green-700 dark:text-green-400">
+            Você usou {formatCurrency(confirmedCashbackUsed)} de cashback nesse pedido.
+          </p>
+        )}
+        {confirmedCashbackEarned > 0 && (
+          <p className="text-sm text-green-700 dark:text-green-400">
+            Você ganhou {formatCurrency(confirmedCashbackEarned)} de cashback pra próxima compra!
+          </p>
+        )}
+        {confirmedReferralBonus > 0 && (
+          <p className="text-sm text-green-700 dark:text-green-400">
+            + {formatCurrency(confirmedReferralBonus)} de bônus por usar um código de indicação!
+          </p>
+        )}
+        {confirmedReferralCode && (
+          <div className="mt-1 max-w-xs rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm dark:border-slate-800 dark:bg-slate-900">
+            <p className="text-slate-600 dark:text-slate-400">Indique a loja pra um amigo com seu código:</p>
+            <p className="mt-1 text-lg font-bold tracking-wide text-blue-900 dark:text-blue-400">
+              {confirmedReferralCode}
+            </p>
+            <button
+              onClick={() => {
+                navigator.clipboard.writeText(
+                  `${window.location.origin}/loja/${store.slug}?ref=${confirmedReferralCode}`,
+                );
+              }}
+              className="mt-1 text-xs font-medium text-blue-900 underline dark:text-blue-400"
+            >
+              Copiar link de indicação
+            </button>
+          </div>
+        )}
         {store.whatsapp && (
           <a
             href={`https://wa.me/55${store.whatsapp.replace(/\D/g, "")}?text=${whatsappMessage}`}
@@ -496,6 +549,46 @@ export default function StorefrontClient({
                 className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
               />
             </div>
+
+            <details className="rounded-lg border border-slate-200 px-3 py-2 text-sm dark:border-slate-800">
+              <summary className="cursor-pointer font-medium text-slate-700 dark:text-slate-300">
+                Cashback e indicação (opcional)
+              </summary>
+              <div className="mt-2 space-y-2">
+                {store.cashback_percent > 0 && (
+                  <label className="flex items-center gap-2 text-slate-600 dark:text-slate-400">
+                    <input
+                      type="checkbox"
+                      checked={useCashback}
+                      onChange={(e) => setUseCashback(e.target.checked)}
+                    />
+                    Usar meu saldo de cashback nesse pedido (se eu tiver)
+                  </label>
+                )}
+                <div>
+                  <label className="block text-slate-600 dark:text-slate-400">
+                    Código de quem te indicou
+                  </label>
+                  <input
+                    value={referralCode}
+                    onChange={(e) => setReferralCode(e.target.value.toUpperCase())}
+                    placeholder="Ex: ABC123"
+                    className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-1.5 uppercase text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                  />
+                </div>
+                <div>
+                  <label className="block text-slate-600 dark:text-slate-400">
+                    Sua data de aniversário
+                  </label>
+                  <input
+                    type="date"
+                    value={birthday}
+                    onChange={(e) => setBirthday(e.target.value)}
+                    className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                  />
+                </div>
+              </div>
+            </details>
 
             {error && <p className="text-sm text-red-600">{error}</p>}
 
