@@ -42,6 +42,7 @@ function playNewOrderChime() {
 const NAV_ITEMS = [
   { href: "/painel", label: "Início" },
   { href: "/painel/pdv", label: "PDV" },
+  { href: "/painel/caixa", label: "Caixa" },
   { href: "/painel/produtos", label: "Produtos" },
   { href: "/painel/kits", label: "Kits" },
   { href: "/painel/banners", label: "Banners" },
