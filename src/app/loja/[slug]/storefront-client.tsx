@@ -59,6 +59,12 @@ type Banner = {
   link_url: string | null;
 };
 
+type Neighborhood = {
+  id: string;
+  name: string;
+  fee: number;
+};
+
 type KitComponent = {
   quantity: number;
   products: { name: string; stock: number } | null;
@@ -107,12 +113,14 @@ export default function StorefrontClient({
   banners,
   kits,
   reviews: initialReviews,
+  neighborhoods,
 }: {
   store: Store;
   products: Product[];
   banners: Banner[];
   kits: Kit[];
   reviews: Review[];
+  neighborhoods: Neighborhood[];
 }) {
   const searchParams = useSearchParams();
   const [cart, setCart] = useState<Record<string, number>>({});
@@ -146,6 +154,8 @@ export default function StorefrontClient({
   const [confirmedCashbackUsed, setConfirmedCashbackUsed] = useState(0);
   const [confirmedReferralCode, setConfirmedReferralCode] = useState<string | null>(null);
   const [confirmedReferralBonus, setConfirmedReferralBonus] = useState(0);
+  const [neighborhoodId, setNeighborhoodId] = useState<string>("retirada");
+  const [confirmedDeliveryFee, setConfirmedDeliveryFee] = useState(0);
 
   const cartItems = useMemo(() => {
     const lines: CartLine[] = [];
@@ -166,6 +176,12 @@ export default function StorefrontClient({
   const total = cartItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
   const cartCount = cartItems.reduce((sum, item) => sum + item.quantity, 0);
   const storeStatus = useMemo(() => isStoreOpenNow(store), [store]);
+  const deliveryFee =
+    neighborhoodId === "retirada"
+      ? 0
+      : (neighborhoods.find((n) => n.id === neighborhoodId)?.fee ?? 0);
+  const totalWithDelivery =
+    total - (couponPreview?.valid ? couponPreview.discount : 0) + deliveryFee;
 
   const categories = useMemo(() => {
     const groups = new Map<string, Product[]>();
@@ -360,6 +376,7 @@ export default function StorefrontClient({
       p_referral_code: referralCode.trim() || undefined,
       p_use_cashback: useCashback,
       p_birthday: birthday || undefined,
+      p_neighborhood_id: neighborhoodId === "retirada" ? undefined : neighborhoodId,
     });
 
     if (rpcError) {
@@ -375,6 +392,7 @@ export default function StorefrontClient({
     setConfirmedCashbackUsed(data?.[0]?.cashback_used ?? 0);
     setConfirmedReferralCode(data?.[0]?.referral_code ?? null);
     setConfirmedReferralBonus(data?.[0]?.referral_bonus_earned ?? 0);
+    setConfirmedDeliveryFee(data?.[0]?.delivery_fee ?? 0);
     setView("confirmado");
 
     const sessionId = sessionStorage.getItem(visitStorageKey);
@@ -407,6 +425,11 @@ export default function StorefrontClient({
           A loja {store.name} vai receber seu pedido. Total: {formatCurrency(finalTotal)}
           {confirmedDiscount > 0 && ` (com ${formatCurrency(confirmedDiscount)} de desconto)`}.
         </p>
+        {confirmedDeliveryFee > 0 && (
+          <p className="text-sm text-slate-500 dark:text-slate-400">
+            Inclui {formatCurrency(confirmedDeliveryFee)} de frete.
+          </p>
+        )}
         {confirmedCashbackUsed > 0 && (
           <p className="text-sm text-green-700 dark:text-green-400">
             Você usou {formatCurrency(confirmedCashbackUsed)} de cashback nesse pedido.
@@ -537,28 +560,47 @@ export default function StorefrontClient({
             )}
           </div>
 
+          {neighborhoods.length > 0 && (
+            <div className="mt-3 border-t border-slate-200 pt-3 dark:border-slate-800">
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
+                Entrega
+              </label>
+              <select
+                value={neighborhoodId}
+                onChange={(e) => setNeighborhoodId(e.target.value)}
+                className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+              >
+                <option value="retirada">Retirar na loja — grátis</option>
+                {neighborhoods.map((n) => (
+                  <option key={n.id} value={n.id}>
+                    {n.name} — {n.fee > 0 ? formatCurrency(n.fee) : "grátis"}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
           <div className="mt-2 space-y-1 border-t border-slate-200 pt-2 text-sm dark:border-slate-800">
-            {couponPreview?.valid ? (
-              <>
-                <p className="flex justify-between text-slate-600 dark:text-slate-400">
-                  <span>Subtotal</span>
-                  <span>{formatCurrency(total)}</span>
-                </p>
-                <p className="flex justify-between text-green-600">
-                  <span>Desconto</span>
-                  <span>−{formatCurrency(couponPreview.discount)}</span>
-                </p>
-                <p className="flex justify-between font-semibold text-slate-900 dark:text-slate-50">
-                  <span>Total</span>
-                  <span>{formatCurrency(total - couponPreview.discount)}</span>
-                </p>
-              </>
-            ) : (
-              <p className="flex justify-between font-semibold text-slate-900 dark:text-slate-50">
-                <span>Total</span>
-                <span>{formatCurrency(total)}</span>
+            <p className="flex justify-between text-slate-600 dark:text-slate-400">
+              <span>Subtotal</span>
+              <span>{formatCurrency(total)}</span>
+            </p>
+            {couponPreview?.valid && (
+              <p className="flex justify-between text-green-600">
+                <span>Desconto</span>
+                <span>−{formatCurrency(couponPreview.discount)}</span>
               </p>
             )}
+            {deliveryFee > 0 && (
+              <p className="flex justify-between text-slate-600 dark:text-slate-400">
+                <span>Entrega</span>
+                <span>{formatCurrency(deliveryFee)}</span>
+              </p>
+            )}
+            <p className="flex justify-between font-semibold text-slate-900 dark:text-slate-50">
+              <span>Total</span>
+              <span>{formatCurrency(totalWithDelivery)}</span>
+            </p>
           </div>
 
           <form onSubmit={handleCheckout} className="mt-4 space-y-3">

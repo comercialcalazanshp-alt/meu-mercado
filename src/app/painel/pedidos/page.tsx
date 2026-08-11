@@ -20,6 +20,8 @@ type Order = {
   created_at: string;
   coupon_code: string | null;
   discount_amount: number;
+  neighborhood_name: string | null;
+  delivery_fee: number;
 };
 
 const STATUS_OPTIONS = ["pendente", "confirmado", "entregue", "cancelado"];
@@ -51,7 +53,7 @@ export default function Pedidos() {
       const { data } = await getSupabase()
         .from("orders")
         .select(
-          "id, customer_name, customer_phone, items, total, status, created_at, coupon_code, discount_amount",
+          "id, customer_name, customer_phone, items, total, status, created_at, coupon_code, discount_amount, neighborhood_name, delivery_fee",
         )
         .eq("store_id", store.id)
         .order("created_at", { ascending: false });
@@ -132,6 +134,11 @@ export default function Pedidos() {
                 Cupom {order.coupon_code}: −{formatCurrency(order.discount_amount)}
               </p>
             )}
+            <p className="mt-1 text-right text-sm text-slate-500 dark:text-slate-400">
+              {order.neighborhood_name
+                ? `Entrega: ${order.neighborhood_name} (${formatCurrency(order.delivery_fee)})`
+                : "Retirar na loja"}
+            </p>
             <p className="mt-1 text-right font-semibold text-slate-900 dark:text-slate-50">
               Total: {formatCurrency(order.total)}
             </p>
