@@ -70,6 +70,84 @@ function toCsvValue(value: string) {
   return value;
 }
 
+function formatCurrency(value: number) {
+  return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+}
+
+function PriceHistoryChart({ productId }: { productId: string }) {
+  const [history, setHistory] = useState<{ price: number; changed_at: string }[] | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    getSupabase()
+      .from("product_price_history")
+      .select("price, changed_at")
+      .eq("product_id", productId)
+      .order("changed_at", { ascending: true })
+      .then(({ data }) => {
+        if (active) setHistory(data ?? []);
+      });
+    return () => {
+      active = false;
+    };
+  }, [productId]);
+
+  if (history === null) {
+    return <p className="text-xs text-slate-400">Carregando histórico…</p>;
+  }
+  if (history.length <= 1) {
+    return <p className="text-xs text-slate-400">Ainda não teve mudança de preço registrada.</p>;
+  }
+
+  const prices = history.map((h) => h.price);
+  const min = Math.min(...prices);
+  const max = Math.max(...prices);
+  const range = max - min || 1;
+  const width = 280;
+  const height = 56;
+  const padX = 6;
+  const padY = 8;
+  const points = history.map((h, i) => ({
+    x: padX + (i / (history.length - 1)) * (width - padX * 2),
+    y: height - padY - ((h.price - min) / range) * (height - padY * 2),
+    price: h.price,
+    date: h.changed_at,
+  }));
+  const path = points.map((p, i) => `${i === 0 ? "M" : "L"}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
+
+  return (
+    <div>
+      <svg
+        viewBox={`0 0 ${width} ${height}`}
+        className="h-14 w-full max-w-xs text-blue-900 dark:text-blue-400"
+      >
+        <path
+          d={path}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        {points.map((p, i) => (
+          <circle key={i} cx={p.x} cy={p.y} r="3" fill="currentColor">
+            <title>
+              {new Date(p.date).toLocaleDateString("pt-BR")} — {formatCurrency(p.price)}
+            </title>
+          </circle>
+        ))}
+      </svg>
+      <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-slate-500 dark:text-slate-400">
+        {history.map((h, i) => (
+          <span key={i}>
+            {new Date(h.changed_at).toLocaleDateString("pt-BR")}: {formatCurrency(h.price)}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function Produtos() {
   const store = useStore();
   const [products, setProducts] = useState<Product[]>([]);
@@ -905,6 +983,14 @@ export default function Produtos() {
                               </button>
                             </div>
                           )}
+                        </div>
+                      </div>
+                      <div className="mt-4">
+                        <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">
+                          Histórico de preço
+                        </label>
+                        <div className="mt-1">
+                          <PriceHistoryChart productId={p.id} />
                         </div>
                       </div>
                     </td>
