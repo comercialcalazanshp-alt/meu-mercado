@@ -8,6 +8,7 @@ export type Store = {
   name: string;
   whatsapp: string | null;
   active: boolean;
+  owner_id: string;
 };
 
 export const StoreContext = createContext<Store | null>(null);

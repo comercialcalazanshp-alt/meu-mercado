@@ -64,6 +64,7 @@ const NAV_ITEMS = [
   { href: "/painel/cartaz", label: "Cartaz" },
   { href: "/painel/catalogo", label: "Catálogo PDF" },
   { href: "/painel/ajuda", label: "Ajuda" },
+  { href: "/painel/equipe", label: "Equipe" },
   { href: "/painel/conta", label: "Minha conta" },
 ];
 
@@ -89,11 +90,8 @@ export default function PainelLayout({ children }: { children: ReactNode }) {
         return;
       }
 
-      const { data: storeRow } = await supabase
-        .from("stores")
-        .select("id, slug, name, whatsapp, active")
-        .eq("owner_id", session.user.id)
-        .maybeSingle();
+      const { data: storeRows } = await supabase.rpc("get_my_store");
+      const storeRow = storeRows?.[0] ?? null;
 
       if (!active) return;
 
