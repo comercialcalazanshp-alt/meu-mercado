@@ -18,9 +18,27 @@ type Product = {
   stock: number;
   promo_buy_qty: number | null;
   promo_pay_qty: number | null;
+  price_wholesale: number | null;
+  wholesale_min_qty: number | null;
+  on_offer: boolean;
+  offer_price: number | null;
 };
 
-function lineTotalFor(price: number, quantity: number, buyQty: number | null, payQty: number | null) {
+function effectivePrice(product: Product) {
+  return product.on_offer && product.offer_price !== null ? product.offer_price : product.price;
+}
+
+function lineTotalFor(
+  price: number,
+  quantity: number,
+  buyQty: number | null,
+  payQty: number | null,
+  wholesalePrice: number | null,
+  wholesaleMinQty: number | null,
+) {
+  if (wholesalePrice !== null && wholesaleMinQty !== null && quantity >= wholesaleMinQty) {
+    return wholesalePrice * quantity;
+  }
   if (!buyQty || !payQty || quantity < buyQty) return price * quantity;
   const fullGroups = Math.floor(quantity / buyQty);
   const remainder = quantity % buyQty;
@@ -194,16 +212,28 @@ export default function StorefrontClient({
       const [kind, id] = key.split(":") as ["product" | "kit", string];
       if (kind === "product") {
         const product = products.find((p) => p.id === id);
-        if (product)
+        if (product) {
+          const unitPrice = effectivePrice(product);
           lines.push({
             key,
             kind,
             id,
             name: product.name,
-            price: product.price,
+            price: unitPrice,
             quantity,
-            lineTotal: lineTotalFor(product.price, quantity, product.promo_buy_qty, product.promo_pay_qty),
+            lineTotal:
+              product.on_offer && product.offer_price !== null
+                ? unitPrice * quantity
+                : lineTotalFor(
+                    unitPrice,
+                    quantity,
+                    product.promo_buy_qty,
+                    product.promo_pay_qty,
+                    product.price_wholesale,
+                    product.wholesale_min_qty,
+                  ),
           });
+        }
       } else if (kind === "kit") {
         const kit = kits.find((k) => k.id === id);
         if (kit)
@@ -1050,14 +1080,36 @@ export default function StorefrontClient({
                         <p className="truncate text-sm font-medium text-slate-900 dark:text-slate-50">
                           {product.name}
                         </p>
-                        <p className="text-sm text-slate-600 dark:text-slate-400">
-                          {formatCurrency(product.price)}
-                        </p>
-                        {product.promo_buy_qty && product.promo_pay_qty && (
+                        {product.on_offer && product.offer_price !== null ? (
+                          <p className="text-sm">
+                            <span className="mr-1.5 text-slate-400 line-through dark:text-slate-500">
+                              {formatCurrency(product.price)}
+                            </span>
+                            <span className="font-semibold text-red-600">
+                              {formatCurrency(product.offer_price)}
+                            </span>
+                            <span className="ml-1.5 rounded-full bg-red-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-red-700 dark:bg-red-900/40 dark:text-red-400">
+                              Oferta
+                            </span>
+                          </p>
+                        ) : (
+                          <p className="text-sm text-slate-600 dark:text-slate-400">
+                            {formatCurrency(product.price)}
+                          </p>
+                        )}
+                        {!product.on_offer && product.promo_buy_qty && product.promo_pay_qty && (
                           <p className="text-xs font-medium text-green-600">
                             Leve {product.promo_buy_qty}, pague {product.promo_pay_qty}
                           </p>
                         )}
+                        {!product.on_offer &&
+                          product.price_wholesale &&
+                          product.wholesale_min_qty && (
+                            <p className="text-xs font-medium text-blue-700 dark:text-blue-400">
+                              A partir de {product.wholesale_min_qty}un:{" "}
+                              {formatCurrency(product.price_wholesale)} cada
+                            </p>
+                          )}
                         {product.stock <= 0 && (
                           <p className="text-xs text-red-500">Sem estoque</p>
                         )}

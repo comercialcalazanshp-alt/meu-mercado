@@ -22,6 +22,8 @@ type Product = {
   stock_alert_threshold: number;
   expiry_date: string | null;
   supplier: string | null;
+  on_offer: boolean;
+  offer_price: number | null;
 };
 
 function parseCsv(text: string): string[][] {
@@ -94,13 +96,15 @@ export default function Produtos() {
     Record<string, { price: string; minQty: string }>
   >({});
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [offerDrafts, setOfferDrafts] = useState<Record<string, string>>({});
+  const [offerUiOpen, setOfferUiOpen] = useState<Record<string, boolean>>({});
 
   async function loadProducts() {
     setLoading(true);
     const { data } = await getSupabase()
       .from("products")
       .select(
-        "id, name, category, price, cost_price, image_url, stock, active, promo_buy_qty, promo_pay_qty, barcode, price_fiado, price_wholesale, wholesale_min_qty, stock_alert_threshold, expiry_date, supplier",
+        "id, name, category, price, cost_price, image_url, stock, active, promo_buy_qty, promo_pay_qty, barcode, price_fiado, price_wholesale, wholesale_min_qty, stock_alert_threshold, expiry_date, supplier, on_offer, offer_price",
       )
       .eq("store_id", store.id)
       .order("created_at", { ascending: false });
@@ -302,6 +306,36 @@ export default function Produtos() {
       delete next[p.id];
       return next;
     });
+  }
+
+  function offerUiOpenFor(p: Product) {
+    return offerUiOpen[p.id] ?? p.on_offer;
+  }
+
+  function offerDraftFor(p: Product) {
+    return offerDrafts[p.id] ?? (p.offer_price ? String(p.offer_price) : "");
+  }
+
+  function handleToggleOfferUi(p: Product, checked: boolean) {
+    setOfferUiOpen((prev) => ({ ...prev, [p.id]: checked }));
+    if (!checked && p.on_offer) {
+      updateProduct(p.id, { on_offer: false, offer_price: null });
+      setOfferDrafts((prev) => {
+        const next = { ...prev };
+        delete next[p.id];
+        return next;
+      });
+    }
+  }
+
+  async function handleSaveOfferPrice(p: Product) {
+    const raw = offerDraftFor(p).trim();
+    const value = raw ? Number(raw.replace(",", ".")) : null;
+    if (!value || Number.isNaN(value) || value <= 0 || value >= p.price) {
+      window.alert('Preço da oferta precisa ser um número válido, menor que o preço normal.');
+      return;
+    }
+    await updateProduct(p.id, { on_offer: true, offer_price: value });
   }
 
   async function deleteProduct(id: string, productName: string) {
@@ -841,6 +875,36 @@ export default function Produtos() {
                             }}
                             className="mt-1 w-20 rounded border border-slate-300 bg-white px-2 py-1 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
                           />
+                        </div>
+                        <div>
+                          <label className="flex items-center gap-2 text-xs font-medium text-slate-500 dark:text-slate-400">
+                            <input
+                              type="checkbox"
+                              checked={offerUiOpenFor(p)}
+                              onChange={(e) => handleToggleOfferUi(p, e.target.checked)}
+                            />
+                            Em oferta hoje
+                          </label>
+                          {offerUiOpenFor(p) && (
+                            <div className="mt-1 flex items-center gap-1">
+                              <input
+                                type="number"
+                                step="0.01"
+                                placeholder="Preço da oferta"
+                                value={offerDraftFor(p)}
+                                onChange={(e) =>
+                                  setOfferDrafts((prev) => ({ ...prev, [p.id]: e.target.value }))
+                                }
+                                className="w-24 rounded border border-slate-300 bg-white px-2 py-1 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                              />
+                              <button
+                                onClick={() => handleSaveOfferPrice(p)}
+                                className="text-xs font-medium text-blue-900 hover:underline dark:text-blue-400"
+                              >
+                                Salvar
+                              </button>
+                            </div>
+                          )}
                         </div>
                       </div>
                     </td>
