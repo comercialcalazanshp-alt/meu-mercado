@@ -19,7 +19,14 @@ export default async function Loja({ params }: { params: Promise<{ slug: string 
 
   if (!store) notFound();
 
-  const [{ data: products }, { data: banners }, { data: kits }, { data: reviews }, { data: neighborhoods }] = await Promise.all([
+  const [
+    { data: products },
+    { data: banners },
+    { data: kits },
+    { data: reviews },
+    { data: neighborhoods },
+    { data: storeReviews },
+  ] = await Promise.all([
     supabase
       .from("products")
       .select("id, name, category, price, image_url, stock")
@@ -49,6 +56,10 @@ export default async function Loja({ params }: { params: Promise<{ slug: string 
       .eq("store_id", store.id)
       .eq("active", true)
       .order("name", { ascending: true }),
+    supabase
+      .from("store_reviews")
+      .select("id, rating")
+      .eq("store_id", store.id),
   ]);
 
   return (
@@ -59,6 +70,7 @@ export default async function Loja({ params }: { params: Promise<{ slug: string 
       kits={(kits as unknown as import("./storefront-client").Kit[]) ?? []}
       reviews={reviews ?? []}
       neighborhoods={neighborhoods ?? []}
+      storeReviews={storeReviews ?? []}
     />
   );
 }

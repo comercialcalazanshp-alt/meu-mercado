@@ -29,6 +29,14 @@ type Product = {
   stock: number;
 };
 
+type StoreReview = {
+  id: string;
+  customer_name: string;
+  rating: number;
+  comment: string | null;
+  created_at: string;
+};
+
 function formatCurrency(value: number) {
   return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
@@ -68,6 +76,7 @@ export default function Relatorios() {
   const store = useStore();
   const [orders, setOrders] = useState<Order[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
+  const [storeReviews, setStoreReviews] = useState<StoreReview[]>([]);
   const [loading, setLoading] = useState(true);
 
   const [goal, setGoal] = useState("");
@@ -85,19 +94,30 @@ export default function Relatorios() {
       const since = new Date();
       since.setDate(since.getDate() - RANGE_DAYS);
 
-      const [{ data: ordersData }, { data: productsData }, { data: storeData }] = await Promise.all([
-        supabase
-          .from("orders")
-          .select("id, customer_name, customer_phone, items, total, status, created_at")
-          .eq("store_id", store.id)
-          .gte("created_at", since.toISOString())
-          .order("created_at", { ascending: true }),
-        supabase.from("products").select("id, name, price, stock").eq("store_id", store.id).eq("active", true),
-        supabase.from("stores").select("sales_goal").eq("id", store.id).single(),
-      ]);
+      const [{ data: ordersData }, { data: productsData }, { data: storeData }, { data: reviewsData }] =
+        await Promise.all([
+          supabase
+            .from("orders")
+            .select("id, customer_name, customer_phone, items, total, status, created_at")
+            .eq("store_id", store.id)
+            .gte("created_at", since.toISOString())
+            .order("created_at", { ascending: true }),
+          supabase
+            .from("products")
+            .select("id, name, price, stock")
+            .eq("store_id", store.id)
+            .eq("active", true),
+          supabase.from("stores").select("sales_goal").eq("id", store.id).single(),
+          supabase
+            .from("store_reviews")
+            .select("id, customer_name, rating, comment, created_at")
+            .eq("store_id", store.id)
+            .order("created_at", { ascending: false }),
+        ]);
 
       setOrders(ordersData ?? []);
       setProducts(productsData ?? []);
+      setStoreReviews(reviewsData ?? []);
       const goalValue = storeData?.sales_goal ?? 0;
       setCurrentGoal(goalValue);
       setGoal(goalValue > 0 ? String(goalValue) : "");
@@ -173,6 +193,17 @@ export default function Relatorios() {
   }
 
   const goalProgress = currentGoal > 0 ? Math.min(100, (currentMonthTotal / currentGoal) * 100) : 0;
+
+  const storeRatingAvg =
+    storeReviews.length > 0
+      ? storeReviews.reduce((sum, r) => sum + r.rating, 0) / storeReviews.length
+      : 0;
+
+  async function handleDeleteReview(id: string) {
+    if (!window.confirm("Excluir essa avaliação?")) return;
+    setStoreReviews((prev) => prev.filter((r) => r.id !== id));
+    await getSupabase().from("store_reviews").delete().eq("id", id);
+  }
 
   async function handleExportCsv() {
     setExportError(null);
@@ -372,6 +403,47 @@ export default function Relatorios() {
             <li key={p.id} className="flex justify-between text-sm text-slate-700 dark:text-slate-300">
               <span>{p.name}</span>
               <span className="text-slate-400 dark:text-slate-500">estoque: {p.stock}</span>
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      <div className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+            Avaliações da loja
+          </h2>
+          {storeReviews.length > 0 && (
+            <span className="text-sm font-medium text-slate-600 dark:text-slate-400">
+              {"★".repeat(Math.round(storeRatingAvg))}
+              {"☆".repeat(5 - Math.round(storeRatingAvg))} {storeRatingAvg.toFixed(1)}
+            </span>
+          )}
+        </div>
+        {storeReviews.length === 0 && (
+          <p className="mt-2 text-sm text-slate-500">Nenhuma avaliação ainda.</p>
+        )}
+        <ul className="mt-2 space-y-2">
+          {storeReviews.map((r) => (
+            <li key={r.id} className="border-t border-slate-100 pt-2 text-sm first:border-0 first:pt-0 dark:border-slate-800">
+              <div className="flex items-center justify-between">
+                <span className="font-medium text-amber-500">
+                  {"★".repeat(r.rating)}
+                  {"☆".repeat(5 - r.rating)}{" "}
+                  <span className="font-normal text-slate-700 dark:text-slate-300">
+                    {r.customer_name}
+                  </span>
+                </span>
+                <button
+                  onClick={() => handleDeleteReview(r.id)}
+                  className="text-xs font-medium text-red-600 hover:underline"
+                >
+                  Excluir
+                </button>
+              </div>
+              {r.comment && (
+                <p className="text-slate-500 dark:text-slate-400">{r.comment}</p>
+              )}
             </li>
           ))}
         </ul>

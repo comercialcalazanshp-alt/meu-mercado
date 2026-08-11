@@ -65,6 +65,11 @@ type Neighborhood = {
   fee: number;
 };
 
+type StoreReviewSummary = {
+  id: string;
+  rating: number;
+};
+
 type KitComponent = {
   quantity: number;
   products: { name: string; stock: number } | null;
@@ -114,6 +119,7 @@ export default function StorefrontClient({
   kits,
   reviews: initialReviews,
   neighborhoods,
+  storeReviews,
 }: {
   store: Store;
   products: Product[];
@@ -121,6 +127,7 @@ export default function StorefrontClient({
   kits: Kit[];
   reviews: Review[];
   neighborhoods: Neighborhood[];
+  storeReviews: StoreReviewSummary[];
 }) {
   const searchParams = useSearchParams();
   const [cart, setCart] = useState<Record<string, number>>({});
@@ -156,6 +163,10 @@ export default function StorefrontClient({
   const [confirmedReferralBonus, setConfirmedReferralBonus] = useState(0);
   const [neighborhoodId, setNeighborhoodId] = useState<string>("retirada");
   const [confirmedDeliveryFee, setConfirmedDeliveryFee] = useState(0);
+  const [storeRating, setStoreRating] = useState(5);
+  const [storeComment, setStoreComment] = useState("");
+  const [submittingStoreReview, setSubmittingStoreReview] = useState(false);
+  const [storeReviewSubmitted, setStoreReviewSubmitted] = useState(false);
 
   const cartItems = useMemo(() => {
     const lines: CartLine[] = [];
@@ -182,6 +193,11 @@ export default function StorefrontClient({
       : (neighborhoods.find((n) => n.id === neighborhoodId)?.fee ?? 0);
   const totalWithDelivery =
     total - (couponPreview?.valid ? couponPreview.discount : 0) + deliveryFee;
+
+  const storeRatingAvg =
+    storeReviews.length > 0
+      ? storeReviews.reduce((sum, r) => sum + r.rating, 0) / storeReviews.length
+      : 0;
 
   const categories = useMemo(() => {
     const groups = new Map<string, Product[]>();
@@ -410,6 +426,19 @@ export default function StorefrontClient({
     }
   }
 
+  async function handleSubmitStoreReview() {
+    if (submittingStoreReview) return;
+    setSubmittingStoreReview(true);
+    const { error: reviewError } = await getSupabase().from("store_reviews").insert({
+      store_id: store.id,
+      customer_name: customerName.trim() || "Cliente",
+      rating: storeRating,
+      comment: storeComment.trim() || null,
+    });
+    setSubmittingStoreReview(false);
+    if (!reviewError) setStoreReviewSubmitted(true);
+  }
+
   if (view === "confirmado") {
     const finalTotal = confirmedTotal ?? total;
     const whatsappMessage = encodeURIComponent(
@@ -473,6 +502,47 @@ export default function StorefrontClient({
             Avisar a loja no WhatsApp
           </a>
         )}
+
+        <div className="mt-4 w-full max-w-xs rounded-xl border border-slate-200 bg-white p-4 text-left dark:border-slate-800 dark:bg-slate-900">
+          {storeReviewSubmitted ? (
+            <p className="text-center text-sm text-green-700 dark:text-green-400">
+              Obrigado pela avaliação! 🙏
+            </p>
+          ) : (
+            <>
+              <p className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                O que achou da {store.name}?
+              </p>
+              <div className="mt-2 flex justify-center gap-1 text-2xl">
+                {[1, 2, 3, 4, 5].map((n) => (
+                  <button
+                    key={n}
+                    type="button"
+                    onClick={() => setStoreRating(n)}
+                    aria-label={`${n} estrela${n > 1 ? "s" : ""}`}
+                    className={n <= storeRating ? "text-amber-500" : "text-slate-300 dark:text-slate-700"}
+                  >
+                    ★
+                  </button>
+                ))}
+              </div>
+              <textarea
+                value={storeComment}
+                onChange={(e) => setStoreComment(e.target.value)}
+                placeholder="Comentário (opcional)"
+                rows={2}
+                className="mt-2 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+              />
+              <button
+                onClick={handleSubmitStoreReview}
+                disabled={submittingStoreReview}
+                className="mt-2 w-full rounded-lg bg-blue-900 px-3 py-2 text-sm font-semibold text-amber-300 disabled:opacity-60 dark:bg-blue-800"
+              >
+                {submittingStoreReview ? "Enviando…" : "Enviar avaliação"}
+              </button>
+            </>
+          )}
+        </div>
       </div>
     );
   }
@@ -696,6 +766,13 @@ export default function StorefrontClient({
           {store.name.slice(0, 2).toUpperCase()}
         </div>
         <h1 className="mt-3 text-xl font-bold text-slate-900 dark:text-slate-50">{store.name}</h1>
+        {storeReviews.length > 0 && (
+          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+            {"★".repeat(Math.round(storeRatingAvg))}
+            {"☆".repeat(5 - Math.round(storeRatingAvg))} {storeRatingAvg.toFixed(1)} (
+            {storeReviews.length} {storeReviews.length === 1 ? "avaliação" : "avaliações"})
+          </p>
+        )}
       </header>
 
       {!storeStatus.open && storeStatus.message && (
