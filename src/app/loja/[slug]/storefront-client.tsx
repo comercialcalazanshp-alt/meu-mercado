@@ -218,6 +218,12 @@ export default function StorefrontClient({
   const [scratchLoading, setScratchLoading] = useState(false);
   const [scratchError, setScratchError] = useState<string | null>(null);
   const [confirmedScratchDiscount, setConfirmedScratchDiscount] = useState(0);
+  const [subscribingKitId, setSubscribingKitId] = useState<string | null>(null);
+  const [subName, setSubName] = useState("");
+  const [subPhone, setSubPhone] = useState("");
+  const [subSaving, setSubSaving] = useState(false);
+  const [subError, setSubError] = useState<string | null>(null);
+  const [subSuccessKitId, setSubSuccessKitId] = useState<string | null>(null);
   const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [showInstallBanner, setShowInstallBanner] = useState(false);
   const [isIosInstallHint, setIsIosInstallHint] = useState(false);
@@ -324,6 +330,31 @@ export default function StorefrontClient({
     }
     setScratchResult(data?.[0] ?? null);
     if (!customerPhone.trim()) setCustomerPhone(phone);
+  }
+
+  async function handleSubscribe(kit: Kit) {
+    setSubError(null);
+    const phone = subPhone.trim();
+    if (phone.length < 10) {
+      setSubError("Digite um WhatsApp válido.");
+      return;
+    }
+    setSubSaving(true);
+    const { error: subInsertError } = await getSupabase().from("subscriptions").insert({
+      store_id: store.id,
+      customer_name: subName.trim() || null,
+      customer_phone: phone,
+      kit_id: kit.id,
+      monthly_amount: kit.price,
+      active: true,
+    });
+    setSubSaving(false);
+    if (subInsertError) {
+      setSubError("Não deu pra assinar: " + subInsertError.message);
+      return;
+    }
+    setSubSuccessKitId(kit.id);
+    setSubscribingKitId(null);
   }
 
   function addRecipeToCart() {
@@ -1126,8 +1157,9 @@ export default function StorefrontClient({
                 return (
                   <div
                     key={kit.id}
-                    className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900"
+                    className="rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900"
                   >
+                  <div className="flex items-center gap-3">
                     {kit.image_url ? (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img
@@ -1181,6 +1213,55 @@ export default function StorefrontClient({
                           +
                         </button>
                       </div>
+                    )}
+                    </div>
+                    {subSuccessKitId === kit.id ? (
+                      <p className="mt-2 text-xs font-medium text-emerald-700 dark:text-emerald-400">
+                        ✓ Assinatura feita! A loja vai gerar seu pedido desse kit todo mês.
+                      </p>
+                    ) : subscribingKitId === kit.id ? (
+                      <div className="mt-2 flex flex-col gap-2 rounded-lg bg-slate-50 p-2 dark:bg-slate-800">
+                        <input
+                          type="text"
+                          value={subName}
+                          onChange={(e) => setSubName(e.target.value)}
+                          placeholder="Seu nome"
+                          className="rounded-lg border border-slate-300 px-2 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-900"
+                        />
+                        <input
+                          type="tel"
+                          value={subPhone}
+                          onChange={(e) => setSubPhone(e.target.value)}
+                          placeholder="Seu WhatsApp"
+                          className="rounded-lg border border-slate-300 px-2 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-900"
+                        />
+                        {subError && <p className="text-xs text-red-600 dark:text-red-400">{subError}</p>}
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => handleSubscribe(kit)}
+                            disabled={subSaving}
+                            className="rounded-lg bg-blue-900 px-3 py-1.5 text-xs font-semibold text-amber-300 disabled:opacity-60 dark:bg-blue-800"
+                          >
+                            {subSaving ? "Assinando…" : "Confirmar assinatura"}
+                          </button>
+                          <button
+                            onClick={() => setSubscribingKitId(null)}
+                            className="text-xs font-medium text-slate-500 dark:text-slate-400"
+                          >
+                            Cancelar
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => {
+                          setSubscribingKitId(kit.id);
+                          setSubError(null);
+                        }}
+                        className="mt-1 text-xs font-medium text-purple-700 underline dark:text-purple-400"
+                      >
+                        📦 Assinar esse kit todo mês
+                      </button>
                     )}
                   </div>
                 );
