@@ -50,6 +50,7 @@ const NAV_ITEMS = [
   { href: "/painel/fiado", label: "Fiado" },
   { href: "/painel/despesas", label: "Despesas" },
   { href: "/painel/cashback", label: "Cashback" },
+  { href: "/painel/campanhas", label: "Campanhas" },
   { href: "/painel/pedidos", label: "Pedidos" },
   { href: "/painel/relatorios", label: "Relatórios" },
   { href: "/painel/trafego", label: "Tráfego" },
