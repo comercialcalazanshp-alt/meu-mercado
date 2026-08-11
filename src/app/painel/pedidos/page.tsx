@@ -25,11 +25,20 @@ type Order = {
   delivery_fee: number;
 };
 
-const STATUS_OPTIONS = ["pendente", "confirmado", "entregue", "cancelado"];
+const STATUS_OPTIONS = ["pendente", "confirmado", "entregando", "entregue", "cancelado"];
+
+const STATUS_LABELS: Record<string, string> = {
+  pendente: "pendente",
+  confirmado: "confirmado",
+  entregando: "a caminho",
+  entregue: "entregue",
+  cancelado: "cancelado",
+};
 
 const STATUS_STYLES: Record<string, string> = {
   pendente: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400",
   confirmado: "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400",
+  entregando: "bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-400",
   entregue: "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-400",
   cancelado: "bg-slate-200 text-slate-600 dark:bg-slate-700 dark:text-slate-300",
 };
@@ -114,7 +123,7 @@ export default function Pedidos() {
               >
                 {STATUS_OPTIONS.map((s) => (
                   <option key={s} value={s}>
-                    {s}
+                    {STATUS_LABELS[s]}
                   </option>
                 ))}
               </select>

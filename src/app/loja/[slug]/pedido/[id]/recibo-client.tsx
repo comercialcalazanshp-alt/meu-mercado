@@ -29,6 +29,7 @@ export type OrderReceipt = {
 const STATUS_LABEL: Record<string, string> = {
   pendente: "Pendente",
   confirmado: "Confirmado",
+  entregando: "A caminho 🛵",
   entregue: "Entregue",
   cancelado: "Cancelado",
 };
