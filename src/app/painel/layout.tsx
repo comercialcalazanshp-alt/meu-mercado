@@ -17,6 +17,13 @@ function formatCurrency(value: number) {
   return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
+function urlBase64ToUint8Array(base64String: string) {
+  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const rawData = atob(base64);
+  return Uint8Array.from([...rawData].map((char) => char.charCodeAt(0)));
+}
+
 function playNewOrderChime() {
   try {
     const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
@@ -75,6 +82,8 @@ export default function PainelLayout({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<"loading" | "ready" | "sem-loja">("loading");
   const [notifications, setNotifications] = useState<OrderNotification[]>([]);
   const [soundMuted, setSoundMuted] = useState(false);
+  const [pushStatus, setPushStatus] = useState<"unsupported" | "off" | "on" | "denied">("off");
+  const [pushLoading, setPushLoading] = useState(false);
 
   useEffect(() => {
     const supabase = getSupabase();
@@ -124,6 +133,57 @@ export default function PainelLayout({ children }: { children: ReactNode }) {
   useEffect(() => {
     setSoundMuted(localStorage.getItem(SOUND_MUTED_KEY) === "1");
   }, []);
+
+  useEffect(() => {
+    if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
+      setPushStatus("unsupported");
+      return;
+    }
+    if (Notification.permission === "denied") {
+      setPushStatus("denied");
+      return;
+    }
+    navigator.serviceWorker.getRegistration().then(async (reg) => {
+      const sub = await reg?.pushManager.getSubscription();
+      setPushStatus(sub ? "on" : "off");
+    });
+  }, []);
+
+  async function handleEnablePush() {
+    if (!store) return;
+    setPushLoading(true);
+    try {
+      const permission = await Notification.requestPermission();
+      if (permission !== "granted") {
+        setPushStatus(permission === "denied" ? "denied" : "off");
+        return;
+      }
+      const reg = await navigator.serviceWorker.register("/sw.js");
+      await navigator.serviceWorker.ready;
+      const vapidPublicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
+      if (!vapidPublicKey) {
+        setPushStatus("off");
+        return;
+      }
+      const sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(vapidPublicKey),
+      });
+      const json = sub.toJSON();
+      await getSupabase().from("push_subscriptions").upsert(
+        {
+          store_id: store.id,
+          endpoint: json.endpoint!,
+          p256dh: json.keys!.p256dh,
+          auth: json.keys!.auth,
+        },
+        { onConflict: "endpoint" },
+      );
+      setPushStatus("on");
+    } finally {
+      setPushLoading(false);
+    }
+  }
 
   useEffect(() => {
     if (!store) return;
@@ -202,13 +262,41 @@ export default function PainelLayout({ children }: { children: ReactNode }) {
             </p>
             <p className="truncate text-xs text-slate-500 dark:text-slate-400">/{store!.slug}</p>
           </div>
-          <button
-            onClick={toggleSound}
-            title={soundMuted ? "Ativar som de pedido novo" : "Silenciar som de pedido novo"}
-            className="shrink-0 rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-300"
-          >
-            {soundMuted ? "🔕" : "🔔"}
-          </button>
+          <div className="flex shrink-0 items-center gap-1">
+            {pushStatus === "off" && (
+              <button
+                onClick={handleEnablePush}
+                disabled={pushLoading}
+                title="Ativar notificação de pedido novo mesmo com o painel fechado"
+                className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600 disabled:opacity-50 dark:hover:bg-slate-800 dark:hover:text-slate-300"
+              >
+                📲
+              </button>
+            )}
+            {pushStatus === "on" && (
+              <span
+                title="Notificação de pedido novo ativada nesse aparelho"
+                className="rounded-lg p-1.5 text-emerald-500"
+              >
+                ✅
+              </span>
+            )}
+            {pushStatus === "denied" && (
+              <span
+                title="Notificação bloqueada nas configurações do navegador — precisa liberar lá pra ativar"
+                className="rounded-lg p-1.5 text-slate-300 dark:text-slate-600"
+              >
+                🔕
+              </span>
+            )}
+            <button
+              onClick={toggleSound}
+              title={soundMuted ? "Ativar som de pedido novo" : "Silenciar som de pedido novo"}
+              className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-300"
+            >
+              {soundMuted ? "🔕" : "🔔"}
+            </button>
+          </div>
         </div>
         <nav className="flex gap-1 overflow-x-auto md:flex-col md:overflow-visible">
           {NAV_ITEMS.map((item) => {
