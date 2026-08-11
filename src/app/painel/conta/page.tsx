@@ -36,12 +36,16 @@ export default function MinhaConta() {
   const [savingHours, setSavingHours] = useState(false);
   const [hoursSaved, setHoursSaved] = useState(false);
 
+  const [accountantToken, setAccountantToken] = useState<string | null>(null);
+  const [regeneratingToken, setRegeneratingToken] = useState(false);
+  const [linkCopied, setLinkCopied] = useState(false);
+
   const canDelete = confirmText.trim() === store.slug;
 
   useEffect(() => {
     getSupabase()
       .from("stores")
-      .select("business_hours_enabled, opens_at, closes_at, open_days, manually_closed")
+      .select("business_hours_enabled, opens_at, closes_at, open_days, manually_closed, accountant_token")
       .eq("id", store.id)
       .single()
       .then(({ data }) => {
@@ -51,8 +55,34 @@ export default function MinhaConta() {
         if (data.closes_at) setClosesAt(data.closes_at.slice(0, 5));
         if (data.open_days) setOpenDays(data.open_days);
         setManuallyClosed(data.manually_closed);
+        setAccountantToken(data.accountant_token);
       });
   }, [store.id]);
+
+  const accountantUrl =
+    accountantToken && typeof window !== "undefined"
+      ? `${window.location.origin}/contador/${accountantToken}`
+      : "";
+
+  async function copyAccountantLink() {
+    if (!accountantUrl) return;
+    await navigator.clipboard.writeText(accountantUrl);
+    setLinkCopied(true);
+    setTimeout(() => setLinkCopied(false), 2000);
+  }
+
+  async function regenerateAccountantLink() {
+    if (!confirm("Gerar um novo link? O link antigo para de funcionar na hora.")) return;
+    setRegeneratingToken(true);
+    const { data, error: regenError } = await getSupabase()
+      .from("stores")
+      .update({ accountant_token: crypto.randomUUID() })
+      .eq("id", store.id)
+      .select("accountant_token")
+      .single();
+    setRegeneratingToken(false);
+    if (!regenError && data) setAccountantToken(data.accountant_token);
+  }
 
   async function handleSaveStore(e: FormEvent) {
     e.preventDefault();
@@ -247,6 +277,41 @@ export default function MinhaConta() {
           {hoursSaved && <span className="text-sm text-green-600">Salvo!</span>}
         </div>
       </form>
+
+      <div className="mt-6 rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+          Link do contador
+        </h2>
+        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+          Compartilhe esse link com seu contador — ele vê um resumo de vendas, despesas e fiado em
+          aberto, sem conseguir editar nada e sem precisar da sua senha.
+        </p>
+        {accountantUrl && (
+          <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
+            <input
+              readOnly
+              value={accountantUrl}
+              onFocus={(e) => e.target.select()}
+              className="w-full flex-1 truncate rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 text-xs text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400"
+            />
+            <div className="flex shrink-0 gap-2">
+              <button
+                onClick={copyAccountantLink}
+                className="rounded-lg bg-blue-900 px-3 py-2 text-xs font-semibold text-amber-300 dark:bg-blue-800"
+              >
+                {linkCopied ? "Copiado!" : "Copiar link"}
+              </button>
+              <button
+                onClick={regenerateAccountantLink}
+                disabled={regeneratingToken}
+                className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-medium text-slate-700 disabled:opacity-60 dark:border-slate-700 dark:text-slate-300"
+              >
+                {regeneratingToken ? "Gerando…" : "Gerar novo link"}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
 
       <div className="mt-6 rounded-xl border border-red-200 bg-red-50 p-4 dark:border-red-900/50 dark:bg-red-950/30">
         <h2 className="font-semibold text-red-700 dark:text-red-400">Excluir minha conta e loja</h2>
