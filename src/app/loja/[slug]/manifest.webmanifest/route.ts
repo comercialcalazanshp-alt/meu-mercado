@@ -8,7 +8,7 @@ export async function GET(
   const supabase = getSupabase();
   const { data: store } = await supabase
     .from("stores")
-    .select("name, slug")
+    .select("name, slug, brand_color")
     .eq("slug", slug)
     .eq("active", true)
     .maybeSingle();
@@ -24,7 +24,7 @@ export async function GET(
     scope: `/loja/${store.slug}`,
     display: "standalone",
     background_color: "#f8fafc",
-    theme_color: "#1e3a8a",
+    theme_color: store.brand_color || "#1e3a8a",
     icons: [
       { src: `/loja/${store.slug}/icon?size=192`, sizes: "192x192", type: "image/png" },
       { src: `/loja/${store.slug}/icon?size=512`, sizes: "512x512", type: "image/png" },

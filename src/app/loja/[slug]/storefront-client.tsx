@@ -57,6 +57,7 @@ type Store = {
   open_days: number[];
   manually_closed: boolean;
   scratch_enabled: boolean;
+  brand_color: string;
 };
 
 function isStoreOpenNow(store: Store): { open: boolean; message: string | null } {
@@ -148,6 +149,17 @@ function formatCurrency(value: number) {
   return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
+function readableTextColor(hex: string) {
+  const clean = hex.replace("#", "");
+  if (clean.length !== 6) return "#fbbf24";
+  const r = parseInt(clean.slice(0, 2), 16) / 255;
+  const g = parseInt(clean.slice(2, 4), 16) / 255;
+  const b = parseInt(clean.slice(4, 6), 16) / 255;
+  const toLinear = (c: number) => (c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4));
+  const luminance = 0.2126 * toLinear(r) + 0.7152 * toLinear(g) + 0.0722 * toLinear(b);
+  return luminance > 0.45 ? "#1e293b" : "#fbbf24";
+}
+
 function kitMaxQuantity(kit: Kit) {
   if (kit.kit_items.length === 0) return 0;
   return Math.min(
@@ -231,6 +243,11 @@ export default function StorefrontClient({
   const [storeComment, setStoreComment] = useState("");
   const [submittingStoreReview, setSubmittingStoreReview] = useState(false);
   const [storeReviewSubmitted, setStoreReviewSubmitted] = useState(false);
+
+  const brandStyle = {
+    "--brand-bg": store.brand_color,
+    "--brand-text": readableTextColor(store.brand_color),
+  } as React.CSSProperties;
 
   const cartItems = useMemo(() => {
     const lines: CartLine[] = [];
@@ -645,8 +662,11 @@ export default function StorefrontClient({
       `Olá! Acabei de fazer um pedido na ${store.name} no valor de ${formatCurrency(finalTotal)}.`,
     );
     return (
-      <div className="flex flex-1 flex-col items-center justify-center gap-3 bg-slate-50 px-6 py-24 text-center dark:bg-slate-950">
-        <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-900 text-2xl font-bold text-amber-300 dark:bg-blue-800">
+      <div
+        style={brandStyle}
+        className="flex flex-1 flex-col items-center justify-center gap-3 bg-slate-50 px-6 py-24 text-center dark:bg-slate-950"
+      >
+        <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[var(--brand-bg)] text-2xl font-bold text-[var(--brand-text)]">
           ✓
         </div>
         <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-50">Pedido enviado!</h1>
@@ -682,7 +702,7 @@ export default function StorefrontClient({
         {confirmedReferralCode && (
           <div className="mt-1 max-w-xs rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm dark:border-slate-800 dark:bg-slate-900">
             <p className="text-slate-600 dark:text-slate-400">Indique a loja pra um amigo com seu código:</p>
-            <p className="mt-1 text-lg font-bold tracking-wide text-blue-900 dark:text-blue-400">
+            <p className="mt-1 text-lg font-bold tracking-wide text-[var(--brand-bg)]">
               {confirmedReferralCode}
             </p>
             <button
@@ -691,7 +711,7 @@ export default function StorefrontClient({
                   `${window.location.origin}/loja/${store.slug}?ref=${confirmedReferralCode}`,
                 );
               }}
-              className="mt-1 text-xs font-medium text-blue-900 underline dark:text-blue-400"
+              className="mt-1 text-xs font-medium text-[var(--brand-bg)] underline"
             >
               Copiar link de indicação
             </button>
@@ -710,7 +730,7 @@ export default function StorefrontClient({
         {confirmedOrderId && (
           <a
             href={`/loja/${store.slug}/pedido/${confirmedOrderId}`}
-            className="text-sm font-medium text-blue-900 underline dark:text-blue-400"
+            className="text-sm font-medium text-[var(--brand-bg)] underline"
           >
             Ver recibo digital
           </a>
@@ -749,7 +769,7 @@ export default function StorefrontClient({
               <button
                 onClick={handleSubmitStoreReview}
                 disabled={submittingStoreReview}
-                className="mt-2 w-full rounded-lg bg-blue-900 px-3 py-2 text-sm font-semibold text-amber-300 disabled:opacity-60 dark:bg-blue-800"
+                className="mt-2 w-full rounded-lg bg-[var(--brand-bg)] px-3 py-2 text-sm font-semibold text-[var(--brand-text)] disabled:opacity-60"
               >
                 {submittingStoreReview ? "Enviando…" : "Enviar avaliação"}
               </button>
@@ -762,7 +782,7 @@ export default function StorefrontClient({
 
   if (view === "checkout") {
     return (
-      <div className="flex flex-1 flex-col items-center bg-slate-50 px-6 py-10 dark:bg-slate-950">
+      <div style={brandStyle} className="flex flex-1 flex-col items-center bg-slate-50 px-6 py-10 dark:bg-slate-950">
         <div className="w-full max-w-sm">
           <button
             onClick={() => setView("catalogo")}
@@ -795,7 +815,7 @@ export default function StorefrontClient({
                 <button
                   type="button"
                   onClick={handleCopyShareUrl}
-                  className="shrink-0 font-medium text-blue-900 dark:text-blue-400"
+                  className="shrink-0 font-medium text-[var(--brand-bg)]"
                 >
                   {copied ? "Copiado!" : "Copiar"}
                 </button>
@@ -805,7 +825,7 @@ export default function StorefrontClient({
                 type="button"
                 onClick={handleShareList}
                 disabled={sharing}
-                className="text-sm font-medium text-blue-900 underline disabled:opacity-50 dark:text-blue-400"
+                className="text-sm font-medium text-[var(--brand-bg)] underline disabled:opacity-50"
               >
                 {sharing ? "Gerando link…" : "Compartilhar esta lista"}
               </button>
@@ -971,7 +991,7 @@ export default function StorefrontClient({
             <button
               type="submit"
               disabled={saving || !storeStatus.open}
-              className="w-full rounded-lg bg-blue-900 px-4 py-2.5 font-semibold text-amber-300 disabled:opacity-60 dark:bg-blue-800"
+              className="w-full rounded-lg bg-[var(--brand-bg)] px-4 py-2.5 font-semibold text-[var(--brand-text)] disabled:opacity-60"
             >
               {saving ? "Enviando…" : "Enviar pedido"}
             </button>
@@ -982,9 +1002,9 @@ export default function StorefrontClient({
   }
 
   return (
-    <div className="flex flex-1 flex-col bg-slate-50 pb-24 dark:bg-slate-950">
+    <div style={brandStyle} className="flex flex-1 flex-col bg-slate-50 pb-24 dark:bg-slate-950">
       <header className="border-b border-slate-200 bg-white px-6 py-6 text-center dark:border-slate-800 dark:bg-slate-900">
-        <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-900 text-lg font-bold text-amber-300 dark:bg-blue-800">
+        <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-[var(--brand-bg)] text-lg font-bold text-[var(--brand-text)]">
           {store.name.slice(0, 2).toUpperCase()}
         </div>
         <h1 className="mt-3 text-xl font-bold text-slate-900 dark:text-slate-50">{store.name}</h1>
@@ -1005,7 +1025,7 @@ export default function StorefrontClient({
       )}
 
       {showInstallBanner && (
-        <div className="flex items-center justify-between gap-3 bg-blue-900 px-4 py-2.5 text-sm text-amber-50 dark:bg-blue-800">
+        <div className="flex items-center justify-between gap-3 bg-[var(--brand-bg)] px-4 py-2.5 text-sm text-[var(--brand-text)]">
           {isIosInstallHint ? (
             <span>
               📲 Instale esse site como app: toque em <strong>Compartilhar</strong> e depois em{" "}
@@ -1018,7 +1038,7 @@ export default function StorefrontClient({
             {!isIosInstallHint && (
               <button
                 onClick={handleInstallClick}
-                className="rounded-lg bg-amber-300 px-3 py-1 text-xs font-semibold text-blue-900"
+                className="rounded-lg bg-white px-3 py-1 text-xs font-semibold text-[var(--brand-bg)]"
               >
                 Instalar
               </button>
@@ -1188,7 +1208,7 @@ export default function StorefrontClient({
                       <button
                         onClick={() => setQuantity(key, 1)}
                         disabled={maxQty <= 0}
-                        className="shrink-0 rounded-lg bg-blue-900 px-3 py-1.5 text-sm font-semibold text-amber-300 disabled:opacity-40 dark:bg-blue-800"
+                        className="shrink-0 rounded-lg bg-[var(--brand-bg)] px-3 py-1.5 text-sm font-semibold text-[var(--brand-text)] disabled:opacity-40"
                       >
                         Adicionar
                       </button>
@@ -1240,7 +1260,7 @@ export default function StorefrontClient({
                           <button
                             onClick={() => handleSubscribe(kit)}
                             disabled={subSaving}
-                            className="rounded-lg bg-blue-900 px-3 py-1.5 text-xs font-semibold text-amber-300 disabled:opacity-60 dark:bg-blue-800"
+                            className="rounded-lg bg-[var(--brand-bg)] px-3 py-1.5 text-xs font-semibold text-[var(--brand-text)] disabled:opacity-60"
                           >
                             {subSaving ? "Assinando…" : "Confirmar assinatura"}
                           </button>
@@ -1338,7 +1358,7 @@ export default function StorefrontClient({
                         <button
                           type="button"
                           onClick={() => setExpandedProductId(isExpanded ? null : product.id)}
-                          className="text-xs text-blue-900 underline dark:text-blue-400"
+                          className="text-xs text-[var(--brand-bg)] underline"
                         >
                           {rating
                             ? `${"★".repeat(Math.round(rating.avg))}${"☆".repeat(5 - Math.round(rating.avg))} (${rating.count})`
@@ -1349,7 +1369,7 @@ export default function StorefrontClient({
                         <button
                           onClick={() => setQuantity(key, 1)}
                           disabled={product.stock <= 0}
-                          className="shrink-0 rounded-lg bg-blue-900 px-3 py-1.5 text-sm font-semibold text-amber-300 disabled:opacity-40 dark:bg-blue-800"
+                          className="shrink-0 rounded-lg bg-[var(--brand-bg)] px-3 py-1.5 text-sm font-semibold text-[var(--brand-text)] disabled:opacity-40"
                         >
                           Adicionar
                         </button>
@@ -1428,7 +1448,7 @@ export default function StorefrontClient({
                             type="button"
                             onClick={() => handleSubmitReview(product.id)}
                             disabled={!reviewerName.trim() || submittingReview}
-                            className="w-full rounded-lg bg-blue-900 px-3 py-2 text-sm font-semibold text-amber-300 disabled:opacity-50 dark:bg-blue-800"
+                            className="w-full rounded-lg bg-[var(--brand-bg)] px-3 py-2 text-sm font-semibold text-[var(--brand-text)] disabled:opacity-50"
                           >
                             {submittingReview ? "Enviando…" : "Enviar avaliação"}
                           </button>
@@ -1457,7 +1477,7 @@ export default function StorefrontClient({
         <div className="fixed inset-x-0 bottom-0 border-t border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
           <button
             onClick={() => setView("checkout")}
-            className="mx-auto flex w-full max-w-2xl items-center justify-between rounded-lg bg-blue-900 px-4 py-3 font-semibold text-amber-300 dark:bg-blue-800"
+            className="mx-auto flex w-full max-w-2xl items-center justify-between rounded-lg bg-[var(--brand-bg)] px-4 py-3 font-semibold text-[var(--brand-text)]"
           >
             <span>{cartCount} {cartCount === 1 ? "item" : "itens"}</span>
             <span>{formatCurrency(total)}</span>

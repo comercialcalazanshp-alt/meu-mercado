@@ -25,6 +25,7 @@ export default function MinhaConta() {
 
   const [name, setName] = useState(store.name);
   const [whatsapp, setWhatsapp] = useState(store.whatsapp ?? "");
+  const [brandColor, setBrandColor] = useState("#1e3a8a");
   const [savingStore, setSavingStore] = useState(false);
   const [storeSaved, setStoreSaved] = useState(false);
 
@@ -45,7 +46,7 @@ export default function MinhaConta() {
   useEffect(() => {
     getSupabase()
       .from("stores")
-      .select("business_hours_enabled, opens_at, closes_at, open_days, manually_closed, accountant_token")
+      .select("business_hours_enabled, opens_at, closes_at, open_days, manually_closed, accountant_token, brand_color")
       .eq("id", store.id)
       .single()
       .then(({ data }) => {
@@ -56,6 +57,7 @@ export default function MinhaConta() {
         if (data.open_days) setOpenDays(data.open_days);
         setManuallyClosed(data.manually_closed);
         setAccountantToken(data.accountant_token);
+        if (data.brand_color) setBrandColor(data.brand_color);
       });
   }, [store.id]);
 
@@ -91,7 +93,7 @@ export default function MinhaConta() {
     setStoreSaved(false);
     const { error: updateError } = await getSupabase()
       .from("stores")
-      .update({ name: name.trim(), whatsapp: whatsapp.trim() || null })
+      .update({ name: name.trim(), whatsapp: whatsapp.trim() || null, brand_color: brandColor })
       .eq("id", store.id);
     setSavingStore(false);
     if (!updateError) {
@@ -184,6 +186,38 @@ export default function MinhaConta() {
               placeholder="(11) 91234-5678"
               className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
             />
+          </div>
+          <div>
+            <label className="block text-sm text-slate-600 dark:text-slate-400">
+              Cor da loja no site
+            </label>
+            <p className="mt-0.5 text-xs text-slate-400 dark:text-slate-500">
+              Usada no cabeçalho e nos botões principais da vitrine — o texto em cima se ajusta
+              sozinho pra ficar legível.
+            </p>
+            <div className="mt-1 flex items-center gap-3">
+              <input
+                type="color"
+                value={brandColor}
+                onChange={(e) => setBrandColor(e.target.value)}
+                className="h-10 w-14 cursor-pointer rounded-lg border border-slate-300 bg-white p-1 dark:border-slate-700 dark:bg-slate-900"
+              />
+              <span
+                className="rounded-lg px-3 py-1.5 text-sm font-semibold"
+                style={{
+                  backgroundColor: brandColor,
+                  color:
+                    parseInt(brandColor.slice(1, 3), 16) * 0.299 +
+                      parseInt(brandColor.slice(3, 5), 16) * 0.587 +
+                      parseInt(brandColor.slice(5, 7), 16) * 0.114 >
+                    140
+                      ? "#1e293b"
+                      : "#fbbf24",
+                }}
+              >
+                Prévia
+              </span>
+            </div>
           </div>
         </div>
         <div className="mt-3 flex items-center gap-2">

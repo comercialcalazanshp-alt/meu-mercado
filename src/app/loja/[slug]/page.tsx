@@ -28,8 +28,19 @@ export async function generateMetadata({
   };
 }
 
-export function generateViewport(): Viewport {
-  return { themeColor: "#1e3a8a" };
+export async function generateViewport({
+  params,
+}: {
+  params: Promise<{ slug: string }>;
+}): Promise<Viewport> {
+  const { slug } = await params;
+  const { data: store } = await getSupabase()
+    .from("stores")
+    .select("brand_color")
+    .eq("slug", slug)
+    .eq("active", true)
+    .maybeSingle();
+  return { themeColor: store?.brand_color || "#1e3a8a" };
 }
 
 export default async function Loja({ params }: { params: Promise<{ slug: string }> }) {
@@ -39,7 +50,7 @@ export default async function Loja({ params }: { params: Promise<{ slug: string 
   const { data: store } = await supabase
     .from("stores")
     .select(
-      "id, slug, name, whatsapp, cashback_percent, business_hours_enabled, opens_at, closes_at, open_days, manually_closed, scratch_enabled",
+      "id, slug, name, whatsapp, cashback_percent, business_hours_enabled, opens_at, closes_at, open_days, manually_closed, scratch_enabled, brand_color",
     )
     .eq("slug", slug)
     .eq("active", true)
