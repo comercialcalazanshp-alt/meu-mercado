@@ -1,10 +1,20 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { getSupabase } from "@/lib/supabase";
 import { useStore } from "@/lib/store-context";
 import { deleteMyAccount } from "./actions";
+
+const WEEKDAYS = [
+  { value: 0, label: "Dom" },
+  { value: 1, label: "Seg" },
+  { value: 2, label: "Ter" },
+  { value: 3, label: "Qua" },
+  { value: 4, label: "Qui" },
+  { value: 5, label: "Sex" },
+  { value: 6, label: "Sáb" },
+];
 
 export default function MinhaConta() {
   const store = useStore();
@@ -18,7 +28,31 @@ export default function MinhaConta() {
   const [savingStore, setSavingStore] = useState(false);
   const [storeSaved, setStoreSaved] = useState(false);
 
+  const [hoursEnabled, setHoursEnabled] = useState(false);
+  const [opensAt, setOpensAt] = useState("08:00");
+  const [closesAt, setClosesAt] = useState("18:00");
+  const [openDays, setOpenDays] = useState<number[]>([0, 1, 2, 3, 4, 5, 6]);
+  const [manuallyClosed, setManuallyClosed] = useState(false);
+  const [savingHours, setSavingHours] = useState(false);
+  const [hoursSaved, setHoursSaved] = useState(false);
+
   const canDelete = confirmText.trim() === store.slug;
+
+  useEffect(() => {
+    getSupabase()
+      .from("stores")
+      .select("business_hours_enabled, opens_at, closes_at, open_days, manually_closed")
+      .eq("id", store.id)
+      .single()
+      .then(({ data }) => {
+        if (!data) return;
+        setHoursEnabled(data.business_hours_enabled);
+        if (data.opens_at) setOpensAt(data.opens_at.slice(0, 5));
+        if (data.closes_at) setClosesAt(data.closes_at.slice(0, 5));
+        if (data.open_days) setOpenDays(data.open_days);
+        setManuallyClosed(data.manually_closed);
+      });
+  }, [store.id]);
 
   async function handleSaveStore(e: FormEvent) {
     e.preventDefault();
@@ -33,6 +67,33 @@ export default function MinhaConta() {
     if (!updateError) {
       setStoreSaved(true);
       setTimeout(() => window.location.reload(), 600);
+    }
+  }
+
+  function toggleDay(day: number) {
+    setOpenDays((prev) =>
+      prev.includes(day) ? prev.filter((d) => d !== day) : [...prev, day].sort(),
+    );
+  }
+
+  async function handleSaveHours(e: FormEvent) {
+    e.preventDefault();
+    setSavingHours(true);
+    setHoursSaved(false);
+    const { error: updateError } = await getSupabase()
+      .from("stores")
+      .update({
+        business_hours_enabled: hoursEnabled,
+        opens_at: opensAt,
+        closes_at: closesAt,
+        open_days: openDays,
+        manually_closed: manuallyClosed,
+      })
+      .eq("id", store.id);
+    setSavingHours(false);
+    if (!updateError) {
+      setHoursSaved(true);
+      setTimeout(() => setHoursSaved(false), 2500);
     }
   }
 
@@ -104,6 +165,86 @@ export default function MinhaConta() {
             {savingStore ? "Salvando…" : "Salvar"}
           </button>
           {storeSaved && <span className="text-sm text-green-600">Salvo!</span>}
+        </div>
+      </form>
+
+      <form
+        onSubmit={handleSaveHours}
+        className="mt-4 rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900"
+      >
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+          Horário de funcionamento
+        </h2>
+        <label className="mt-3 flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300">
+          <input
+            type="checkbox"
+            checked={hoursEnabled}
+            onChange={(e) => setHoursEnabled(e.target.checked)}
+          />
+          Avisar cliente quando a loja estiver fechada
+        </label>
+
+        {hoursEnabled && (
+          <div className="mt-3 space-y-3">
+            <div className="flex items-center gap-3">
+              <div>
+                <label className="block text-xs text-slate-500 dark:text-slate-400">Abre</label>
+                <input
+                  type="time"
+                  value={opensAt}
+                  onChange={(e) => setOpensAt(e.target.value)}
+                  className="mt-1 rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-slate-500 dark:text-slate-400">Fecha</label>
+                <input
+                  type="time"
+                  value={closesAt}
+                  onChange={(e) => setClosesAt(e.target.value)}
+                  className="mt-1 rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                />
+              </div>
+            </div>
+            <div>
+              <label className="block text-xs text-slate-500 dark:text-slate-400">Dias abertos</label>
+              <div className="mt-1 flex flex-wrap gap-1">
+                {WEEKDAYS.map((d) => (
+                  <button
+                    key={d.value}
+                    type="button"
+                    onClick={() => toggleDay(d.value)}
+                    className={`rounded-lg border px-2.5 py-1 text-xs font-medium ${
+                      openDays.includes(d.value)
+                        ? "border-blue-900 bg-blue-900 text-amber-300 dark:border-blue-700 dark:bg-blue-800"
+                        : "border-slate-300 text-slate-600 dark:border-slate-700 dark:text-slate-400"
+                    }`}
+                  >
+                    {d.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300">
+              <input
+                type="checkbox"
+                checked={manuallyClosed}
+                onChange={(e) => setManuallyClosed(e.target.checked)}
+              />
+              Fechar a loja agora (feriado, imprevisto) — ignora o horário acima
+            </label>
+          </div>
+        )}
+
+        <div className="mt-3 flex items-center gap-2">
+          <button
+            type="submit"
+            disabled={savingHours}
+            className="rounded-lg bg-blue-900 px-4 py-2 text-sm font-semibold text-amber-300 disabled:opacity-60 dark:bg-blue-800"
+          >
+            {savingHours ? "Salvando…" : "Salvar horário"}
+          </button>
+          {hoursSaved && <span className="text-sm text-green-600">Salvo!</span>}
         </div>
       </form>
 

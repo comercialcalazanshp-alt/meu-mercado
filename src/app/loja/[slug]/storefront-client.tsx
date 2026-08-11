@@ -19,7 +19,38 @@ type Store = {
   name: string;
   whatsapp: string | null;
   cashback_percent: number;
+  business_hours_enabled: boolean;
+  opens_at: string | null;
+  closes_at: string | null;
+  open_days: number[];
+  manually_closed: boolean;
 };
+
+function isStoreOpenNow(store: Store): { open: boolean; message: string | null } {
+  if (!store.business_hours_enabled) return { open: true, message: null };
+  if (store.manually_closed) return { open: false, message: "Loja fechada no momento." };
+  if (!store.opens_at || !store.closes_at) return { open: true, message: null };
+
+  const now = new Date();
+  const day = now.getDay();
+  if (!store.open_days.includes(day)) {
+    return { open: false, message: `Loja fechada hoje. Abre às ${store.opens_at.slice(0, 5)}.` };
+  }
+
+  const [openH, openM] = store.opens_at.split(":").map(Number);
+  const [closeH, closeM] = store.closes_at.split(":").map(Number);
+  const nowMinutes = now.getHours() * 60 + now.getMinutes();
+  const openMinutes = openH * 60 + openM;
+  const closeMinutes = closeH * 60 + closeM;
+
+  if (nowMinutes < openMinutes) {
+    return { open: false, message: `Loja fechada. Abre às ${store.opens_at.slice(0, 5)}.` };
+  }
+  if (nowMinutes >= closeMinutes) {
+    return { open: false, message: `Loja fechada. Volta a abrir às ${store.opens_at.slice(0, 5)}.` };
+  }
+  return { open: true, message: null };
+}
 
 type Banner = {
   id: string;
@@ -134,6 +165,7 @@ export default function StorefrontClient({
 
   const total = cartItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
   const cartCount = cartItems.reduce((sum, item) => sum + item.quantity, 0);
+  const storeStatus = useMemo(() => isStoreOpenNow(store), [store]);
 
   const categories = useMemo(() => {
     const groups = new Map<string, Product[]>();
@@ -300,6 +332,11 @@ export default function StorefrontClient({
     e.preventDefault();
     if (saving) return;
     setError(null);
+
+    if (!storeStatus.open) {
+      setError(storeStatus.message ?? "Loja fechada no momento.");
+      return;
+    }
 
     if (cartItems.length === 0) {
       setError("Seu carrinho está vazio.");
@@ -590,11 +627,16 @@ export default function StorefrontClient({
               </div>
             </details>
 
+            {!storeStatus.open && storeStatus.message && (
+              <p className="text-sm font-medium text-amber-700 dark:text-amber-400">
+                🕒 {storeStatus.message}
+              </p>
+            )}
             {error && <p className="text-sm text-red-600">{error}</p>}
 
             <button
               type="submit"
-              disabled={saving}
+              disabled={saving || !storeStatus.open}
               className="w-full rounded-lg bg-blue-900 px-4 py-2.5 font-semibold text-amber-300 disabled:opacity-60 dark:bg-blue-800"
             >
               {saving ? "Enviando…" : "Enviar pedido"}
@@ -613,6 +655,13 @@ export default function StorefrontClient({
         </div>
         <h1 className="mt-3 text-xl font-bold text-slate-900 dark:text-slate-50">{store.name}</h1>
       </header>
+
+      {!storeStatus.open && storeStatus.message && (
+        <div className="bg-amber-100 px-4 py-2 text-center text-sm font-medium text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
+          🕒 {storeStatus.message} Você pode ver o catálogo, mas o pedido só é enviado quando a loja
+          reabrir.
+        </div>
+      )}
 
       {banners.length > 0 && (
         <div className="mx-auto w-full max-w-2xl px-4 pt-4">
