@@ -54,6 +54,7 @@ export default async function Loja({ params }: { params: Promise<{ slug: string 
     { data: reviews },
     { data: neighborhoods },
     { data: storeReviews },
+    { data: recipeRows },
   ] = await Promise.all([
     supabase
       .from("products")
@@ -90,6 +91,12 @@ export default async function Loja({ params }: { params: Promise<{ slug: string 
       .from("store_reviews")
       .select("id, rating")
       .eq("store_id", store.id),
+    supabase
+      .from("recipes")
+      .select("id, name, description, instructions, image_url, ingredients")
+      .eq("store_id", store.id)
+      .eq("featured", true)
+      .limit(1),
   ]);
 
   return (
@@ -101,6 +108,7 @@ export default async function Loja({ params }: { params: Promise<{ slug: string 
       reviews={reviews ?? []}
       neighborhoods={neighborhoods ?? []}
       storeReviews={storeReviews ?? []}
+      recipe={recipeRows?.[0] ?? null}
     />
   );
 }

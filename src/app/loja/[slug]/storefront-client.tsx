@@ -124,6 +124,15 @@ export type Review = {
   created_at: string;
 };
 
+export type Recipe = {
+  id: string;
+  name: string;
+  description: string | null;
+  instructions: string | null;
+  image_url: string | null;
+  ingredients: { id: string; qty: number }[];
+};
+
 type CartLine = {
   key: string;
   kind: "product" | "kit";
@@ -153,6 +162,7 @@ export default function StorefrontClient({
   reviews: initialReviews,
   neighborhoods,
   storeReviews,
+  recipe,
 }: {
   store: Store;
   products: Product[];
@@ -161,6 +171,7 @@ export default function StorefrontClient({
   reviews: Review[];
   neighborhoods: Neighborhood[];
   storeReviews: StoreReviewSummary[];
+  recipe: Recipe | null;
 }) {
   const searchParams = useSearchParams();
   const [cart, setCart] = useState<Record<string, number>>({});
@@ -278,6 +289,18 @@ export default function StorefrontClient({
 
   function setQuantity(key: string, quantity: number) {
     setCart((prev) => ({ ...prev, [key]: Math.max(0, quantity) }));
+  }
+
+  function addRecipeToCart() {
+    if (!recipe) return;
+    setCart((prev) => {
+      const next = { ...prev };
+      for (const item of recipe.ingredients) {
+        const key = `product:${item.id}`;
+        next[key] = (next[key] ?? 0) + item.qty;
+      }
+      return next;
+    });
   }
 
   const ratingsByProduct = useMemo(() => {
@@ -928,6 +951,32 @@ export default function StorefrontClient({
               className="text-amber-100 hover:text-white"
             >
               ✕
+            </button>
+          </div>
+        </div>
+      )}
+
+      {recipe && (
+        <div className="mx-auto w-full max-w-2xl px-4 pt-4">
+          <div className="flex items-center gap-3 overflow-hidden rounded-xl border border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/40">
+            {recipe.image_url && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={recipe.image_url} alt={recipe.name} className="h-20 w-20 shrink-0 object-cover" />
+            )}
+            <div className="min-w-0 flex-1 py-2 pr-3">
+              <p className="text-[10px] font-bold uppercase tracking-wide text-amber-700 dark:text-amber-400">
+                Receita da semana
+              </p>
+              <p className="truncate font-semibold text-slate-900 dark:text-slate-50">{recipe.name}</p>
+              {recipe.description && (
+                <p className="truncate text-xs text-slate-600 dark:text-slate-400">{recipe.description}</p>
+              )}
+            </div>
+            <button
+              onClick={addRecipeToCart}
+              className="mr-3 shrink-0 rounded-lg bg-amber-400 px-3 py-1.5 text-xs font-semibold text-amber-950"
+            >
+              Adicionar tudo
             </button>
           </div>
         </div>
