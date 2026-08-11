@@ -13,6 +13,8 @@ type Product = {
   image_url: string | null;
   stock: number;
   active: boolean;
+  promo_buy_qty: number | null;
+  promo_pay_qty: number | null;
 };
 
 function parseCsv(text: string): string[][] {
@@ -75,12 +77,13 @@ export default function Produtos() {
   const [stock, setStock] = useState("");
   const [imageUrl, setImageUrl] = useState("");
   const [saving, setSaving] = useState(false);
+  const [promoDrafts, setPromoDrafts] = useState<Record<string, { buy: string; pay: string }>>({});
 
   async function loadProducts() {
     setLoading(true);
     const { data } = await getSupabase()
       .from("products")
-      .select("id, name, category, price, cost_price, image_url, stock, active")
+      .select("id, name, category, price, cost_price, image_url, stock, active, promo_buy_qty, promo_pay_qty")
       .eq("store_id", store.id)
       .order("created_at", { ascending: false });
     setProducts(data ?? []);
@@ -133,6 +136,43 @@ export default function Produtos() {
   async function updateProduct(id: string, patch: Partial<Product>) {
     setProducts((prev) => prev.map((p) => (p.id === id ? { ...p, ...patch } : p)));
     await getSupabase().from("products").update(patch).eq("id", id);
+  }
+
+  function promoDraftFor(p: Product) {
+    return (
+      promoDrafts[p.id] ?? {
+        buy: p.promo_buy_qty ? String(p.promo_buy_qty) : "",
+        pay: p.promo_pay_qty ? String(p.promo_pay_qty) : "",
+      }
+    );
+  }
+
+  async function handleSavePromo(p: Product) {
+    const draft = promoDraftFor(p);
+    const buy = draft.buy.trim() ? Number(draft.buy) : null;
+    const pay = draft.pay.trim() ? Number(draft.pay) : null;
+
+    if (buy === null && pay === null) {
+      await updateProduct(p.id, { promo_buy_qty: null, promo_pay_qty: null });
+      setPromoDrafts((prev) => {
+        const next = { ...prev };
+        delete next[p.id];
+        return next;
+      });
+      return;
+    }
+
+    if (!buy || !pay || buy <= pay) {
+      window.alert('Preencha "Leve" e "Pague" com números válidos, sendo "Leve" maior que "Pague".');
+      return;
+    }
+
+    await updateProduct(p.id, { promo_buy_qty: buy, promo_pay_qty: pay });
+    setPromoDrafts((prev) => {
+      const next = { ...prev };
+      delete next[p.id];
+      return next;
+    });
   }
 
   async function deleteProduct(id: string, productName: string) {
@@ -339,6 +379,7 @@ export default function Produtos() {
               <th className="px-3 py-2 font-medium">Custo</th>
               <th className="px-3 py-2 font-medium">Margem</th>
               <th className="px-3 py-2 font-medium">Estoque</th>
+              <th className="px-3 py-2 font-medium">Promoção (leve/pague)</th>
               <th className="px-3 py-2 font-medium">Ativo</th>
               <th className="px-3 py-2 font-medium"></th>
             </tr>
@@ -346,14 +387,14 @@ export default function Produtos() {
           <tbody className="divide-y divide-slate-200 bg-white dark:divide-slate-800 dark:bg-slate-900">
             {loading && (
               <tr>
-                <td colSpan={8} className="px-3 py-6 text-center text-slate-500">
+                <td colSpan={9} className="px-3 py-6 text-center text-slate-500">
                   Carregando…
                 </td>
               </tr>
             )}
             {!loading && products.length === 0 && (
               <tr>
-                <td colSpan={8} className="px-3 py-6 text-center text-slate-500">
+                <td colSpan={9} className="px-3 py-6 text-center text-slate-500">
                   Nenhum produto cadastrado ainda.
                 </td>
               </tr>
@@ -406,6 +447,42 @@ export default function Produtos() {
                       }}
                       className="w-20 rounded border border-slate-300 bg-white px-2 py-1 text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
                     />
+                  </td>
+                  <td className="px-3 py-2">
+                    <div className="flex items-center gap-1">
+                      <input
+                        type="number"
+                        min={1}
+                        placeholder="Leve"
+                        value={promoDraftFor(p).buy}
+                        onChange={(e) =>
+                          setPromoDrafts((prev) => ({
+                            ...prev,
+                            [p.id]: { ...promoDraftFor(p), buy: e.target.value },
+                          }))
+                        }
+                        className="w-14 rounded border border-slate-300 bg-white px-2 py-1 text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                      />
+                      <input
+                        type="number"
+                        min={1}
+                        placeholder="Pague"
+                        value={promoDraftFor(p).pay}
+                        onChange={(e) =>
+                          setPromoDrafts((prev) => ({
+                            ...prev,
+                            [p.id]: { ...promoDraftFor(p), pay: e.target.value },
+                          }))
+                        }
+                        className="w-16 rounded border border-slate-300 bg-white px-2 py-1 text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                      />
+                      <button
+                        onClick={() => handleSavePromo(p)}
+                        className="text-xs font-medium text-blue-900 hover:underline dark:text-blue-400"
+                      >
+                        Salvar
+                      </button>
+                    </div>
                   </td>
                   <td className="px-3 py-2">
                     <button

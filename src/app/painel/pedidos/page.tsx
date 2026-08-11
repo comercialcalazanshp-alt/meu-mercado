@@ -8,6 +8,7 @@ type OrderItem = {
   name: string;
   price: number;
   quantity: number;
+  line_total?: number;
 };
 
 type Order = {
@@ -125,7 +126,7 @@ export default function Pedidos() {
                   <span>
                     {item.quantity}x {item.name}
                   </span>
-                  <span>{formatCurrency(item.price * item.quantity)}</span>
+                  <span>{formatCurrency(item.line_total ?? item.price * item.quantity)}</span>
                 </li>
               ))}
             </ul>

@@ -29,7 +29,7 @@ export default async function Loja({ params }: { params: Promise<{ slug: string 
   ] = await Promise.all([
     supabase
       .from("products")
-      .select("id, name, category, price, image_url, stock")
+      .select("id, name, category, price, image_url, stock, promo_buy_qty, promo_pay_qty")
       .eq("store_id", store.id)
       .eq("active", true)
       .order("category", { ascending: true })

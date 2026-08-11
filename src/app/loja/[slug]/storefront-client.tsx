@@ -11,7 +11,16 @@ type Product = {
   price: number;
   image_url: string | null;
   stock: number;
+  promo_buy_qty: number | null;
+  promo_pay_qty: number | null;
 };
+
+function lineTotalFor(price: number, quantity: number, buyQty: number | null, payQty: number | null) {
+  if (!buyQty || !payQty || quantity < buyQty) return price * quantity;
+  const fullGroups = Math.floor(quantity / buyQty);
+  const remainder = quantity % buyQty;
+  return (fullGroups * payQty + remainder) * price;
+}
 
 type Store = {
   id: string;
@@ -99,6 +108,7 @@ type CartLine = {
   name: string;
   price: number;
   quantity: number;
+  lineTotal: number;
 };
 
 function formatCurrency(value: number) {
@@ -175,16 +185,34 @@ export default function StorefrontClient({
       const [kind, id] = key.split(":") as ["product" | "kit", string];
       if (kind === "product") {
         const product = products.find((p) => p.id === id);
-        if (product) lines.push({ key, kind, id, name: product.name, price: product.price, quantity });
+        if (product)
+          lines.push({
+            key,
+            kind,
+            id,
+            name: product.name,
+            price: product.price,
+            quantity,
+            lineTotal: lineTotalFor(product.price, quantity, product.promo_buy_qty, product.promo_pay_qty),
+          });
       } else if (kind === "kit") {
         const kit = kits.find((k) => k.id === id);
-        if (kit) lines.push({ key, kind, id, name: `Kit: ${kit.name}`, price: kit.price, quantity });
+        if (kit)
+          lines.push({
+            key,
+            kind,
+            id,
+            name: `Kit: ${kit.name}`,
+            price: kit.price,
+            quantity,
+            lineTotal: kit.price * quantity,
+          });
       }
     }
     return lines;
   }, [cart, products, kits]);
 
-  const total = cartItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
+  const total = cartItems.reduce((sum, item) => sum + item.lineTotal, 0);
   const cartCount = cartItems.reduce((sum, item) => sum + item.quantity, 0);
   const storeStatus = useMemo(() => isStoreOpenNow(store), [store]);
   const deliveryFee =
@@ -564,8 +592,11 @@ export default function StorefrontClient({
               <li key={item.key} className="flex justify-between text-slate-600 dark:text-slate-400">
                 <span>
                   {item.quantity}x {item.name}
+                  {item.lineTotal < item.price * item.quantity && (
+                    <span className="ml-1 text-xs text-green-600">(promoção aplicada)</span>
+                  )}
                 </span>
-                <span>{formatCurrency(item.price * item.quantity)}</span>
+                <span>{formatCurrency(item.lineTotal)}</span>
               </li>
             ))}
           </ul>
@@ -932,6 +963,11 @@ export default function StorefrontClient({
                         <p className="text-sm text-slate-600 dark:text-slate-400">
                           {formatCurrency(product.price)}
                         </p>
+                        {product.promo_buy_qty && product.promo_pay_qty && (
+                          <p className="text-xs font-medium text-green-600">
+                            Leve {product.promo_buy_qty}, pague {product.promo_pay_qty}
+                          </p>
+                        )}
                         {product.stock <= 0 && (
                           <p className="text-xs text-red-500">Sem estoque</p>
                         )}
