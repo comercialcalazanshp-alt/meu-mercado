@@ -265,6 +265,8 @@ export default function Produtos() {
   const [expiryDate, setExpiryDate] = useState("");
   const [supplier, setSupplier] = useState("");
   const [soldByWeight, setSoldByWeight] = useState(false);
+  const [wholesalePriceNew, setWholesalePriceNew] = useState("");
+  const [wholesaleMinQtyNew, setWholesaleMinQtyNew] = useState("");
   const [saving, setSaving] = useState(false);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const photoInputRef = useRef<HTMLInputElement>(null);
@@ -453,6 +455,21 @@ export default function Produtos() {
       }
     }
 
+    const wholesalePriceValue = wholesalePriceNew.trim() ? Number(wholesalePriceNew.replace(",", ".")) : null;
+    const wholesaleMinQtyValue = wholesaleMinQtyNew.trim() ? Number(wholesaleMinQtyNew) : null;
+    if (wholesalePriceValue !== null || wholesaleMinQtyValue !== null) {
+      if (
+        !wholesalePriceValue ||
+        !wholesaleMinQtyValue ||
+        Number.isNaN(wholesalePriceValue) ||
+        Number.isNaN(wholesaleMinQtyValue) ||
+        wholesalePriceValue >= priceValue
+      ) {
+        setError('Preencha "Preço atacado" e "A partir de quantos" válidos, com o preço atacado menor que o preço normal.');
+        return;
+      }
+    }
+
     setSaving(true);
     const { error: insertError } = await getSupabase().from("products").insert({
       store_id: store.id,
@@ -466,6 +483,8 @@ export default function Produtos() {
       expiry_date: expiryDate || null,
       supplier: supplier.trim() || null,
       sold_by_weight: soldByWeight,
+      price_wholesale: wholesalePriceValue,
+      wholesale_min_qty: wholesaleMinQtyValue,
     });
     setSaving(false);
 
@@ -484,6 +503,8 @@ export default function Produtos() {
     setImageUrl("");
     setBarcode("");
     setSoldByWeight(false);
+    setWholesalePriceNew("");
+    setWholesaleMinQtyNew("");
     loadProducts();
   }
 
@@ -1043,13 +1064,27 @@ export default function Produtos() {
           inputMode="decimal"
           className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
         />
-        <input
-          value={costPrice}
-          onChange={(e) => setCostPrice(e.target.value)}
-          placeholder="Custo (opcional)"
-          inputMode="decimal"
-          className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
-        />
+        <div>
+          <input
+            value={costPrice}
+            onChange={(e) => setCostPrice(e.target.value)}
+            placeholder="Custo (opcional)"
+            inputMode="decimal"
+            className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+          />
+          {(() => {
+            const p = Number(price.replace(",", "."));
+            const c = Number(costPrice.replace(",", "."));
+            if (!p || !c || Number.isNaN(p) || Number.isNaN(c) || c <= 0) return null;
+            const margin = ((p - c) / p) * 100;
+            const markup = ((p - c) / c) * 100;
+            return (
+              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                margem {margin.toFixed(0)}% · markup {markup.toFixed(0)}%
+              </p>
+            );
+          })()}
+        </div>
         <input
           value={stock}
           onChange={(e) => setStock(e.target.value)}
@@ -1099,6 +1134,30 @@ export default function Produtos() {
           />
           ⚖️ Vendido por peso (kg)
         </label>
+        <div>
+          <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">
+            Preço atacado (opcional)
+          </label>
+          <input
+            value={wholesalePriceNew}
+            onChange={(e) => setWholesalePriceNew(e.target.value)}
+            placeholder="R$"
+            inputMode="decimal"
+            className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+          />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">
+            Sai em atacado a partir de quantos
+          </label>
+          <input
+            value={wholesaleMinQtyNew}
+            onChange={(e) => setWholesaleMinQtyNew(e.target.value)}
+            placeholder="ex: 12"
+            inputMode="numeric"
+            className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+          />
+        </div>
         <div className="sm:col-span-2 lg:col-span-3">
           <div className="flex items-center gap-2">
             <button
