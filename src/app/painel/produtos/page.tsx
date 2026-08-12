@@ -54,6 +54,16 @@ const MOVEMENT_LABEL: Record<StockMovement["type"], string> = {
   outro: "Outro",
 };
 
+// BarcodeDetector é nativo do navegador (Chrome/Android), sem tipos no TS
+// ainda. Funciona no Chrome do Android; no iPhone (Safari) não tem suporte —
+// nesse caso a gente já avisa e a pessoa usa o leitor físico ou digita.
+type BarcodeDetectorLike = { detect(source: HTMLVideoElement): Promise<{ rawValue: string }[]> };
+type BarcodeDetectorCtor = new (options: { formats: string[] }) => BarcodeDetectorLike;
+function getBarcodeDetectorCtor(): BarcodeDetectorCtor | null {
+  if (typeof window === "undefined" || !("BarcodeDetector" in window)) return null;
+  return (window as unknown as { BarcodeDetector: BarcodeDetectorCtor }).BarcodeDetector;
+}
+
 // Levenshtein simples pra achar produto com nome parecido (cadastro
 // duplicado por engano, ex: "Arroz Tio Joao 5kg" digitado duas vezes).
 function normalizeForCompare(s: string) {
@@ -279,6 +289,81 @@ export default function Produtos() {
   const [adjustPercent, setAdjustPercent] = useState("");
   const [adjustingPrices, setAdjustingPrices] = useState(false);
   const [adjustResult, setAdjustResult] = useState<string | null>(null);
+
+  const [scanningBarcode, setScanningBarcode] = useState(false);
+  const [scanError, setScanError] = useState<string | null>(null);
+  const scanVideoRef = useRef<HTMLVideoElement>(null);
+  const scanStreamRef = useRef<MediaStream | null>(null);
+
+  function openBarcodeScanner() {
+    if (!getBarcodeDetectorCtor()) {
+      window.alert(
+        "Esse navegador não sabe ler código de barras pela câmera (funciona no Chrome do Android). Use um leitor físico ou digite o código na mão.",
+      );
+      return;
+    }
+    setScanError(null);
+    setScanningBarcode(true);
+  }
+
+  function closeBarcodeScanner() {
+    setScanningBarcode(false);
+    scanStreamRef.current?.getTracks().forEach((t) => t.stop());
+    scanStreamRef.current = null;
+  }
+
+  useEffect(() => {
+    if (!scanningBarcode) return;
+    const Detector = getBarcodeDetectorCtor();
+    if (!Detector) return;
+
+    let cancelled = false;
+    let rafId = 0;
+
+    async function start() {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+        if (cancelled) {
+          stream.getTracks().forEach((t) => t.stop());
+          return;
+        }
+        scanStreamRef.current = stream;
+        if (scanVideoRef.current) {
+          scanVideoRef.current.srcObject = stream;
+          await scanVideoRef.current.play();
+        }
+        const detector = new Detector!({
+          formats: ["ean_13", "ean_8", "upc_a", "upc_e", "code_128", "code_39"],
+        });
+        const tick = async () => {
+          if (cancelled || !scanVideoRef.current) return;
+          try {
+            const codes = await detector.detect(scanVideoRef.current);
+            if (codes.length > 0) {
+              setBarcode(codes[0].rawValue);
+              closeBarcodeScanner();
+              return;
+            }
+          } catch {
+            // não deu pra ler esse quadro, tenta o próximo
+          }
+          rafId = requestAnimationFrame(tick);
+        };
+        rafId = requestAnimationFrame(tick);
+      } catch {
+        setScanError("Não deu pra acessar a câmera. Verifique se você liberou a permissão pro navegador.");
+      }
+    }
+    start();
+
+    return () => {
+      cancelled = true;
+      if (rafId) cancelAnimationFrame(rafId);
+      scanStreamRef.current?.getTracks().forEach((t) => t.stop());
+      scanStreamRef.current = null;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scanningBarcode]);
 
   const categories = useMemo(() => {
     const set = new Set<string>();
@@ -746,14 +831,14 @@ export default function Produtos() {
       }
     }
 
-    const cards = list
+    const labels = list
       .map((p) => {
         const isOffer = forceOffer && p.on_offer && p.offer_price !== null;
         const pctOff = isOffer ? Math.round(((p.price - p.offer_price!) / p.price) * 100) : null;
         const unitLabel = p.sold_by_weight ? "/kg" : "un.";
         const qr = p.barcode ? qrByBarcode.get(p.barcode) : null;
         return `
-        <div class="card">
+        <div class="label">
           ${p.image_url ? `<img src="${p.image_url}" class="photo" />` : ""}
           <p class="name">${p.name}</p>
           ${
@@ -770,26 +855,30 @@ export default function Produtos() {
       })
       .join("");
 
-    const win = window.open("", "_blank", "width=480,height=640");
+    // Uma etiqueta por página — pra impressora térmica tipo Epson TM-T20X
+    // (rolo de 80mm) cortar cada uma sozinha, sem precisar de tesoura.
+    const win = window.open("", "_blank", "width=380,height=600");
     if (!win) return;
     win.document.write(`
       <html><head><title>Etiquetas</title>
       <style>
-        body{font-family:sans-serif;margin:0;padding:8px;}
-        .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;}
-        .card{border:1px dashed #999;border-radius:6px;padding:6px;text-align:center;break-inside:avoid;}
-        .photo{width:100%;height:60px;object-fit:cover;border-radius:4px;}
-        .name{font-size:11px;font-weight:600;margin:3px 0;min-height:26px;}
-        .price{font-size:16px;font-weight:bold;margin:2px 0;}
-        .price .unit{font-size:10px;font-weight:normal;}
-        .old-price{font-size:11px;color:#888;text-decoration:line-through;margin:0;}
+        @page { size: 80mm auto; margin: 2mm; }
+        * { box-sizing: border-box; }
+        body{font-family:sans-serif;margin:0;padding:0;}
+        .label{width:76mm;text-align:center;padding:2mm 0;page-break-after:always;break-after:page;}
+        .label:last-child{page-break-after:auto;break-after:auto;}
+        .photo{width:100%;max-height:28mm;object-fit:cover;border-radius:2mm;}
+        .name{font-size:14px;font-weight:600;margin:2mm 0 1mm;}
+        .price{font-size:26px;font-weight:bold;margin:1mm 0;}
+        .price .unit{font-size:13px;font-weight:normal;}
+        .old-price{font-size:13px;color:#888;text-decoration:line-through;margin:0;}
         .price.offer{color:#b91c1c;}
-        .pct{font-size:11px;font-weight:bold;color:#b91c1c;margin:0 0 2px;}
-        .wholesale{font-size:9px;color:#555;margin:2px 0;}
-        .qr{width:60px;height:60px;margin-top:2px;}
-        .barcode-num{font-family:monospace;font-size:10px;margin:2px 0 0;letter-spacing:1px;}
+        .pct{font-size:14px;font-weight:bold;color:#b91c1c;margin:0 0 1mm;}
+        .wholesale{font-size:11px;color:#555;margin:1mm 0;}
+        .qr{width:24mm;height:24mm;margin-top:1mm;}
+        .barcode-num{font-family:monospace;font-size:12px;margin:1mm 0 0;letter-spacing:1px;}
       </style></head><body>
-      <div class="grid">${cards}</div>
+      ${labels}
       <script>window.print();</script>
       </body></html>
     `);
@@ -968,12 +1057,22 @@ export default function Produtos() {
           inputMode="decimal"
           className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
         />
-        <input
-          value={barcode}
-          onChange={(e) => setBarcode(e.target.value)}
-          placeholder="Código de barras (opcional)"
-          className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
-        />
+        <div className="flex items-center gap-1">
+          <input
+            value={barcode}
+            onChange={(e) => setBarcode(e.target.value)}
+            placeholder="Código de barras (opcional)"
+            className="min-w-0 flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+          />
+          <button
+            type="button"
+            onClick={openBarcodeScanner}
+            title="Ler código de barras com a câmera"
+            className="shrink-0 rounded-lg border border-slate-300 px-2 py-2 text-sm dark:border-slate-700"
+          >
+            📷
+          </button>
+        </div>
         <input
           value={supplier}
           onChange={(e) => setSupplier(e.target.value)}
@@ -1044,6 +1143,29 @@ export default function Produtos() {
         </button>
       </form>
       {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
+
+      {scanningBarcode && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+          <div className="w-full max-w-sm rounded-xl bg-white p-4 dark:bg-slate-900">
+            <p className="text-sm font-medium text-slate-900 dark:text-slate-50">
+              Aponte a câmera pro código de barras
+            </p>
+            {scanError ? (
+              <p className="mt-2 text-sm text-red-600">{scanError}</p>
+            ) : (
+              // eslint-disable-next-line jsx-a11y/media-has-caption
+              <video ref={scanVideoRef} className="mt-2 w-full rounded-lg bg-black" muted playsInline />
+            )}
+            <button
+              type="button"
+              onClick={closeBarcodeScanner}
+              className="mt-3 w-full rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 dark:border-slate-700 dark:text-slate-300"
+            >
+              Cancelar
+            </button>
+          </div>
+        </div>
+      )}
 
       {(catalogGaps.withoutPhoto > 0 || catalogGaps.withoutCost > 0 || catalogGaps.withoutCategory > 0) && (
         <p className="mt-4 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:bg-amber-900/30 dark:text-amber-400">
