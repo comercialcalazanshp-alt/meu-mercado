@@ -140,12 +140,33 @@ export default function Pedidos() {
   const [products, setProducts] = useState<Product[]>([]);
   const [addProductId, setAddProductId] = useState<Record<string, string>>({});
   const [highValueThreshold, setHighValueThreshold] = useState(150);
+  const [compactMode, setCompactMode] = useState(false);
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [, forceTick] = useState(0);
 
   useEffect(() => {
     const saved = localStorage.getItem("pedidos-valor-alto");
     if (saved) setHighValueThreshold(Number(saved));
+    const compact = localStorage.getItem("pedidos-modo-compacto");
+    if (compact) setCompactMode(compact === "1");
   }, []);
+
+  function toggleCompactMode() {
+    setCompactMode((prev) => {
+      const next = !prev;
+      localStorage.setItem("pedidos-modo-compacto", next ? "1" : "0");
+      return next;
+    });
+  }
+
+  function toggleExpanded(id: string) {
+    setExpandedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
 
   useEffect(() => {
     let active = true;
@@ -200,8 +221,10 @@ export default function Pedidos() {
   function avisarWhatsapp(order: Order, status: string) {
     const message = WHATSAPP_MESSAGES[status];
     if (!message) return;
+    const receiptUrl = `${window.location.origin}/loja/${store.slug}/pedido/${order.id}`;
+    const fullMessage = `${message}\n\nAcompanhe seu pedido: ${receiptUrl}`;
     window.open(
-      `https://wa.me/55${order.customer_phone.replace(/\D/g, "")}?text=${encodeURIComponent(message)}`,
+      `https://wa.me/55${order.customer_phone.replace(/\D/g, "")}?text=${encodeURIComponent(fullMessage)}`,
       "_blank",
     );
   }
@@ -349,6 +372,10 @@ export default function Pedidos() {
     });
   }
 
+  function selectAllPending(visibleOrders: Order[]) {
+    setSelectedIds(new Set(visibleOrders.filter((o) => o.status === "pendente").map((o) => o.id)));
+  }
+
   async function confirmSelected() {
     const ids = Array.from(selectedIds);
     if (ids.length === 0) return;
@@ -400,6 +427,30 @@ export default function Pedidos() {
     return counts;
   }, [orders]);
 
+  const possibleDuplicateIds = useMemo(() => {
+    const flagged = new Set<string>();
+    const byPhone = new Map<string, Order[]>();
+    for (const o of orders) {
+      if (o.status === "cancelado") continue;
+      if (!byPhone.has(o.customer_phone)) byPhone.set(o.customer_phone, []);
+      byPhone.get(o.customer_phone)!.push(o);
+    }
+    for (const phoneOrders of byPhone.values()) {
+      for (let i = 0; i < phoneOrders.length; i++) {
+        for (let j = i + 1; j < phoneOrders.length; j++) {
+          const diffMinutes =
+            Math.abs(new Date(phoneOrders[i].created_at).getTime() - new Date(phoneOrders[j].created_at).getTime()) /
+            60000;
+          if (diffMinutes <= 10) {
+            flagged.add(phoneOrders[i].id);
+            flagged.add(phoneOrders[j].id);
+          }
+        }
+      }
+    }
+    return flagged;
+  }, [orders]);
+
   const firstOrderIdByPhone = useMemo(() => {
     const map = new Map<string, string>();
     const earliest = new Map<string, string>();
@@ -422,6 +473,16 @@ export default function Pedidos() {
       <div className="flex flex-wrap items-center justify-between gap-3 print:hidden">
         <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-50">Pedidos</h1>
         <div className="flex gap-2">
+          <button
+            onClick={toggleCompactMode}
+            className={`rounded-lg border px-3 py-1.5 text-sm font-medium ${
+              compactMode
+                ? "border-blue-900 bg-blue-900 text-white dark:border-blue-700 dark:bg-blue-700"
+                : "border-slate-300 text-slate-600 dark:border-slate-700 dark:text-slate-300"
+            }`}
+          >
+            📋 Modo compacto
+          </button>
           <button
             onClick={() => exportCsv(sorted)}
             className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-600 dark:border-slate-700 dark:text-slate-300"
@@ -495,6 +556,15 @@ export default function Pedidos() {
         </label>
       </div>
 
+      {statusCounts.pendente > 0 && (
+        <button
+          onClick={() => selectAllPending(sorted)}
+          className="mt-2 text-xs text-blue-900 underline print:hidden dark:text-blue-400"
+        >
+          Selecionar todos os pendentes visíveis
+        </button>
+      )}
+
       {selectedIds.size > 0 && (
         <div className="mt-2 flex items-center justify-between rounded-lg bg-blue-50 px-3 py-2 text-sm dark:bg-blue-900/30 print:hidden">
           <span className="text-blue-800 dark:text-blue-300">{selectedIds.size} selecionado(s)</span>
@@ -520,9 +590,12 @@ export default function Pedidos() {
             </p>
             <div className="space-y-3">
               {groupOrders.map((order) => {
-                const stalled = order.status === "pendente" && minutesSince(order.created_at) > STALLED_MINUTES;
+                const stalled =
+                  (order.status === "pendente" || order.status === "confirmado") &&
+                  minutesSince(order.created_at) > STALLED_MINUTES;
                 const badge = paymentBadge(order);
                 const isEditing = editingId === order.id;
+                const isExpanded = !compactMode || expandedIds.has(order.id);
                 return (
                   <div
                     key={order.id}
@@ -572,6 +645,11 @@ export default function Pedidos() {
                                 💰 Valor alto
                               </span>
                             )}
+                            {possibleDuplicateIds.has(order.id) && (
+                              <span className="rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-medium text-red-700 dark:bg-red-900/40 dark:text-red-400">
+                                ⚠️ Pode ser duplicado
+                              </span>
+                            )}
                           </div>
                           <a
                             href={`https://wa.me/55${order.customer_phone.replace(/\D/g, "")}`}
@@ -609,6 +687,24 @@ export default function Pedidos() {
                       </span>
                     </div>
 
+                    {compactMode && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toggleExpanded(order.id);
+                        }}
+                        className="mt-1 text-xs text-blue-900 underline print:hidden dark:text-blue-400"
+                      >
+                        {isExpanded ? "▴ ver menos" : "▾ ver detalhes"}
+                      </button>
+                    )}
+
+                    {!isExpanded ? (
+                      <p className="mt-1 text-right font-semibold text-slate-900 dark:text-slate-50">
+                        Total: {formatCurrency(order.total)}
+                      </p>
+                    ) : (
+                      <>
                     {!isEditing ? (
                       <ul className="mt-3 space-y-1 border-t border-slate-100 pt-3 text-sm dark:border-slate-800">
                         {order.items.map((item, i) => (
@@ -784,6 +880,8 @@ export default function Pedidos() {
                       rows={1}
                       className="mt-2 w-full rounded-lg border border-dashed border-slate-300 bg-slate-50 px-2 py-1 text-xs text-slate-600 placeholder:text-slate-400 print:hidden dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300"
                     />
+                      </>
+                    )}
                   </div>
                 );
               })}

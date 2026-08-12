@@ -84,6 +84,7 @@ export default function PainelLayout({ children }: { children: ReactNode }) {
   const [soundMuted, setSoundMuted] = useState(false);
   const [pushStatus, setPushStatus] = useState<"unsupported" | "off" | "on" | "denied">("off");
   const [pushLoading, setPushLoading] = useState(false);
+  const [unseenOrders, setUnseenOrders] = useState(0);
 
   useEffect(() => {
     const supabase = getSupabase();
@@ -189,6 +190,17 @@ export default function PainelLayout({ children }: { children: ReactNode }) {
     if (!store) return;
     const supabase = getSupabase();
 
+    async function refreshUnseenCount() {
+      const { count } = await supabase
+        .from("orders")
+        .select("id", { count: "exact", head: true })
+        .eq("store_id", store!.id)
+        .is("seen_at", null);
+      setUnseenOrders(count ?? 0);
+    }
+
+    refreshUnseenCount();
+
     const channel = supabase
       .channel(`orders-realtime-${store.id}`)
       .on(
@@ -204,7 +216,13 @@ export default function PainelLayout({ children }: { children: ReactNode }) {
           setTimeout(() => {
             setNotifications((prev) => prev.filter((n) => n.id !== order.id));
           }, 10000);
+          refreshUnseenCount();
         },
+      )
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "orders", filter: `store_id=eq.${store.id}` },
+        () => refreshUnseenCount(),
       )
       .subscribe();
 
@@ -312,6 +330,11 @@ export default function PainelLayout({ children }: { children: ReactNode }) {
                 }`}
               >
                 {item.label}
+                {item.href === "/painel/pedidos" && unseenOrders > 0 && (
+                  <span className="ml-1.5 inline-flex min-w-[18px] items-center justify-center rounded-full bg-red-600 px-1.5 py-0.5 text-[10px] font-bold text-white">
+                    {unseenOrders}
+                  </span>
+                )}
               </a>
             );
           })}
