@@ -24,6 +24,7 @@ type RecentSale = {
   id: string;
   total: number;
   payment_method: string | null;
+  payment_split: { method: string; amount: number }[] | null;
   created_at: string;
 };
 
@@ -38,6 +39,7 @@ const PAYMENT_LABELS: Record<string, string> = {
   pix: "Pix",
   cartao: "Cartão",
   fiado: "Crediário",
+  dividido: "Dividido",
 };
 
 type PaymentMethod = "dinheiro" | "pix" | "cartao" | "fiado";
@@ -54,6 +56,7 @@ const SHORTCUTS: [string, string][] = [
   ["F7", "Finalizar venda"],
   ["F8", "Cancelar venda / limpar carrinho"],
   ["F9", "Buscar cliente do crediário"],
+  ["F10", "Dividir pagamento (ligar/desligar)"],
 ];
 
 function formatCurrency(value: number) {
@@ -98,7 +101,8 @@ export default function Pdv() {
     total: number;
     troco: number | null;
     items: CartLine[];
-    method: PaymentMethod;
+    method: PaymentMethod | "dividido";
+    split: { method: PaymentMethod; amount: number }[] | null;
   } | null>(null);
 
   const [quickAddOpen, setQuickAddOpen] = useState(false);
@@ -116,6 +120,11 @@ export default function Pdv() {
   const [creditMatches, setCreditMatches] = useState<CreditCustomer[]>([]);
   const [creditCustomerId, setCreditCustomerId] = useState<string | null>(null);
   const creditSearchRef = useRef<HTMLInputElement>(null);
+  const [splitMode, setSplitMode] = useState(false);
+  const [splitPayments, setSplitPayments] = useState<{ method: PaymentMethod; amount: string }[]>([
+    { method: "dinheiro", amount: "" },
+    { method: "fiado", amount: "" },
+  ]);
 
   async function loadProducts() {
     setLoadingProducts(true);
@@ -133,7 +142,7 @@ export default function Pdv() {
     startOfDay.setHours(0, 0, 0, 0);
     const { data } = await getSupabase()
       .from("orders")
-      .select("id, total, payment_method, created_at")
+      .select("id, total, payment_method, payment_split, created_at")
       .eq("store_id", store.id)
       .eq("channel", "balcao")
       .gte("created_at", startOfDay.toISOString())
@@ -202,6 +211,10 @@ export default function Pdv() {
   const total = cart.reduce((sum, line) => sum + line.price * line.quantity, 0);
   const cashReceivedValue = Number(cashReceived.replace(",", ".")) || 0;
   const troco = cashReceivedValue - total;
+  const splitAmounts = splitPayments.map((p) => Number(p.amount.replace(",", ".")) || 0);
+  const splitSum = splitAmounts.reduce((a, b) => a + b, 0);
+  const splitDiff = Math.round((total - splitSum) * 100) / 100;
+  const splitHasFiado = splitPayments.some((p, i) => p.method === "fiado" && splitAmounts[i] > 0);
 
   function focusSearch() {
     searchInputRef.current?.focus();
@@ -273,7 +286,13 @@ export default function Pdv() {
     focusSearch();
   }
 
-  function printReceipt(items: CartLine[], saleTotal: number, method: PaymentMethod, troco: number | null) {
+  function printReceipt(
+    items: CartLine[],
+    saleTotal: number,
+    method: PaymentMethod | "dividido",
+    troco: number | null,
+    split: { method: PaymentMethod; amount: number }[] | null,
+  ) {
     const win = window.open("", "_blank", "width=380,height=500");
     if (!win) return;
     const itemsHtml = items
@@ -282,6 +301,9 @@ export default function Pdv() {
           `<tr><td>${line.quantity}x ${line.name}</td><td style="text-align:right">${formatCurrency(line.price * line.quantity)}</td></tr>`,
       )
       .join("");
+    const paymentHtml = split
+      ? split.map((p) => `<p>${PAYMENT_LABELS[p.method]}: ${formatCurrency(p.amount)}</p>`).join("")
+      : `<p>Pagamento: ${PAYMENT_LABELS[method]}</p>`;
     win.document.write(`
       <html><head><title>Recibo</title>
       <style>
@@ -293,7 +315,7 @@ export default function Pdv() {
       <p>${new Date().toLocaleString("pt-BR")}</p>
       <table>${itemsHtml}</table>
       <p class="total">Total: ${formatCurrency(saleTotal)}</p>
-      <p>Pagamento: ${PAYMENT_LABELS[method]}</p>
+      ${paymentHtml}
       ${troco !== null ? `<p>Troco: ${formatCurrency(Math.max(0, troco))}</p>` : ""}
       <script>window.print();</script>
       </body></html>
@@ -356,29 +378,80 @@ export default function Pdv() {
   }
 
   function focusCreditSearch() {
+    if (splitMode) {
+      setTimeout(() => creditSearchRef.current?.focus(), 0);
+      return;
+    }
     if (paymentMethod !== "fiado") selectPayment("fiado");
     setTimeout(() => creditSearchRef.current?.focus(), 0);
   }
 
+  function toggleSplitMode() {
+    setSplitMode((prev) => {
+      const next = !prev;
+      setPaymentMethod(null);
+      setCashReceived("");
+      setCreditSearch("");
+      setCreditMatches([]);
+      setCreditCustomerId(null);
+      setCustomerName("");
+      setCustomerPhone("");
+      if (next) {
+        setSplitPayments([
+          { method: "dinheiro", amount: "" },
+          { method: "fiado", amount: "" },
+        ]);
+      }
+      return next;
+    });
+  }
+
+  function updateSplitRow(index: number, patch: Partial<{ method: PaymentMethod; amount: string }>) {
+    setSplitPayments((prev) => prev.map((p, i) => (i === index ? { ...p, ...patch } : p)));
+  }
+
+  function addSplitRow() {
+    setSplitPayments((prev) => (prev.length >= 4 ? prev : [...prev, { method: "cartao", amount: "" }]));
+  }
+
+  function removeSplitRow(index: number) {
+    setSplitPayments((prev) => (prev.length <= 2 ? prev : prev.filter((_, i) => i !== index)));
+  }
+
   const canFinalize =
     cart.length > 0 &&
-    paymentMethod !== null &&
     !saving &&
-    !(paymentMethod === "dinheiro" && cashReceivedValue < total) &&
-    !(paymentMethod === "fiado" && !customerPhone.trim());
+    (splitMode
+      ? splitAmounts.every((a) => a > 0) &&
+        Math.abs(splitDiff) < 0.005 &&
+        (!splitHasFiado || customerPhone.trim().length > 0)
+      : paymentMethod !== null &&
+        !(paymentMethod === "dinheiro" && cashReceivedValue < total) &&
+        !(paymentMethod === "fiado" && !customerPhone.trim()));
 
   async function handleFinalize() {
-    if (!canFinalize || !paymentMethod) return;
+    if (!canFinalize) return;
     setSaving(true);
     setError(null);
 
-    const { data, error: rpcError } = await getSupabase().rpc("pdv_sale", {
-      p_store_id: store.id,
-      p_items: cart.map((l) => ({ product_id: l.productId, quantity: l.quantity })),
-      p_payment_method: paymentMethod,
-      p_customer_name: customerName.trim() || "Cliente balcão",
-      p_customer_phone: customerPhone.trim() || null,
-    });
+    const payload: Record<string, unknown> = splitMode
+      ? {
+          p_store_id: store.id,
+          p_items: cart.map((l) => ({ product_id: l.productId, quantity: l.quantity })),
+          p_payment_method: "dividido",
+          p_customer_name: customerName.trim() || "Cliente balcão",
+          p_customer_phone: customerPhone.trim() || null,
+          p_payments: splitPayments.map((p, i) => ({ method: p.method, amount: splitAmounts[i] })),
+        }
+      : {
+          p_store_id: store.id,
+          p_items: cart.map((l) => ({ product_id: l.productId, quantity: l.quantity })),
+          p_payment_method: paymentMethod,
+          p_customer_name: customerName.trim() || "Cliente balcão",
+          p_customer_phone: customerPhone.trim() || null,
+        };
+
+    const { data, error: rpcError } = await getSupabase().rpc("pdv_sale", payload);
     setSaving(false);
 
     if (rpcError || !data || data.length === 0) {
@@ -389,9 +462,10 @@ export default function Pdv() {
     const sale = data[0];
     setSuccess({
       total: sale.total,
-      troco: paymentMethod === "dinheiro" ? cashReceivedValue - sale.total : null,
+      troco: !splitMode && paymentMethod === "dinheiro" ? cashReceivedValue - sale.total : null,
       items: cart,
-      method: paymentMethod,
+      method: splitMode ? "dividido" : (paymentMethod as PaymentMethod),
+      split: splitMode ? splitPayments.map((p, i) => ({ method: p.method, amount: splitAmounts[i] })) : null,
     });
     setLastSale(cart);
     setCart([]);
@@ -402,6 +476,12 @@ export default function Pdv() {
     setCreditSearch("");
     setCreditMatches([]);
     setCreditCustomerId(null);
+    if (splitMode) {
+      setSplitPayments([
+        { method: "dinheiro", amount: "" },
+        { method: "fiado", amount: "" },
+      ]);
+    }
     loadProducts();
     loadRecentSales();
     focusSearch();
@@ -447,6 +527,10 @@ export default function Pdv() {
           e.preventDefault();
           focusCreditSearch();
           break;
+        case "F10":
+          e.preventDefault();
+          toggleSplitMode();
+          break;
         default:
           break;
       }
@@ -454,7 +538,7 @@ export default function Pdv() {
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cart, paymentMethod, cashReceivedValue, customerPhone, saving, total, creditCustomerId]);
+  }, [cart, paymentMethod, cashReceivedValue, customerPhone, saving, total, creditCustomerId, splitMode]);
 
   return (
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_380px]">
@@ -680,7 +764,13 @@ export default function Pdv() {
                   <span>
                     {new Date(sale.created_at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
                     {" · "}
-                    {sale.payment_method ? PAYMENT_LABELS[sale.payment_method] ?? sale.payment_method : "—"}
+                    {sale.payment_method === "dividido" && sale.payment_split
+                      ? sale.payment_split
+                          .map((p) => `${PAYMENT_LABELS[p.method] ?? p.method} ${formatCurrency(p.amount)}`)
+                          .join(" + ")
+                      : sale.payment_method
+                        ? PAYMENT_LABELS[sale.payment_method] ?? sale.payment_method
+                        : "—"}
                   </span>
                   <span className="font-medium text-slate-900 dark:text-slate-50">
                     {formatCurrency(sale.total)}
@@ -700,7 +790,7 @@ export default function Pdv() {
               <p>Troco: {formatCurrency(Math.max(0, success.troco))}</p>
             )}
             <button
-              onClick={() => printReceipt(success.items, success.total, success.method, success.troco)}
+              onClick={() => printReceipt(success.items, success.total, success.method, success.troco, success.split)}
               className="mt-2 text-sm font-medium underline"
             >
               🖨️ Imprimir cupom
@@ -712,29 +802,97 @@ export default function Pdv() {
         <p className="text-3xl font-bold text-slate-900 dark:text-slate-50">{formatCurrency(total)}</p>
 
         <div className="mt-4">
-          <p className="mb-2 text-sm font-medium text-slate-700 dark:text-slate-300">Forma de pagamento</p>
-          <div className="grid grid-cols-2 gap-2">
-            {(
-              [
-                ["dinheiro", "Dinheiro"],
-                ["pix", "Pix"],
-                ["cartao", "Cartão"],
-                ["fiado", "Crediário"],
-              ] as [PaymentMethod, string][]
-            ).map(([value, label]) => (
-              <button
-                key={value}
-                onClick={() => selectPayment(value)}
-                className={`rounded-lg border px-3 py-2 text-sm font-medium ${
-                  paymentMethod === value
-                    ? "border-blue-900 bg-blue-900 text-amber-300 dark:border-blue-700 dark:bg-blue-800"
-                    : "border-slate-300 text-slate-700 dark:border-slate-700 dark:text-slate-300"
+          <div className="mb-2 flex items-center justify-between">
+            <p className="text-sm font-medium text-slate-700 dark:text-slate-300">Forma de pagamento</p>
+            <button
+              onClick={toggleSplitMode}
+              className={`text-xs font-medium underline ${
+                splitMode ? "text-blue-900 dark:text-blue-400" : "text-slate-500 dark:text-slate-400"
+              }`}
+            >
+              {splitMode ? "✕ Cancelar divisão" : "➗ Dividir pagamento (F10)"}
+            </button>
+          </div>
+
+          {!splitMode ? (
+            <div className="grid grid-cols-2 gap-2">
+              {(
+                [
+                  ["dinheiro", "Dinheiro"],
+                  ["pix", "Pix"],
+                  ["cartao", "Cartão"],
+                  ["fiado", "Crediário"],
+                ] as [PaymentMethod, string][]
+              ).map(([value, label]) => (
+                <button
+                  key={value}
+                  onClick={() => selectPayment(value)}
+                  className={`rounded-lg border px-3 py-2 text-sm font-medium ${
+                    paymentMethod === value
+                      ? "border-blue-900 bg-blue-900 text-amber-300 dark:border-blue-700 dark:bg-blue-800"
+                      : "border-slate-300 text-slate-700 dark:border-slate-700 dark:text-slate-300"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {splitPayments.map((row, i) => (
+                <div key={i} className="flex items-center gap-2">
+                  <select
+                    value={row.method}
+                    onChange={(e) => updateSplitRow(i, { method: e.target.value as PaymentMethod })}
+                    className="rounded-lg border border-slate-300 bg-white px-2 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                  >
+                    <option value="dinheiro">Dinheiro</option>
+                    <option value="pix">Pix</option>
+                    <option value="cartao">Cartão</option>
+                    <option value="fiado">Crediário</option>
+                  </select>
+                  <input
+                    value={row.amount}
+                    onChange={(e) => updateSplitRow(i, { amount: e.target.value })}
+                    placeholder="Valor (R$)"
+                    inputMode="decimal"
+                    className="flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                  />
+                  {splitPayments.length > 2 && (
+                    <button
+                      onClick={() => removeSplitRow(i)}
+                      className="text-sm text-red-600 dark:text-red-400"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+              ))}
+              {splitPayments.length < 4 && (
+                <button
+                  onClick={addSplitRow}
+                  className="text-xs font-medium text-blue-900 underline dark:text-blue-400"
+                >
+                  + Adicionar forma
+                </button>
+              )}
+              <p
+                className={`text-sm font-semibold ${
+                  Math.abs(splitDiff) < 0.005
+                    ? "text-green-600"
+                    : splitDiff > 0
+                      ? "text-amber-600 dark:text-amber-400"
+                      : "text-red-600"
                 }`}
               >
-                {label}
-              </button>
-            ))}
-          </div>
+                {Math.abs(splitDiff) < 0.005
+                  ? "✓ Bate certinho com o total"
+                  : splitDiff > 0
+                    ? `Falta ${formatCurrency(splitDiff)}`
+                    : `Passou ${formatCurrency(-splitDiff)}`}
+              </p>
+            </div>
+          )}
         </div>
 
         {paymentMethod === "dinheiro" && (
@@ -772,7 +930,7 @@ export default function Pdv() {
           </div>
         )}
 
-        {paymentMethod === "fiado" && (
+        {(paymentMethod === "fiado" || (splitMode && splitHasFiado)) && (
           <div className="mt-4 space-y-2">
             <div className="relative">
               <input
