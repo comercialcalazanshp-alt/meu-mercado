@@ -30,7 +30,23 @@ type Order = {
   card_last_digits: string | null;
   seen_at: string | null;
   internal_note: string | null;
+  cancel_reason: string | null;
+  refund_resolved: boolean;
 };
+
+type Product = {
+  id: string;
+  name: string;
+  price: number;
+};
+
+const CANCEL_REASONS = [
+  "Sem estoque",
+  "Cliente desistiu",
+  "Endereço errado",
+  "Demora demais",
+  "Outro motivo",
+];
 
 const STATUS_OPTIONS = ["pendente", "confirmado", "entregando", "entregue", "cancelado"];
 
@@ -121,7 +137,15 @@ export default function Pedidos() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editItems, setEditItems] = useState<OrderItem[]>([]);
   const [noteDrafts, setNoteDrafts] = useState<Record<string, string>>({});
+  const [products, setProducts] = useState<Product[]>([]);
+  const [addProductId, setAddProductId] = useState<Record<string, string>>({});
+  const [highValueThreshold, setHighValueThreshold] = useState(150);
   const [, forceTick] = useState(0);
+
+  useEffect(() => {
+    const saved = localStorage.getItem("pedidos-valor-alto");
+    if (saved) setHighValueThreshold(Number(saved));
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -130,7 +154,7 @@ export default function Pedidos() {
       const { data } = await getSupabase()
         .from("orders")
         .select(
-          "id, customer_name, customer_phone, items, total, status, created_at, coupon_code, discount_amount, neighborhood_name, delivery_fee, channel, payment_method, pix_paid_at, card_paid_at, card_last_digits, seen_at, internal_note",
+          "id, customer_name, customer_phone, items, total, status, created_at, coupon_code, discount_amount, neighborhood_name, delivery_fee, channel, payment_method, pix_paid_at, card_paid_at, card_last_digits, seen_at, internal_note, cancel_reason, refund_resolved",
         )
         .eq("store_id", store.id)
         .order("created_at", { ascending: false });
@@ -141,6 +165,16 @@ export default function Pedidos() {
     }
 
     load();
+
+    getSupabase()
+      .from("products")
+      .select("id, name, price")
+      .eq("store_id", store.id)
+      .order("name")
+      .then(({ data }) => {
+        if (active) setProducts(data ?? []);
+      });
+
     return () => {
       active = false;
     };
@@ -173,12 +207,92 @@ export default function Pedidos() {
   }
 
   async function handleStatusChange(order: Order, status: string) {
+    if (status === "cancelado") {
+      const reason = window.prompt(
+        `Por que está cancelando o pedido de ${order.customer_name}?\n\n${CANCEL_REASONS.map((r, i) => `${i + 1}. ${r}`).join("\n")}\n\nDigite o número ou escreva o motivo:`,
+      );
+      if (reason === null) return;
+      const picked = CANCEL_REASONS[Number(reason) - 1] ?? reason.trim();
+      setOrders((prev) =>
+        prev.map((o) => (o.id === order.id ? { ...o, status, cancel_reason: picked || null } : o)),
+      );
+      await getSupabase()
+        .from("orders")
+        .update({ status, cancel_reason: picked || null })
+        .eq("id", order.id);
+      return;
+    }
     await updateStatus(order.id, status);
     avisarWhatsapp(order, status);
   }
 
+  async function markRefundResolved(order: Order) {
+    setOrders((prev) => prev.map((o) => (o.id === order.id ? { ...o, refund_resolved: true } : o)));
+    await getSupabase().from("orders").update({ refund_resolved: true }).eq("id", order.id);
+  }
+
   function copySummary(order: Order) {
     navigator.clipboard.writeText(orderSummaryText(order));
+  }
+
+  function printLabel(order: Order) {
+    const win = window.open("", "_blank", "width=380,height=500");
+    if (!win) return;
+    const itemsHtml = order.items
+      .map(
+        (item) =>
+          `<tr><td>${item.quantity}x ${item.name}</td><td style="text-align:right">${formatCurrency(item.line_total ?? item.price * item.quantity)}</td></tr>`,
+      )
+      .join("");
+    win.document.write(`
+      <html><head><title>Etiqueta - ${order.customer_name}</title>
+      <style>
+        body{font-family:sans-serif;padding:16px;font-size:14px;}
+        h2{margin:0 0 4px;} table{width:100%;border-collapse:collapse;margin-top:8px;}
+        td{padding:2px 0;border-top:1px solid #ddd;} .total{font-weight:bold;text-align:right;margin-top:8px;}
+      </style></head><body>
+      <h2>${order.customer_name}</h2>
+      <p>${order.customer_phone}</p>
+      <p>${order.neighborhood_name ? `Entrega: ${order.neighborhood_name}` : "Retirar na loja"}</p>
+      <table>${itemsHtml}</table>
+      <p class="total">Total: ${formatCurrency(order.total)}</p>
+      <script>window.print();</script>
+      </body></html>
+    `);
+    win.document.close();
+  }
+
+  function exportCsv(rows: Order[]) {
+    const header = ["Data", "Cliente", "Telefone", "Itens", "Total", "Status", "Pagamento", "Canal"];
+    const lines = rows.map((o) => {
+      const items = o.items.map((i) => `${i.quantity}x ${i.name}`).join("; ");
+      const pay = o.payment_method ?? "combinar";
+      return [
+        new Date(o.created_at).toLocaleString("pt-BR"),
+        o.customer_name,
+        o.customer_phone,
+        items,
+        o.total.toFixed(2),
+        STATUS_LABELS[o.status] ?? o.status,
+        pay,
+        CHANNEL_LABELS[o.channel] ?? o.channel,
+      ]
+        .map((v) => `"${String(v).replace(/"/g, '""')}"`)
+        .join(",");
+    });
+    const csv = [header.join(","), ...lines].join("\n");
+    const blob = new Blob([`﻿${csv}`], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `pedidos-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function updateThreshold(value: number) {
+    setHighValueThreshold(value);
+    localStorage.setItem("pedidos-valor-alto", String(value));
   }
 
   function startEdit(order: Order) {
@@ -192,6 +306,20 @@ export default function Pedidos() {
 
   function removeEditItem(index: number) {
     setEditItems((prev) => prev.filter((_, i) => i !== index));
+  }
+
+  function addEditItem(orderId: string) {
+    const productId = addProductId[orderId];
+    const product = products.find((p) => p.id === productId);
+    if (!product) return;
+    setEditItems((prev) => {
+      const existing = prev.find((i) => i.name === product.name);
+      if (existing) {
+        return prev.map((i) => (i.name === product.name ? { ...i, quantity: i.quantity + 1 } : i));
+      }
+      return [...prev, { name: product.name, price: product.price, quantity: 1 }];
+    });
+    setAddProductId((prev) => ({ ...prev, [orderId]: "" }));
   }
 
   async function saveEdit(order: Order) {
@@ -272,6 +400,19 @@ export default function Pedidos() {
     return counts;
   }, [orders]);
 
+  const firstOrderIdByPhone = useMemo(() => {
+    const map = new Map<string, string>();
+    const earliest = new Map<string, string>();
+    for (const o of orders) {
+      const current = earliest.get(o.customer_phone);
+      if (!current || o.created_at < current) {
+        earliest.set(o.customer_phone, o.created_at);
+        map.set(o.customer_phone, o.id);
+      }
+    }
+    return map;
+  }, [orders]);
+
   function printToday() {
     window.print();
   }
@@ -280,12 +421,20 @@ export default function Pedidos() {
     <div>
       <div className="flex flex-wrap items-center justify-between gap-3 print:hidden">
         <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-50">Pedidos</h1>
-        <button
-          onClick={printToday}
-          className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-600 dark:border-slate-700 dark:text-slate-300"
-        >
-          🖨️ Imprimir lista de hoje
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={() => exportCsv(sorted)}
+            className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-600 dark:border-slate-700 dark:text-slate-300"
+          >
+            📊 Exportar planilha
+          </button>
+          <button
+            onClick={printToday}
+            className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-600 dark:border-slate-700 dark:text-slate-300"
+          >
+            🖨️ Imprimir lista de hoje
+          </button>
+        </div>
       </div>
 
       <div className="mt-3 flex flex-wrap gap-3 rounded-xl border border-slate-200 bg-white p-4 text-sm dark:border-slate-800 dark:bg-slate-900 print:hidden">
@@ -335,6 +484,15 @@ export default function Pedidos() {
           <option value="balcao">Balcão</option>
           <option value="assinatura">Assinatura</option>
         </select>
+        <label className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
+          💰 Valor alto a partir de
+          <input
+            type="number"
+            value={highValueThreshold}
+            onChange={(e) => updateThreshold(Number(e.target.value))}
+            className="w-20 rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+          />
+        </label>
       </div>
 
       {selectedIds.size > 0 && (
@@ -402,6 +560,16 @@ export default function Pedidos() {
                             {order.channel === "balcao" && (
                               <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-300">
                                 Balcão
+                              </span>
+                            )}
+                            {firstOrderIdByPhone.get(order.customer_phone) === order.id && (
+                              <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-medium text-blue-700 dark:bg-blue-900/40 dark:text-blue-400">
+                                🆕 Primeira compra
+                              </span>
+                            )}
+                            {order.total >= highValueThreshold && (
+                              <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700 dark:bg-amber-900/40 dark:text-amber-400">
+                                💰 Valor alto
                               </span>
                             )}
                           </div>
@@ -476,6 +644,26 @@ export default function Pedidos() {
                             </button>
                           </div>
                         ))}
+                        <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                          <select
+                            value={addProductId[order.id] ?? ""}
+                            onChange={(e) => setAddProductId((prev) => ({ ...prev, [order.id]: e.target.value }))}
+                            className="flex-1 rounded border border-slate-300 px-2 py-1 text-xs dark:border-slate-700 dark:bg-slate-900"
+                          >
+                            <option value="">+ Adicionar produto…</option>
+                            {products.map((p) => (
+                              <option key={p.id} value={p.id}>
+                                {p.name} — {formatCurrency(p.price)}
+                              </option>
+                            ))}
+                          </select>
+                          <button
+                            onClick={() => addEditItem(order.id)}
+                            className="rounded border border-slate-300 px-2 py-1 text-xs text-slate-600 dark:border-slate-700 dark:text-slate-300"
+                          >
+                            Adicionar
+                          </button>
+                        </div>
                         <div className="flex gap-2">
                           <button
                             onClick={(e) => {
@@ -513,13 +701,38 @@ export default function Pedidos() {
                       Total: {formatCurrency(order.total)}
                     </p>
 
+                    {order.status === "cancelado" && order.cancel_reason && (
+                      <p className="mt-2 text-right text-xs text-slate-500 dark:text-slate-400">
+                        Motivo: {order.cancel_reason}
+                      </p>
+                    )}
+
                     {badge && (
-                      <div className="mt-2">
+                      <div className="mt-2 flex flex-wrap justify-end gap-2">
                         <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${badge.className}`}>
                           {badge.text}
                         </span>
                       </div>
                     )}
+
+                    {order.status === "cancelado" &&
+                      (order.pix_paid_at || order.card_paid_at) &&
+                      !order.refund_resolved && (
+                        <div className="mt-2 flex items-center justify-end gap-2">
+                          <span className="rounded-full bg-red-100 px-2.5 py-1 text-xs font-medium text-red-700 dark:bg-red-900/40 dark:text-red-400">
+                            💸 Reembolso pendente
+                          </span>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              markRefundResolved(order);
+                            }}
+                            className="text-xs text-slate-500 underline dark:text-slate-400"
+                          >
+                            marcar devolvido
+                          </button>
+                        </div>
+                      )}
 
                     <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-3 print:hidden dark:border-slate-800">
                       {!isEditing && (
@@ -541,6 +754,24 @@ export default function Pedidos() {
                         className="text-xs text-slate-500 underline dark:text-slate-400"
                       >
                         Copiar resumo
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          printLabel(order);
+                        }}
+                        className="text-xs text-slate-500 underline dark:text-slate-400"
+                      >
+                        🖨️ Etiqueta
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSearch(order.customer_phone);
+                        }}
+                        className="text-xs text-slate-500 underline dark:text-slate-400"
+                      >
+                        Ver histórico desse cliente
                       </button>
                     </div>
 
