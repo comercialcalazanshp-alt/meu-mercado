@@ -221,6 +221,12 @@ export default function StorefrontClient({
   const [neighborhoodId, setNeighborhoodId] = useState<string>("retirada");
   const [confirmedDeliveryFee, setConfirmedDeliveryFee] = useState(0);
   const [confirmedOrderId, setConfirmedOrderId] = useState<string | null>(null);
+  const [paymentMethod, setPaymentMethod] = useState<"combinar" | "pix">("combinar");
+  const [pixQrCodeText, setPixQrCodeText] = useState<string | null>(null);
+  const [pixQrCodeImage, setPixQrCodeImage] = useState<string | null>(null);
+  const [pixLoading, setPixLoading] = useState(false);
+  const [pixError, setPixError] = useState<string | null>(null);
+  const [pixPaid, setPixPaid] = useState(false);
   const [scratchPhone, setScratchPhone] = useState("");
   const [scratchResult, setScratchResult] = useState<{
     discount_percent: number;
@@ -515,6 +521,22 @@ export default function StorefrontClient({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view]);
 
+  useEffect(() => {
+    if (!confirmedOrderId || !pixQrCodeText || pixPaid) return;
+    const interval = setInterval(async () => {
+      const { data } = await getSupabase()
+        .from("orders")
+        .select("pix_paid_at")
+        .eq("id", confirmedOrderId)
+        .maybeSingle();
+      if (data?.pix_paid_at) {
+        setPixPaid(true);
+        clearInterval(interval);
+      }
+    }, 4000);
+    return () => clearInterval(interval);
+  }, [confirmedOrderId, pixQrCodeText, pixPaid]);
+
   async function handleSubmitReview(productId: string) {
     if (!reviewerName.trim() || submittingReview) return;
     setSubmittingReview(true);
@@ -625,8 +647,36 @@ export default function StorefrontClient({
     setConfirmedReferralBonus(data?.[0]?.referral_bonus_earned ?? 0);
     setConfirmedDeliveryFee(data?.[0]?.delivery_fee ?? 0);
     setConfirmedScratchDiscount(data?.[0]?.scratch_discount ?? 0);
-    setConfirmedOrderId(data?.[0]?.order_id ?? null);
+    const newOrderId = data?.[0]?.order_id ?? null;
+    setConfirmedOrderId(newOrderId);
     setView("confirmado");
+
+    if (paymentMethod === "pix" && newOrderId) {
+      setPixLoading(true);
+      setPixError(null);
+      try {
+        const res = await fetch("/api/pagbank/create-pix", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ order_id: newOrderId }),
+        });
+        const pixData = await res.json();
+        if (!res.ok) {
+          setPixError(
+            "Não deu pra gerar o Pix agora — combine o pagamento direto com a loja pelo WhatsApp.",
+          );
+        } else {
+          setPixQrCodeText(pixData.qr_code_text ?? null);
+          setPixQrCodeImage(pixData.qr_code_image ?? null);
+        }
+      } catch {
+        setPixError(
+          "Não deu pra gerar o Pix agora — combine o pagamento direto com a loja pelo WhatsApp.",
+        );
+      } finally {
+        setPixLoading(false);
+      }
+    }
 
     const sessionId = sessionStorage.getItem(visitStorageKey);
     if (sessionId) {
@@ -734,6 +784,43 @@ export default function StorefrontClient({
           >
             Ver recibo digital
           </a>
+        )}
+
+        {paymentMethod === "pix" && (
+          <div className="mt-2 w-full max-w-xs rounded-xl border border-slate-200 bg-white p-4 text-center dark:border-slate-800 dark:bg-slate-900">
+            {pixLoading && (
+              <p className="text-sm text-slate-500 dark:text-slate-400">Gerando o QR code do Pix…</p>
+            )}
+            {!pixLoading && pixError && (
+              <p className="text-sm text-amber-700 dark:text-amber-400">{pixError}</p>
+            )}
+            {!pixLoading && !pixError && pixPaid && (
+              <p className="text-sm font-semibold text-green-700 dark:text-green-400">✓ Pagamento confirmado!</p>
+            )}
+            {!pixLoading && !pixError && !pixPaid && pixQrCodeText && (
+              <>
+                <p className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                  Pague com Pix pra confirmar mais rápido
+                </p>
+                {pixQrCodeImage && (
+                  <img
+                    src={pixQrCodeImage}
+                    alt="QR code Pix"
+                    className="mx-auto mt-2 h-40 w-40"
+                  />
+                )}
+                <button
+                  onClick={() => navigator.clipboard.writeText(pixQrCodeText)}
+                  className="mt-2 w-full rounded-lg bg-[var(--brand-bg)] px-3 py-2 text-sm font-semibold text-[var(--brand-text)]"
+                >
+                  Copiar código Pix
+                </button>
+                <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                  Aguardando pagamento… atualiza sozinho assim que cair.
+                </p>
+              </>
+            )}
+          </div>
         )}
 
         <div className="mt-4 w-full max-w-xs rounded-xl border border-slate-200 bg-white p-4 text-left dark:border-slate-800 dark:bg-slate-900">
@@ -980,6 +1067,32 @@ export default function StorefrontClient({
                 </div>
               </div>
             </details>
+
+            <div>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
+                Forma de pagamento
+              </label>
+              <div className="mt-1 space-y-1.5">
+                <label className="flex items-center gap-2 rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 dark:border-slate-700 dark:text-slate-300">
+                  <input
+                    type="radio"
+                    name="paymentMethod"
+                    checked={paymentMethod === "combinar"}
+                    onChange={() => setPaymentMethod("combinar")}
+                  />
+                  Combinar direto com a loja (dinheiro, cartão na entrega, etc.)
+                </label>
+                <label className="flex items-center gap-2 rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 dark:border-slate-700 dark:text-slate-300">
+                  <input
+                    type="radio"
+                    name="paymentMethod"
+                    checked={paymentMethod === "pix"}
+                    onChange={() => setPaymentMethod("pix")}
+                  />
+                  Pix — pagar agora e confirmar na hora
+                </label>
+              </div>
+            </div>
 
             {!storeStatus.open && storeStatus.message && (
               <p className="text-sm font-medium text-amber-700 dark:text-amber-400">
