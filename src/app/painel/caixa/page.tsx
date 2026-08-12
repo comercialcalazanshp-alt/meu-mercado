@@ -15,6 +15,15 @@ type CashSession = {
   cash_difference: number | null;
   revenue_total: number | null;
   revenue_by_payment: Record<string, number> | null;
+  opened_by: string | null;
+  closed_by: string | null;
+};
+
+type CashSummary = {
+  orders_count: number;
+  revenue_total: number;
+  expected_cash: number;
+  revenue_by_payment: Record<string, number>;
 };
 
 type CashMovement = {
@@ -29,7 +38,7 @@ const PAYMENT_LABEL: Record<string, string> = {
   dinheiro: "Dinheiro",
   pix: "Pix",
   cartao: "Cartão",
-  fiado: "Fiado",
+  fiado: "Crediário",
   "site/outro": "Site / outro",
 };
 
@@ -48,6 +57,7 @@ export default function Caixa() {
   const [movements, setMovements] = useState<CashMovement[]>([]);
   const [history, setHistory] = useState<CashSession[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [summary, setSummary] = useState<CashSummary | null>(null);
 
   const [openingAmount, setOpeningAmount] = useState("");
   const [saving, setSaving] = useState(false);
@@ -60,6 +70,7 @@ export default function Caixa() {
   const [closing, setClosing] = useState(false);
   const [declaredAmount, setDeclaredAmount] = useState("");
   const [closeResult, setCloseResult] = useState<string | null>(null);
+  const [lastClosedSession, setLastClosedSession] = useState<CashSession | null>(null);
 
   async function loadAll() {
     setLoading(true);
@@ -69,7 +80,7 @@ export default function Caixa() {
       supabase
         .from("cash_sessions")
         .select(
-          "id, opening_amount, status, opened_at, closed_at, closing_amount_declared, expected_cash, cash_difference, revenue_total, revenue_by_payment",
+          "id, opening_amount, status, opened_at, closed_at, closing_amount_declared, expected_cash, cash_difference, revenue_total, revenue_by_payment, opened_by, closed_by",
         )
         .eq("store_id", store.id)
         .eq("status", "aberto")
@@ -77,7 +88,7 @@ export default function Caixa() {
       supabase
         .from("cash_sessions")
         .select(
-          "id, opening_amount, status, opened_at, closed_at, closing_amount_declared, expected_cash, cash_difference, revenue_total, revenue_by_payment",
+          "id, opening_amount, status, opened_at, closed_at, closing_amount_declared, expected_cash, cash_difference, revenue_total, revenue_by_payment, opened_by, closed_by",
         )
         .eq("store_id", store.id)
         .eq("status", "fechado")
@@ -95,14 +106,32 @@ export default function Caixa() {
         .eq("session_id", openRows.id)
         .order("created_at", { ascending: false });
       setMovements(movementRows ?? []);
+      loadSummary(openRows.id);
     } else {
       setMovements([]);
+      setSummary(null);
     }
     setLoading(false);
   }
 
+  async function loadSummary(sessionId: string) {
+    const { data } = await getSupabase().rpc("cash_session_summary", { p_session_id: sessionId });
+    setSummary(data?.[0] ?? null);
+  }
+
   useEffect(() => {
     loadAll();
+    const channel = getSupabase()
+      .channel(`caixa-orders-${store.id}`)
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "orders", filter: `store_id=eq.${store.id}` },
+        () => loadAll(),
+      )
+      .subscribe();
+    return () => {
+      getSupabase().removeChannel(channel);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [store.id]);
 
@@ -153,6 +182,51 @@ export default function Caixa() {
     loadAll();
   }
 
+  async function deleteMovement(id: string) {
+    if (!window.confirm("Apagar esse lançamento? Isso muda o valor esperado no fechamento.")) return;
+    await getSupabase().from("cash_movements").delete().eq("id", id);
+    loadAll();
+  }
+
+  function printClosingReport(session: {
+    opened_at: string;
+    closed_at: string | null;
+    opening_amount: number;
+    expected_cash: number | null;
+    closing_amount_declared: number | null;
+    cash_difference: number | null;
+    revenue_total: number | null;
+    revenue_by_payment: Record<string, number> | null;
+    opened_by: string | null;
+    closed_by: string | null;
+  }) {
+    const win = window.open("", "_blank", "width=380,height=520");
+    if (!win) return;
+    const paymentHtml = session.revenue_by_payment
+      ? Object.entries(session.revenue_by_payment)
+          .map(([method, total]) => `<p>${PAYMENT_LABEL[method] ?? method}: ${formatCurrency(total)}</p>`)
+          .join("")
+      : "";
+    win.document.write(`
+      <html><head><title>Fechamento de caixa</title>
+      <style>body{font-family:sans-serif;padding:16px;font-size:14px;} .total{font-weight:bold;margin-top:8px;}</style>
+      </head><body>
+      <h2>${store.name}</h2>
+      <p>Fechamento de caixa</p>
+      <p>Aberto: ${formatDateTime(session.opened_at)}${session.opened_by ? ` por ${session.opened_by}` : ""}</p>
+      <p>Fechado: ${session.closed_at ? formatDateTime(session.closed_at) : "—"}${session.closed_by ? ` por ${session.closed_by}` : ""}</p>
+      <p>Valor inicial: ${formatCurrency(session.opening_amount)}</p>
+      <p>Faturamento total: ${formatCurrency(session.revenue_total ?? 0)}</p>
+      ${paymentHtml}
+      <p>Esperado em dinheiro: ${formatCurrency(session.expected_cash ?? 0)}</p>
+      <p>Contado: ${formatCurrency(session.closing_amount_declared ?? 0)}</p>
+      <p class="total">Diferença: ${formatCurrency(session.cash_difference ?? 0)}</p>
+      <script>window.print();</script>
+      </body></html>
+    `);
+    win.document.close();
+  }
+
   async function handleClose(e: FormEvent) {
     e.preventDefault();
     setError(null);
@@ -172,7 +246,8 @@ export default function Caixa() {
       setError("Não deu pra fechar o caixa: " + rpcError.message);
       return;
     }
-    const diff = data?.[0]?.cash_difference ?? 0;
+    const result = data?.[0];
+    const diff = result?.cash_difference ?? 0;
     if (Math.abs(diff) < 0.5) {
       setCloseResult("Caixa fechado. Bateu certinho com o esperado.");
     } else if (diff > 0) {
@@ -180,6 +255,16 @@ export default function Caixa() {
     } else {
       setCloseResult(`Caixa fechado. Faltou ${formatCurrency(Math.abs(diff))} em relação ao esperado.`);
     }
+    setLastClosedSession({
+      ...openSession,
+      status: "fechado",
+      closed_at: new Date().toISOString(),
+      closing_amount_declared: value,
+      expected_cash: result?.expected_cash ?? null,
+      cash_difference: diff,
+      revenue_total: result?.revenue_total ?? null,
+      revenue_by_payment: summary?.revenue_by_payment ?? null,
+    });
     setDeclaredAmount("");
     loadAll();
   }
@@ -230,7 +315,28 @@ export default function Caixa() {
             <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
               Aberto em {formatDateTime(openSession.opened_at)} com{" "}
               {formatCurrency(openSession.opening_amount)}
+              {openSession.opened_by ? ` por ${openSession.opened_by}` : ""}
             </p>
+            {summary && (
+              <div className="mt-3 grid grid-cols-3 gap-2 border-t border-green-200 pt-3 dark:border-green-900/50">
+                <div>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">Vendas hoje</p>
+                  <p className="text-lg font-bold text-slate-900 dark:text-slate-50">{summary.orders_count}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">Faturamento</p>
+                  <p className="text-lg font-bold text-slate-900 dark:text-slate-50">
+                    {formatCurrency(summary.revenue_total)}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">Dinheiro esperado agora</p>
+                  <p className="text-lg font-bold text-slate-900 dark:text-slate-50">
+                    {formatCurrency(summary.expected_cash)}
+                  </p>
+                </div>
+              </div>
+            )}
           </div>
 
           <form
@@ -273,15 +379,24 @@ export default function Caixa() {
             {movements.length > 0 && (
               <ul className="mt-3 space-y-1 border-t border-slate-100 pt-3 text-sm dark:border-slate-800">
                 {movements.map((m) => (
-                  <li key={m.id} className="flex justify-between text-slate-600 dark:text-slate-400">
+                  <li key={m.id} className="flex items-center justify-between gap-2 text-slate-600 dark:text-slate-400">
                     <span>
                       {m.type === "sangria" ? "Sangria" : "Reforço"}
                       {m.description ? ` — ${m.description}` : ""} ·{" "}
                       {formatDateTime(m.created_at)}
                     </span>
-                    <span className={m.type === "sangria" ? "text-red-600" : "text-green-600"}>
-                      {m.type === "sangria" ? "−" : "+"}
-                      {formatCurrency(m.amount)}
+                    <span className="flex items-center gap-2">
+                      <span className={m.type === "sangria" ? "text-red-600" : "text-green-600"}>
+                        {m.type === "sangria" ? "−" : "+"}
+                        {formatCurrency(m.amount)}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => deleteMovement(m.id)}
+                        className="text-xs text-red-600 hover:underline dark:text-red-400"
+                      >
+                        Apagar
+                      </button>
                     </span>
                   </li>
                 ))}
@@ -300,6 +415,11 @@ export default function Caixa() {
               Conte o dinheiro de verdade no caixa e informe abaixo — o sistema compara com o
               esperado (valor inicial + vendas em dinheiro do PDV + reforços − sangrias).
             </p>
+            {summary && (
+              <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
+                Valor esperado agora: <strong>{formatCurrency(summary.expected_cash)}</strong>
+              </p>
+            )}
             <div className="mt-3 flex items-center gap-2">
               <input
                 value={declaredAmount}
@@ -316,8 +436,40 @@ export default function Caixa() {
                 {closing ? "Fechando…" : "🔒 Fechar caixa"}
               </button>
             </div>
+            {summary && declaredAmount.trim() !== "" && (() => {
+              const declared = Number(declaredAmount.replace(",", ".")) || 0;
+              const liveDiff = declared - summary.expected_cash;
+              return (
+                <p
+                  className={`mt-1 text-sm font-medium ${
+                    Math.abs(liveDiff) < 0.5
+                      ? "text-green-600"
+                      : liveDiff > 0
+                        ? "text-blue-600"
+                        : "text-red-600"
+                  }`}
+                >
+                  {Math.abs(liveDiff) < 0.5
+                    ? "✓ Bate certinho com o esperado"
+                    : liveDiff > 0
+                      ? `Vai sobrar ${formatCurrency(liveDiff)}`
+                      : `Vai faltar ${formatCurrency(Math.abs(liveDiff))}`}
+                </p>
+              );
+            })()}
             {closeResult && (
-              <p className="mt-2 text-sm text-slate-700 dark:text-slate-300">{closeResult}</p>
+              <div className="mt-2">
+                <p className="text-sm text-slate-700 dark:text-slate-300">{closeResult}</p>
+                {lastClosedSession && (
+                  <button
+                    type="button"
+                    onClick={() => printClosingReport(lastClosedSession)}
+                    className="mt-1 text-sm font-medium text-blue-900 underline dark:text-blue-400"
+                  >
+                    🖨️ Imprimir resumo do fechamento
+                  </button>
+                )}
+              </div>
             )}
           </form>
         </>
@@ -368,6 +520,20 @@ export default function Caixa() {
                     .join(" · ")}
                 </p>
               )}
+              {(s.opened_by || s.closed_by) && (
+                <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
+                  {s.opened_by && `Aberto por ${s.opened_by}`}
+                  {s.opened_by && s.closed_by && " · "}
+                  {s.closed_by && `Fechado por ${s.closed_by}`}
+                </p>
+              )}
+              <button
+                type="button"
+                onClick={() => printClosingReport(s)}
+                className="mt-2 text-xs font-medium text-blue-900 underline dark:text-blue-400"
+              >
+                🖨️ Imprimir resumo
+              </button>
             </div>
           ))}
         </div>
