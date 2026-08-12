@@ -1075,11 +1075,20 @@ export default function Produtos() {
           {(() => {
             const p = Number(price.replace(",", "."));
             const c = Number(costPrice.replace(",", "."));
-            if (!p || !c || Number.isNaN(p) || Number.isNaN(c) || c <= 0) return null;
+            const priceOk = p > 0 && !Number.isNaN(p);
+            const costOk = c > 0 && !Number.isNaN(c);
+            if (!priceOk) return null;
+            if (!costOk) {
+              return (
+                <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
+                  preencha o custo aqui do lado pra ver a margem
+                </p>
+              );
+            }
             const margin = ((p - c) / p) * 100;
             const markup = ((p - c) / c) * 100;
             return (
-              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+              <p className="mt-1 text-xs font-medium text-slate-600 dark:text-slate-300">
                 margem {margin.toFixed(0)}% · markup {markup.toFixed(0)}%
               </p>
             );
