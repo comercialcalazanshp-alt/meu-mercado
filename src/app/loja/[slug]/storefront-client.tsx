@@ -9,6 +9,17 @@ type BeforeInstallPromptEvent = Event & {
   userChoice: Promise<{ outcome: "accepted" | "dismissed" }>;
 };
 
+type PagSeguroSdk = {
+  encryptCard: (params: {
+    publicKey: string;
+    holder: string;
+    number: string;
+    expMonth: string;
+    expYear: string;
+    securityCode: string;
+  }) => { encryptedCard: string | null; hasErrors: boolean; errors?: unknown[] };
+};
+
 type Product = {
   id: string;
   name: string;
@@ -160,6 +171,23 @@ function readableTextColor(hex: string) {
   return luminance > 0.45 ? "#1e293b" : "#fbbf24";
 }
 
+let pagSeguroSdkPromise: Promise<void> | null = null;
+function loadPagSeguroSdk(): Promise<void> {
+  if (typeof window !== "undefined" && (window as unknown as { PagSeguro?: unknown }).PagSeguro) {
+    return Promise.resolve();
+  }
+  if (!pagSeguroSdkPromise) {
+    pagSeguroSdkPromise = new Promise((resolve, reject) => {
+      const script = document.createElement("script");
+      script.src = "https://assets.pagseguro.com.br/checkout-sdk-js/rc/dist/browser/pagseguro.min.js";
+      script.onload = () => resolve();
+      script.onerror = () => reject(new Error("Falha ao carregar o pagamento com cartão"));
+      document.body.appendChild(script);
+    });
+  }
+  return pagSeguroSdkPromise;
+}
+
 function kitMaxQuantity(kit: Kit) {
   if (kit.kit_items.length === 0) return 0;
   return Math.min(
@@ -221,12 +249,20 @@ export default function StorefrontClient({
   const [neighborhoodId, setNeighborhoodId] = useState<string>("retirada");
   const [confirmedDeliveryFee, setConfirmedDeliveryFee] = useState(0);
   const [confirmedOrderId, setConfirmedOrderId] = useState<string | null>(null);
-  const [paymentMethod, setPaymentMethod] = useState<"combinar" | "pix">("combinar");
+  const [paymentMethod, setPaymentMethod] = useState<"combinar" | "pix" | "cartao">("combinar");
   const [pixQrCodeText, setPixQrCodeText] = useState<string | null>(null);
   const [pixQrCodeImage, setPixQrCodeImage] = useState<string | null>(null);
   const [pixLoading, setPixLoading] = useState(false);
   const [pixError, setPixError] = useState<string | null>(null);
   const [pixPaid, setPixPaid] = useState(false);
+  const [cardNumber, setCardNumber] = useState("");
+  const [cardHolder, setCardHolder] = useState("");
+  const [cardExpiry, setCardExpiry] = useState("");
+  const [cardCvv, setCardCvv] = useState("");
+  const [cardCpf, setCardCpf] = useState("");
+  const [cardLoading, setCardLoading] = useState(false);
+  const [cardError, setCardError] = useState<string | null>(null);
+  const [cardPaid, setCardPaid] = useState(false);
   const [scratchPhone, setScratchPhone] = useState("");
   const [scratchResult, setScratchResult] = useState<{
     discount_percent: number;
@@ -522,6 +558,12 @@ export default function StorefrontClient({
   }, [view]);
 
   useEffect(() => {
+    if (paymentMethod === "cartao") {
+      loadPagSeguroSdk().catch(() => {});
+    }
+  }, [paymentMethod]);
+
+  useEffect(() => {
     if (!confirmedOrderId || !pixQrCodeText || pixPaid) return;
     const interval = setInterval(async () => {
       const { data } = await getSupabase()
@@ -678,6 +720,60 @@ export default function StorefrontClient({
       }
     }
 
+    if (paymentMethod === "cartao" && newOrderId) {
+      setCardLoading(true);
+      setCardError(null);
+      try {
+        await loadPagSeguroSdk();
+        const keyRes = await fetch("/api/pagbank/public-key", { method: "POST" });
+        const keyData = await keyRes.json();
+        if (!keyRes.ok || !keyData.public_key) {
+          throw new Error("no-public-key");
+        }
+
+        const [expMonth, expYear] = cardExpiry.split("/").map((s) => s.trim());
+        const pagSeguro = (window as unknown as { PagSeguro: PagSeguroSdk }).PagSeguro;
+        const card = pagSeguro.encryptCard({
+          publicKey: keyData.public_key,
+          holder: cardHolder,
+          number: cardNumber.replace(/\s/g, ""),
+          expMonth,
+          expYear: expYear?.length === 2 ? `20${expYear}` : expYear,
+          securityCode: cardCvv,
+        });
+
+        if (card.hasErrors || !card.encryptedCard) {
+          setCardError("Confira os dados do cartão e tente de novo.");
+        } else {
+          const chargeRes = await fetch("/api/pagbank/charge-card", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              order_id: newOrderId,
+              encrypted_card: card.encryptedCard,
+              holder_name: cardHolder,
+              holder_cpf: cardCpf,
+            }),
+          });
+          const chargeData = await chargeRes.json();
+          if (!chargeRes.ok || !chargeData.paid) {
+            setCardError(
+              chargeData.reason ||
+                "Não deu pra aprovar o cartão agora — combine o pagamento direto com a loja pelo WhatsApp.",
+            );
+          } else {
+            setCardPaid(true);
+          }
+        }
+      } catch {
+        setCardError(
+          "Não deu pra processar o cartão agora — combine o pagamento direto com a loja pelo WhatsApp.",
+        );
+      } finally {
+        setCardLoading(false);
+      }
+    }
+
     const sessionId = sessionStorage.getItem(visitStorageKey);
     if (sessionId) {
       getSupabase()
@@ -819,6 +915,22 @@ export default function StorefrontClient({
                   Aguardando pagamento… atualiza sozinho assim que cair.
                 </p>
               </>
+            )}
+          </div>
+        )}
+
+        {paymentMethod === "cartao" && (
+          <div className="mt-2 w-full max-w-xs rounded-xl border border-slate-200 bg-white p-4 text-center dark:border-slate-800 dark:bg-slate-900">
+            {cardLoading && (
+              <p className="text-sm text-slate-500 dark:text-slate-400">Processando o cartão…</p>
+            )}
+            {!cardLoading && cardError && (
+              <p className="text-sm text-amber-700 dark:text-amber-400">{cardError}</p>
+            )}
+            {!cardLoading && !cardError && cardPaid && (
+              <p className="text-sm font-semibold text-green-700 dark:text-green-400">
+                ✓ Pagamento no cartão aprovado!
+              </p>
             )}
           </div>
         )}
@@ -1091,7 +1203,65 @@ export default function StorefrontClient({
                   />
                   Pix — pagar agora e confirmar na hora
                 </label>
+                <label className="flex items-center gap-2 rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 dark:border-slate-700 dark:text-slate-300">
+                  <input
+                    type="radio"
+                    name="paymentMethod"
+                    checked={paymentMethod === "cartao"}
+                    onChange={() => setPaymentMethod("cartao")}
+                  />
+                  Cartão de crédito — pagar agora
+                </label>
               </div>
+              {paymentMethod === "cartao" && (
+                <div className="mt-2 space-y-2 rounded-lg border border-slate-200 p-3 dark:border-slate-800">
+                  <input
+                    required
+                    inputMode="numeric"
+                    value={cardNumber}
+                    onChange={(e) => setCardNumber(e.target.value)}
+                    placeholder="Número do cartão"
+                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                  />
+                  <input
+                    required
+                    value={cardHolder}
+                    onChange={(e) => setCardHolder(e.target.value.toUpperCase())}
+                    placeholder="Nome impresso no cartão"
+                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                  />
+                  <div className="flex gap-2">
+                    <input
+                      required
+                      inputMode="numeric"
+                      value={cardExpiry}
+                      onChange={(e) => setCardExpiry(e.target.value)}
+                      placeholder="Validade MM/AA"
+                      className="w-1/2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                    />
+                    <input
+                      required
+                      inputMode="numeric"
+                      value={cardCvv}
+                      onChange={(e) => setCardCvv(e.target.value)}
+                      placeholder="CVV"
+                      className="w-1/2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                    />
+                  </div>
+                  <input
+                    required
+                    inputMode="numeric"
+                    value={cardCpf}
+                    onChange={(e) => setCardCpf(e.target.value)}
+                    placeholder="CPF do titular do cartão"
+                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                  />
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    Pagamento à vista (1x). Seus dados de cartão são criptografados no seu
+                    navegador antes de sair daqui.
+                  </p>
+                </div>
+              )}
             </div>
 
             {!storeStatus.open && storeStatus.message && (
