@@ -10,6 +10,7 @@ type Product = {
   price: number;
   stock: number;
   barcode: string | null;
+  sold_by_weight: boolean;
 };
 
 type CartLine = {
@@ -18,6 +19,7 @@ type CartLine = {
   price: number;
   quantity: number;
   stock: number;
+  soldByWeight: boolean;
 };
 
 type RecentSale = {
@@ -63,6 +65,24 @@ function formatCurrency(value: number) {
   return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
+function round3(value: number) {
+  return Math.round(value * 1000) / 1000;
+}
+
+function formatQty(line: { quantity: number; soldByWeight: boolean }) {
+  return line.soldByWeight ? `${line.quantity.toFixed(3)} kg` : String(line.quantity);
+}
+
+// "500," = 500 gramas (produto por peso) · "5*" = 5 unidades — digitado antes de escolher o produto.
+function parseQtyPrefix(raw: string): { qty: number; mode: "peso" | "unidade"; rest: string } | null {
+  const m = raw.match(/^(\d+)\s*([,*])\s*(.*)$/);
+  if (!m) return null;
+  const digits = Number(m[1]);
+  if (!digits || digits <= 0) return null;
+  if (m[2] === ",") return { qty: round3(digits / 1000), mode: "peso", rest: m[3] };
+  return { qty: digits, mode: "unidade", rest: m[3] };
+}
+
 function playBeep() {
   try {
     const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
@@ -99,6 +119,8 @@ export default function Pdv() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<{
     total: number;
+    subtotal: number;
+    discountAmount: number;
     troco: number | null;
     items: CartLine[];
     method: PaymentMethod | "dividido";
@@ -110,6 +132,7 @@ export default function Pdv() {
   const [quickAddBarcode, setQuickAddBarcode] = useState("");
   const [quickAddPrice, setQuickAddPrice] = useState("");
   const [quickAddStock, setQuickAddStock] = useState("");
+  const [quickAddSoldByWeight, setQuickAddSoldByWeight] = useState(false);
   const [quickAddSaving, setQuickAddSaving] = useState(false);
   const [lastSale, setLastSale] = useState<CartLine[] | null>(null);
   const [recentSales, setRecentSales] = useState<RecentSale[]>([]);
@@ -125,12 +148,14 @@ export default function Pdv() {
     { method: "dinheiro", amount: "" },
     { method: "fiado", amount: "" },
   ]);
+  const [discountType, setDiscountType] = useState<"valor" | "percentual">("valor");
+  const [discountValue, setDiscountValue] = useState("");
 
   async function loadProducts() {
     setLoadingProducts(true);
     const { data } = await getSupabase()
       .from("products")
-      .select("id, name, price, stock, barcode")
+      .select("id, name, price, stock, barcode, sold_by_weight")
       .eq("store_id", store.id)
       .order("name", { ascending: true });
     setProducts(data ?? []);
@@ -192,23 +217,33 @@ export default function Pdv() {
     searchInputRef.current?.focus();
   }, []);
 
+  const qtyPrefix = useMemo(() => parseQtyPrefix(search), [search]);
+
   const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
+    const raw = qtyPrefix ? qtyPrefix.rest : search;
+    const q = raw.trim().toLowerCase();
     if (!q) return [];
     return products
       .filter((p) => p.name.toLowerCase().includes(q) || (p.barcode && p.barcode.includes(q)))
       .slice(0, 8);
-  }, [search, products]);
+  }, [search, qtyPrefix, products]);
 
   useEffect(() => {
-    const q = search.trim();
+    const raw = qtyPrefix ? qtyPrefix.rest : search;
+    const q = raw.trim();
     if (!q || q.length < 6) return;
     const exactBarcode = products.find((p) => p.barcode === q);
-    if (exactBarcode) addToCart(exactBarcode);
+    if (exactBarcode) addToCart(exactBarcode, qtyPrefix?.qty);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [search]);
 
-  const total = cart.reduce((sum, line) => sum + line.price * line.quantity, 0);
+  const subtotal = cart.reduce((sum, line) => sum + line.price * line.quantity, 0);
+  const discountRaw = Number(discountValue.replace(",", ".")) || 0;
+  const discountAmount = Math.min(
+    subtotal,
+    Math.max(0, discountType === "percentual" ? subtotal * (discountRaw / 100) : discountRaw),
+  );
+  const total = Math.max(0, subtotal - discountAmount);
   const cashReceivedValue = Number(cashReceived.replace(",", ".")) || 0;
   const troco = cashReceivedValue - total;
   const splitAmounts = splitPayments.map((p) => Number(p.amount.replace(",", ".")) || 0);
@@ -220,17 +255,25 @@ export default function Pdv() {
     searchInputRef.current?.focus();
   }
 
-  function addToCart(product: Product) {
+  function addToCart(product: Product, qtyOverride?: number) {
+    const qty = qtyOverride && qtyOverride > 0 ? qtyOverride : 1;
     setCart((prev) => {
       const existing = prev.find((l) => l.productId === product.id);
       if (existing) {
         return prev.map((l) =>
-          l.productId === product.id ? { ...l, quantity: l.quantity + 1 } : l,
+          l.productId === product.id ? { ...l, quantity: round3(l.quantity + qty) } : l,
         );
       }
       return [
         ...prev,
-        { productId: product.id, name: product.name, price: product.price, quantity: 1, stock: product.stock },
+        {
+          productId: product.id,
+          name: product.name,
+          price: product.price,
+          quantity: qty,
+          stock: product.stock,
+          soldByWeight: product.sold_by_weight,
+        },
       ];
     });
     playBeep();
@@ -243,15 +286,15 @@ export default function Pdv() {
   function handleSearchKeyDown(e: KeyboardEvent<HTMLInputElement>) {
     if (e.key === "Enter" && filtered.length > 0) {
       e.preventDefault();
-      addToCart(filtered[0]);
+      addToCart(filtered[0], qtyPrefix?.qty);
     }
   }
 
   function changeQuantity(productId: string, delta: number) {
     setCart((prev) =>
       prev
-        .map((l) => (l.productId === productId ? { ...l, quantity: l.quantity + delta } : l))
-        .filter((l) => l.quantity > 0),
+        .map((l) => (l.productId === productId ? { ...l, quantity: round3(l.quantity + delta) } : l))
+        .filter((l) => l.quantity > 0.0005),
     );
   }
 
@@ -270,6 +313,7 @@ export default function Pdv() {
     setCreditSearch("");
     setCreditMatches([]);
     setCreditCustomerId(null);
+    setDiscountValue("");
     setError(null);
     focusSearch();
   }
@@ -279,7 +323,9 @@ export default function Pdv() {
     setCart(
       lastSale.map((line) => {
         const current = products.find((p) => p.id === line.productId);
-        return current ? { ...line, price: current.price, stock: current.stock } : line;
+        return current
+          ? { ...line, price: current.price, stock: current.stock, soldByWeight: current.sold_by_weight }
+          : line;
       }),
     );
     setSuccess(null);
@@ -292,18 +338,24 @@ export default function Pdv() {
     method: PaymentMethod | "dividido",
     troco: number | null,
     split: { method: PaymentMethod; amount: number }[] | null,
+    saleSubtotal?: number,
+    saleDiscount?: number,
   ) {
     const win = window.open("", "_blank", "width=380,height=500");
     if (!win) return;
     const itemsHtml = items
       .map(
         (line) =>
-          `<tr><td>${line.quantity}x ${line.name}</td><td style="text-align:right">${formatCurrency(line.price * line.quantity)}</td></tr>`,
+          `<tr><td>${formatQty(line)} ${line.name}</td><td style="text-align:right">${formatCurrency(line.price * line.quantity)}</td></tr>`,
       )
       .join("");
     const paymentHtml = split
       ? split.map((p) => `<p>${PAYMENT_LABELS[p.method]}: ${formatCurrency(p.amount)}</p>`).join("")
       : `<p>Pagamento: ${PAYMENT_LABELS[method]}</p>`;
+    const discountHtml =
+      saleDiscount && saleDiscount > 0
+        ? `<p>Subtotal: ${formatCurrency(saleSubtotal ?? saleTotal + saleDiscount)}</p><p>Desconto: -${formatCurrency(saleDiscount)}</p>`
+        : "";
     win.document.write(`
       <html><head><title>Recibo</title>
       <style>
@@ -314,6 +366,7 @@ export default function Pdv() {
       <h2>${store.name}</h2>
       <p>${new Date().toLocaleString("pt-BR")}</p>
       <table>${itemsHtml}</table>
+      ${discountHtml}
       <p class="total">Total: ${formatCurrency(saleTotal)}</p>
       ${paymentHtml}
       ${troco !== null ? `<p>Troco: ${formatCurrency(Math.max(0, troco))}</p>` : ""}
@@ -338,8 +391,9 @@ export default function Pdv() {
         price: priceValue,
         stock: stockValue,
         barcode: quickAddBarcode.trim() || null,
+        sold_by_weight: quickAddSoldByWeight,
       })
-      .select("id, name, price, stock, barcode")
+      .select("id, name, price, stock, barcode, sold_by_weight")
       .single();
     setQuickAddSaving(false);
 
@@ -353,7 +407,8 @@ export default function Pdv() {
     setQuickAddBarcode("");
     setQuickAddPrice("");
     setQuickAddStock("");
-    addToCart(data);
+    setQuickAddSoldByWeight(false);
+    addToCart(data, qtyPrefix?.qty);
   }
 
   function selectPayment(method: PaymentMethod) {
@@ -442,6 +497,7 @@ export default function Pdv() {
           p_customer_name: customerName.trim() || "Cliente balcão",
           p_customer_phone: customerPhone.trim() || null,
           p_payments: splitPayments.map((p, i) => ({ method: p.method, amount: splitAmounts[i] })),
+          p_discount_amount: discountAmount,
         }
       : {
           p_store_id: store.id,
@@ -449,6 +505,7 @@ export default function Pdv() {
           p_payment_method: paymentMethod,
           p_customer_name: customerName.trim() || "Cliente balcão",
           p_customer_phone: customerPhone.trim() || null,
+          p_discount_amount: discountAmount,
         };
 
     const { data, error: rpcError } = await getSupabase().rpc("pdv_sale", payload);
@@ -462,6 +519,8 @@ export default function Pdv() {
     const sale = data[0];
     setSuccess({
       total: sale.total,
+      subtotal,
+      discountAmount,
       troco: !splitMode && paymentMethod === "dinheiro" ? cashReceivedValue - sale.total : null,
       items: cart,
       method: splitMode ? "dividido" : (paymentMethod as PaymentMethod),
@@ -476,6 +535,7 @@ export default function Pdv() {
     setCreditSearch("");
     setCreditMatches([]);
     setCreditCustomerId(null);
+    setDiscountValue("");
     if (splitMode) {
       setSplitPayments([
         { method: "dinheiro", amount: "" },
@@ -611,18 +671,34 @@ export default function Pdv() {
               {loadingProducts ? (
                 <p className="px-4 py-3 text-sm text-slate-500">Carregando…</p>
               ) : filtered.length > 0 ? (
-                filtered.map((p) => (
-                  <button
-                    key={p.id}
-                    onClick={() => addToCart(p)}
-                    className="flex w-full items-center justify-between px-4 py-2 text-left text-sm hover:bg-slate-50 dark:hover:bg-slate-800"
-                  >
-                    <span className="text-slate-900 dark:text-slate-50">{p.name}</span>
-                    <span className="text-slate-500 dark:text-slate-400">
-                      {formatCurrency(p.price)} · estoque {p.stock}
-                    </span>
-                  </button>
-                ))
+                <>
+                  {filtered.map((p) => (
+                    <button
+                      key={p.id}
+                      onClick={() => addToCart(p, qtyPrefix?.qty)}
+                      className="flex w-full items-center justify-between px-4 py-2 text-left text-sm hover:bg-slate-50 dark:hover:bg-slate-800"
+                    >
+                      <span className="text-slate-900 dark:text-slate-50">
+                        {p.name}
+                        {p.sold_by_weight && (
+                          <span className="ml-1 text-xs text-slate-400 dark:text-slate-500">⚖️ kg</span>
+                        )}
+                      </span>
+                      <span className="text-slate-500 dark:text-slate-400">
+                        {formatCurrency(p.price)}
+                        {p.sold_by_weight ? "/kg" : ""} · estoque{" "}
+                        {Number.isInteger(p.stock) ? p.stock : p.stock.toFixed(3)}
+                      </span>
+                    </button>
+                  ))}
+                  {qtyPrefix && (
+                    <p className="border-t border-slate-100 px-4 py-1.5 text-xs text-slate-400 dark:border-slate-800 dark:text-slate-500">
+                      {qtyPrefix.mode === "peso"
+                        ? `⚖️ Vai adicionar ${qtyPrefix.qty.toFixed(3)} kg do produto escolhido`
+                        : `🔢 Vai adicionar ${qtyPrefix.qty} unidades do produto escolhido`}
+                    </p>
+                  )}
+                </>
               ) : (
                 <div className="px-4 py-3">
                   <p className="text-sm text-slate-500 dark:text-slate-400">
@@ -667,10 +743,19 @@ export default function Pdv() {
                         <input
                           value={quickAddStock}
                           onChange={(e) => setQuickAddStock(e.target.value)}
-                          placeholder="Estoque"
-                          inputMode="numeric"
+                          placeholder={quickAddSoldByWeight ? "Estoque (kg)" : "Estoque"}
+                          inputMode="decimal"
                           className="w-24 rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
                         />
+                        <label className="flex items-center gap-1 text-xs text-slate-600 dark:text-slate-400">
+                          <input
+                            type="checkbox"
+                            checked={quickAddSoldByWeight}
+                            onChange={(e) => setQuickAddSoldByWeight(e.target.checked)}
+                            className="h-4 w-4 rounded border-slate-300"
+                          />
+                          ⚖️ por kg
+                        </label>
                         <button
                           type="submit"
                           disabled={quickAddSaving}
@@ -711,10 +796,12 @@ export default function Pdv() {
             >
               <div className="min-w-0 flex-1">
                 <p className="truncate font-medium text-slate-900 dark:text-slate-50">{line.name}</p>
-                <p className="text-sm text-slate-500 dark:text-slate-400">{formatCurrency(line.price)} un.</p>
+                <p className="text-sm text-slate-500 dark:text-slate-400">
+                  {formatCurrency(line.price)} {line.soldByWeight ? "/kg" : "un."}
+                </p>
                 {line.quantity > line.stock && (
                   <p className="text-xs font-medium text-red-600">
-                    Só tem {line.stock} em estoque
+                    Só tem {line.soldByWeight ? line.stock.toFixed(3) : line.stock} em estoque
                   </p>
                 )}
                 {line.quantity <= line.stock && line.quantity === line.stock && (
@@ -725,16 +812,16 @@ export default function Pdv() {
               </div>
               <div className="flex items-center gap-2">
                 <button
-                  onClick={() => changeQuantity(line.productId, -1)}
+                  onClick={() => changeQuantity(line.productId, line.soldByWeight ? -0.1 : -1)}
                   className="h-8 w-8 rounded-lg border border-slate-300 text-lg leading-none text-slate-700 dark:border-slate-700 dark:text-slate-300"
                 >
                   −
                 </button>
-                <span className="w-6 text-center font-semibold text-slate-900 dark:text-slate-50">
-                  {line.quantity}
+                <span className="w-16 text-center font-semibold text-slate-900 dark:text-slate-50">
+                  {formatQty(line)}
                 </span>
                 <button
-                  onClick={() => changeQuantity(line.productId, 1)}
+                  onClick={() => changeQuantity(line.productId, line.soldByWeight ? 0.1 : 1)}
                   className="h-8 w-8 rounded-lg border border-slate-300 text-lg leading-none text-slate-700 dark:border-slate-700 dark:text-slate-300"
                 >
                   +
@@ -790,7 +877,17 @@ export default function Pdv() {
               <p>Troco: {formatCurrency(Math.max(0, success.troco))}</p>
             )}
             <button
-              onClick={() => printReceipt(success.items, success.total, success.method, success.troco, success.split)}
+              onClick={() =>
+                printReceipt(
+                  success.items,
+                  success.total,
+                  success.method,
+                  success.troco,
+                  success.split,
+                  success.subtotal,
+                  success.discountAmount,
+                )
+              }
               className="mt-2 text-sm font-medium underline"
             >
               🖨️ Imprimir cupom
@@ -798,7 +895,33 @@ export default function Pdv() {
           </div>
         )}
 
-        <p className="text-sm text-slate-500 dark:text-slate-400">Total</p>
+        <div className="mb-3 flex items-center justify-between gap-2">
+          <p className="text-sm font-medium text-slate-700 dark:text-slate-300">Desconto</p>
+          <div className="flex items-center gap-1">
+            <select
+              value={discountType}
+              onChange={(e) => setDiscountType(e.target.value as "valor" | "percentual")}
+              className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+            >
+              <option value="valor">R$</option>
+              <option value="percentual">%</option>
+            </select>
+            <input
+              value={discountValue}
+              onChange={(e) => setDiscountValue(e.target.value)}
+              placeholder="0"
+              inputMode="decimal"
+              className="w-20 rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+            />
+          </div>
+        </div>
+
+        {discountAmount > 0 && (
+          <p className="text-sm text-slate-400 line-through dark:text-slate-500">{formatCurrency(subtotal)}</p>
+        )}
+        <p className="text-sm text-slate-500 dark:text-slate-400">
+          Total{discountAmount > 0 ? ` (desconto de ${formatCurrency(discountAmount)})` : ""}
+        </p>
         <p className="text-3xl font-bold text-slate-900 dark:text-slate-50">{formatCurrency(total)}</p>
 
         <div className="mt-4">

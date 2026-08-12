@@ -24,6 +24,7 @@ type Product = {
   supplier: string | null;
   on_offer: boolean;
   offer_price: number | null;
+  sold_by_weight: boolean;
 };
 
 function parseCsv(text: string): string[][] {
@@ -166,6 +167,7 @@ export default function Produtos() {
   const [barcode, setBarcode] = useState("");
   const [expiryDate, setExpiryDate] = useState("");
   const [supplier, setSupplier] = useState("");
+  const [soldByWeight, setSoldByWeight] = useState(false);
   const [saving, setSaving] = useState(false);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const photoInputRef = useRef<HTMLInputElement>(null);
@@ -182,7 +184,7 @@ export default function Produtos() {
     const { data } = await getSupabase()
       .from("products")
       .select(
-        "id, name, category, price, cost_price, image_url, stock, active, promo_buy_qty, promo_pay_qty, barcode, price_fiado, price_wholesale, wholesale_min_qty, stock_alert_threshold, expiry_date, supplier, on_offer, offer_price",
+        "id, name, category, price, cost_price, image_url, stock, active, promo_buy_qty, promo_pay_qty, barcode, price_fiado, price_wholesale, wholesale_min_qty, stock_alert_threshold, expiry_date, supplier, on_offer, offer_price, sold_by_weight",
       )
       .eq("store_id", store.id)
       .order("created_at", { ascending: false });
@@ -219,6 +221,7 @@ export default function Produtos() {
       barcode: barcode.trim() || null,
       expiry_date: expiryDate || null,
       supplier: supplier.trim() || null,
+      sold_by_weight: soldByWeight,
     });
     setSaving(false);
 
@@ -236,6 +239,7 @@ export default function Produtos() {
     setStock("");
     setImageUrl("");
     setBarcode("");
+    setSoldByWeight(false);
     loadProducts();
   }
 
@@ -563,8 +567,8 @@ export default function Produtos() {
         <input
           value={stock}
           onChange={(e) => setStock(e.target.value)}
-          placeholder="Estoque"
-          inputMode="numeric"
+          placeholder={soldByWeight ? "Estoque (kg)" : "Estoque"}
+          inputMode="decimal"
           className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
         />
         <input
@@ -590,6 +594,15 @@ export default function Produtos() {
             className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
           />
         </div>
+        <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300">
+          <input
+            type="checkbox"
+            checked={soldByWeight}
+            onChange={(e) => setSoldByWeight(e.target.checked)}
+            className="h-4 w-4 rounded border-slate-300"
+          />
+          ⚖️ Vendido por peso (kg)
+        </label>
         <div className="sm:col-span-2 lg:col-span-3">
           <div className="flex items-center gap-2">
             <button
@@ -672,6 +685,7 @@ export default function Produtos() {
               <th className="px-3 py-2 font-medium">Custo</th>
               <th className="px-3 py-2 font-medium">Margem</th>
               <th className="px-3 py-2 font-medium">Estoque</th>
+              <th className="px-3 py-2 font-medium">Por peso?</th>
               <th className="px-3 py-2 font-medium">Promoção (leve/pague)</th>
               <th className="px-3 py-2 font-medium">Ativo</th>
               <th className="px-3 py-2 font-medium"></th>
@@ -680,14 +694,14 @@ export default function Produtos() {
           <tbody className="divide-y divide-slate-200 bg-white dark:divide-slate-800 dark:bg-slate-900">
             {loading && (
               <tr>
-                <td colSpan={9} className="px-3 py-6 text-center text-slate-500">
+                <td colSpan={10} className="px-3 py-6 text-center text-slate-500">
                   Carregando…
                 </td>
               </tr>
             )}
             {!loading && products.length === 0 && (
               <tr>
-                <td colSpan={9} className="px-3 py-6 text-center text-slate-500">
+                <td colSpan={10} className="px-3 py-6 text-center text-slate-500">
                   Nenhum produto cadastrado ainda.
                 </td>
               </tr>
@@ -733,6 +747,7 @@ export default function Produtos() {
                     <input
                       key={`stock-${p.id}-${p.stock}`}
                       type="number"
+                      step={p.sold_by_weight ? "0.001" : "1"}
                       defaultValue={p.stock}
                       onBlur={(e) => {
                         const v = Number(e.target.value);
@@ -746,6 +761,17 @@ export default function Produtos() {
                     />
                     {p.stock <= p.stock_alert_threshold && (
                       <p className="mt-0.5 text-[10px] text-red-600 dark:text-red-400">estoque baixo</p>
+                    )}
+                  </td>
+                  <td className="px-3 py-2 text-center">
+                    <input
+                      type="checkbox"
+                      checked={p.sold_by_weight}
+                      onChange={(e) => updateProduct(p.id, { sold_by_weight: e.target.checked })}
+                      className="h-4 w-4 rounded border-slate-300"
+                    />
+                    {p.sold_by_weight && (
+                      <p className="mt-0.5 text-[10px] text-slate-500 dark:text-slate-400">⚖️ kg</p>
                     )}
                   </td>
                   <td className="px-3 py-2">
@@ -817,7 +843,7 @@ export default function Produtos() {
               (p) =>
                 expandedId === p.id && (
                   <tr key={`${p.id}-detalhes`}>
-                    <td colSpan={9} className="bg-slate-50 px-4 py-4 dark:bg-slate-800/50">
+                    <td colSpan={10} className="bg-slate-50 px-4 py-4 dark:bg-slate-800/50">
                       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
                         <div>
                           <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">
