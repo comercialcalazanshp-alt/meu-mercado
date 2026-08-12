@@ -27,19 +27,56 @@ type RecentSale = {
   created_at: string;
 };
 
+type CreditCustomer = {
+  id: string;
+  name: string;
+  phone: string;
+};
+
 const PAYMENT_LABELS: Record<string, string> = {
   dinheiro: "Dinheiro",
   pix: "Pix",
   cartao: "Cartão",
-  fiado: "Fiado",
+  fiado: "Crediário",
 };
 
 type PaymentMethod = "dinheiro" | "pix" | "cartao" | "fiado";
 
 const CASH_BUTTONS = [5, 10, 20, 50, 100, 200];
 
+const SHORTCUTS: [string, string][] = [
+  ["F1", "Mostrar esses atalhos"],
+  ["F2", "Focar na busca / código de barras"],
+  ["F3", "Forma de pagamento: Dinheiro"],
+  ["F4", "Forma de pagamento: Pix"],
+  ["F5", "Forma de pagamento: Cartão"],
+  ["F6", "Forma de pagamento: Crediário"],
+  ["F7", "Finalizar venda"],
+  ["F8", "Cancelar venda / limpar carrinho"],
+  ["F9", "Buscar cliente do crediário"],
+];
+
 function formatCurrency(value: number) {
   return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+}
+
+function playBeep() {
+  try {
+    const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+    const ctx = new AudioCtx();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = "sine";
+    osc.frequency.value = 1400;
+    gain.gain.setValueAtTime(0.08, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.08);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start();
+    osc.stop(ctx.currentTime + 0.08);
+  } catch {
+    // sem suporte a Web Audio — só perde o bipe
+  }
 }
 
 export default function Pdv() {
@@ -65,12 +102,20 @@ export default function Pdv() {
   } | null>(null);
 
   const [quickAddOpen, setQuickAddOpen] = useState(false);
+  const [quickAddName, setQuickAddName] = useState("");
+  const [quickAddBarcode, setQuickAddBarcode] = useState("");
   const [quickAddPrice, setQuickAddPrice] = useState("");
   const [quickAddStock, setQuickAddStock] = useState("");
   const [quickAddSaving, setQuickAddSaving] = useState(false);
   const [lastSale, setLastSale] = useState<CartLine[] | null>(null);
   const [recentSales, setRecentSales] = useState<RecentSale[]>([]);
   const [caixaAberto, setCaixaAberto] = useState<boolean | null>(null);
+  const [sellerEmail, setSellerEmail] = useState<string | null>(null);
+  const [showShortcuts, setShowShortcuts] = useState(false);
+  const [creditSearch, setCreditSearch] = useState("");
+  const [creditMatches, setCreditMatches] = useState<CreditCustomer[]>([]);
+  const [creditCustomerId, setCreditCustomerId] = useState<string | null>(null);
+  const creditSearchRef = useRef<HTMLInputElement>(null);
 
   async function loadProducts() {
     setLoadingProducts(true);
@@ -110,8 +155,29 @@ export default function Pdv() {
     loadProducts();
     loadRecentSales();
     loadCaixaStatus();
+    getSupabase()
+      .auth.getSession()
+      .then(({ data }) => setSellerEmail(data.session?.user.email ?? null));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [store.id]);
+
+  useEffect(() => {
+    const q = creditSearch.trim();
+    if (q.length < 2) {
+      setCreditMatches([]);
+      return;
+    }
+    const timeout = setTimeout(async () => {
+      const { data } = await getSupabase()
+        .from("credit_customers")
+        .select("id, name, phone")
+        .eq("store_id", store.id)
+        .ilike("name", `%${q}%`)
+        .limit(6);
+      setCreditMatches(data ?? []);
+    }, 250);
+    return () => clearTimeout(timeout);
+  }, [creditSearch, store.id]);
 
   useEffect(() => {
     searchInputRef.current?.focus();
@@ -154,6 +220,7 @@ export default function Pdv() {
         { productId: product.id, name: product.name, price: product.price, quantity: 1, stock: product.stock },
       ];
     });
+    playBeep();
     setSearch("");
     setQuickAddOpen(false);
     setSuccess(null);
@@ -187,6 +254,9 @@ export default function Pdv() {
     setCashReceived("");
     setCustomerName("");
     setCustomerPhone("");
+    setCreditSearch("");
+    setCreditMatches([]);
+    setCreditCustomerId(null);
     setError(null);
     focusSearch();
   }
@@ -235,12 +305,18 @@ export default function Pdv() {
     e.preventDefault();
     const priceValue = Number(quickAddPrice.replace(",", "."));
     const stockValue = Number(quickAddStock) || 0;
-    if (!search.trim() || Number.isNaN(priceValue) || priceValue < 0) return;
+    if (!quickAddName.trim() || Number.isNaN(priceValue) || priceValue < 0) return;
 
     setQuickAddSaving(true);
     const { data, error: insertError } = await getSupabase()
       .from("products")
-      .insert({ store_id: store.id, name: search.trim(), price: priceValue, stock: stockValue })
+      .insert({
+        store_id: store.id,
+        name: quickAddName.trim(),
+        price: priceValue,
+        stock: stockValue,
+        barcode: quickAddBarcode.trim() || null,
+      })
       .select("id, name, price, stock, barcode")
       .single();
     setQuickAddSaving(false);
@@ -251,6 +327,8 @@ export default function Pdv() {
     }
 
     setProducts((prev) => [...prev, data].sort((a, b) => a.name.localeCompare(b.name)));
+    setQuickAddName("");
+    setQuickAddBarcode("");
     setQuickAddPrice("");
     setQuickAddStock("");
     addToCart(data);
@@ -260,6 +338,26 @@ export default function Pdv() {
     setPaymentMethod(method);
     setError(null);
     if (method !== "dinheiro") setCashReceived("");
+    if (method !== "fiado") {
+      setCreditSearch("");
+      setCreditMatches([]);
+      setCreditCustomerId(null);
+      setCustomerName("");
+      setCustomerPhone("");
+    }
+  }
+
+  function selectCreditCustomer(customer: CreditCustomer) {
+    setCreditCustomerId(customer.id);
+    setCustomerName(customer.name);
+    setCustomerPhone(customer.phone);
+    setCreditSearch(customer.name);
+    setCreditMatches([]);
+  }
+
+  function focusCreditSearch() {
+    if (paymentMethod !== "fiado") selectPayment("fiado");
+    setTimeout(() => creditSearchRef.current?.focus(), 0);
   }
 
   const canFinalize =
@@ -301,25 +399,105 @@ export default function Pdv() {
     setCashReceived("");
     setCustomerName("");
     setCustomerPhone("");
+    setCreditSearch("");
+    setCreditMatches([]);
+    setCreditCustomerId(null);
     loadProducts();
     loadRecentSales();
     focusSearch();
   }
 
+  useEffect(() => {
+    function handleKeyDown(e: globalThis.KeyboardEvent) {
+      if (!e.key.startsWith("F")) return;
+      switch (e.key) {
+        case "F1":
+          e.preventDefault();
+          setShowShortcuts((prev) => !prev);
+          break;
+        case "F2":
+          e.preventDefault();
+          focusSearch();
+          break;
+        case "F3":
+          e.preventDefault();
+          selectPayment("dinheiro");
+          break;
+        case "F4":
+          e.preventDefault();
+          selectPayment("pix");
+          break;
+        case "F5":
+          e.preventDefault();
+          selectPayment("cartao");
+          break;
+        case "F6":
+          e.preventDefault();
+          selectPayment("fiado");
+          break;
+        case "F7":
+          e.preventDefault();
+          handleFinalize();
+          break;
+        case "F8":
+          e.preventDefault();
+          cancelSale();
+          break;
+        case "F9":
+          e.preventDefault();
+          focusCreditSearch();
+          break;
+        default:
+          break;
+      }
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cart, paymentMethod, cashReceivedValue, customerPhone, saving, total, creditCustomerId]);
+
   return (
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_380px]">
       <div>
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-50">PDV — venda no balcão</h1>
-          {lastSale && lastSale.length > 0 && (
+          <div>
+            <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-50">PDV — venda no balcão</h1>
+            {sellerEmail && (
+              <p className="text-xs text-slate-400 dark:text-slate-500">Vendendo como: {sellerEmail}</p>
+            )}
+          </div>
+          <div className="flex gap-2">
             <button
-              onClick={repeatLastSale}
+              onClick={() => setShowShortcuts((prev) => !prev)}
               className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-600 dark:border-slate-700 dark:text-slate-300"
             >
-              🔁 Repetir última venda
+              ⌨️ Atalhos (F1)
             </button>
-          )}
+            {lastSale && lastSale.length > 0 && (
+              <button
+                onClick={repeatLastSale}
+                className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-600 dark:border-slate-700 dark:text-slate-300"
+              >
+                🔁 Repetir última venda
+              </button>
+            )}
+          </div>
         </div>
+
+        {showShortcuts && (
+          <div className="mt-2 rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
+            <div className="grid grid-cols-1 gap-1 text-sm sm:grid-cols-2">
+              {SHORTCUTS.map(([key, label]) => (
+                <p key={key} className="text-slate-600 dark:text-slate-400">
+                  <span className="mr-2 rounded bg-slate-100 px-1.5 py-0.5 font-mono text-xs text-slate-700 dark:bg-slate-800 dark:text-slate-300">
+                    {key}
+                  </span>
+                  {label}
+                </p>
+              ))}
+            </div>
+          </div>
+        )}
 
         {caixaAberto === false && (
           <p className="mt-2 rounded-lg bg-amber-100 px-3 py-2 text-sm text-amber-800 dark:bg-amber-900/40 dark:text-amber-400">
@@ -368,35 +546,55 @@ export default function Pdv() {
                   </p>
                   {!quickAddOpen ? (
                     <button
-                      onClick={() => setQuickAddOpen(true)}
+                      onClick={() => {
+                        const q = search.trim();
+                        const looksLikeBarcode = /^\d{6,}$/.test(q);
+                        setQuickAddName(looksLikeBarcode ? "" : q);
+                        setQuickAddBarcode(looksLikeBarcode ? q : "");
+                        setQuickAddOpen(true);
+                      }}
                       className="mt-2 text-sm font-medium text-blue-900 hover:underline dark:text-blue-400"
                     >
                       Cadastrar rápido
                     </button>
                   ) : (
-                    <form onSubmit={handleQuickAdd} className="mt-2 flex flex-wrap items-center gap-2">
+                    <form onSubmit={handleQuickAdd} className="mt-2 flex flex-col gap-2">
                       <input
-                        value={quickAddPrice}
-                        onChange={(e) => setQuickAddPrice(e.target.value)}
-                        placeholder="Preço (R$)"
-                        inputMode="decimal"
+                        value={quickAddName}
+                        onChange={(e) => setQuickAddName(e.target.value)}
+                        placeholder="Nome do produto"
                         autoFocus
-                        className="w-28 rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                        className="w-full rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
                       />
-                      <input
-                        value={quickAddStock}
-                        onChange={(e) => setQuickAddStock(e.target.value)}
-                        placeholder="Estoque"
-                        inputMode="numeric"
-                        className="w-24 rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
-                      />
-                      <button
-                        type="submit"
-                        disabled={quickAddSaving}
-                        className="rounded-lg bg-blue-900 px-3 py-1 text-sm font-semibold text-amber-300 disabled:opacity-60 dark:bg-blue-800"
-                      >
-                        {quickAddSaving ? "Salvando…" : "Salvar e adicionar"}
-                      </button>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <input
+                          value={quickAddBarcode}
+                          onChange={(e) => setQuickAddBarcode(e.target.value)}
+                          placeholder="Código de barras (opcional)"
+                          className="w-40 rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                        />
+                        <input
+                          value={quickAddPrice}
+                          onChange={(e) => setQuickAddPrice(e.target.value)}
+                          placeholder="Preço (R$)"
+                          inputMode="decimal"
+                          className="w-28 rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                        />
+                        <input
+                          value={quickAddStock}
+                          onChange={(e) => setQuickAddStock(e.target.value)}
+                          placeholder="Estoque"
+                          inputMode="numeric"
+                          className="w-24 rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                        />
+                        <button
+                          type="submit"
+                          disabled={quickAddSaving}
+                          className="rounded-lg bg-blue-900 px-3 py-1 text-sm font-semibold text-amber-300 disabled:opacity-60 dark:bg-blue-800"
+                        >
+                          {quickAddSaving ? "Salvando…" : "Salvar e adicionar"}
+                        </button>
+                      </div>
                     </form>
                   )}
                 </div>
@@ -505,7 +703,7 @@ export default function Pdv() {
               onClick={() => printReceipt(success.items, success.total, success.method, success.troco)}
               className="mt-2 text-sm font-medium underline"
             >
-              🖨️ Imprimir recibo
+              🖨️ Imprimir cupom
             </button>
           </div>
         )}
@@ -521,7 +719,7 @@ export default function Pdv() {
                 ["dinheiro", "Dinheiro"],
                 ["pix", "Pix"],
                 ["cartao", "Cartão"],
-                ["fiado", "Fiado"],
+                ["fiado", "Crediário"],
               ] as [PaymentMethod, string][]
             ).map(([value, label]) => (
               <button
@@ -576,18 +774,62 @@ export default function Pdv() {
 
         {paymentMethod === "fiado" && (
           <div className="mt-4 space-y-2">
-            <input
-              value={customerName}
-              onChange={(e) => setCustomerName(e.target.value)}
-              placeholder="Nome do cliente"
-              className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
-            />
-            <input
-              value={customerPhone}
-              onChange={(e) => setCustomerPhone(e.target.value)}
-              placeholder="WhatsApp do cliente (obrigatório)"
-              className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
-            />
+            <div className="relative">
+              <input
+                ref={creditSearchRef}
+                value={creditSearch}
+                onChange={(e) => {
+                  setCreditSearch(e.target.value);
+                  if (creditCustomerId) {
+                    setCreditCustomerId(null);
+                    setCustomerName("");
+                    setCustomerPhone("");
+                  }
+                }}
+                placeholder="Buscar cliente já cadastrado no crediário (F9)"
+                autoComplete="off"
+                className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+              />
+              {creditMatches.length > 0 && (
+                <div className="absolute z-10 mt-1 w-full rounded-lg border border-slate-200 bg-white shadow-lg dark:border-slate-800 dark:bg-slate-900">
+                  {creditMatches.map((c) => (
+                    <button
+                      key={c.id}
+                      type="button"
+                      onClick={() => selectCreditCustomer(c)}
+                      className="flex w-full items-center justify-between px-3 py-2 text-left text-sm hover:bg-slate-50 dark:hover:bg-slate-800"
+                    >
+                      <span className="text-slate-900 dark:text-slate-50">{c.name}</span>
+                      <span className="text-slate-500 dark:text-slate-400">{c.phone}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {creditCustomerId ? (
+              <p className="rounded-lg bg-green-50 px-3 py-2 text-sm text-green-800 dark:bg-green-900/30 dark:text-green-300">
+                ✓ Cliente encontrado: {customerName} · {customerPhone}
+              </p>
+            ) : (
+              <>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Cliente novo? Preencha os dados abaixo pra cadastrar.
+                </p>
+                <input
+                  value={customerName}
+                  onChange={(e) => setCustomerName(e.target.value)}
+                  placeholder="Nome do cliente"
+                  className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                />
+                <input
+                  value={customerPhone}
+                  onChange={(e) => setCustomerPhone(e.target.value)}
+                  placeholder="WhatsApp do cliente (obrigatório pra cliente novo)"
+                  className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                />
+              </>
+            )}
           </div>
         )}
 

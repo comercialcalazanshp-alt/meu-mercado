@@ -270,6 +270,54 @@ export default function PainelLayout({ children }: { children: ReactNode }) {
     );
   }
 
+  const isPdv = pathname === "/painel/pdv";
+
+  if (isPdv) {
+    return (
+      <div className="flex flex-1 flex-col bg-slate-50 dark:bg-slate-950">
+        <div className="flex items-center justify-between border-b border-slate-200 bg-white px-4 py-2 dark:border-slate-800 dark:bg-slate-900">
+          <a
+            href="/painel"
+            className="text-sm font-medium text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
+          >
+            ← Voltar ao painel
+          </a>
+          <p className="truncate text-sm font-semibold text-slate-900 dark:text-slate-50">{store!.name}</p>
+        </div>
+        <main className="flex-1 px-4 py-4 md:px-6 md:py-6">
+          <StoreContext.Provider value={store}>{children}</StoreContext.Provider>
+        </main>
+        {notifications.length > 0 && (
+          <div className="fixed bottom-4 right-4 z-50 flex w-72 flex-col gap-2">
+            {notifications.map((n) => (
+              <a
+                key={n.id}
+                href="/painel/pedidos"
+                className="flex items-start justify-between gap-2 rounded-xl border border-blue-900 bg-white p-3 shadow-lg dark:border-blue-700 dark:bg-slate-900"
+              >
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-slate-900 dark:text-slate-50">🛎️ Novo pedido!</p>
+                  <p className="truncate text-sm text-slate-600 dark:text-slate-400">
+                    {n.customerName} · {formatCurrency(n.total)}
+                  </p>
+                </div>
+                <button
+                  onClick={(e) => {
+                    e.preventDefault();
+                    dismissNotification(n.id);
+                  }}
+                  className="shrink-0 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
+                >
+                  ✕
+                </button>
+              </a>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-1 flex-col bg-slate-50 dark:bg-slate-950 md:flex-row">
       <aside className="flex shrink-0 flex-col border-b border-slate-200 bg-white px-4 py-4 dark:border-slate-800 dark:bg-slate-900 md:w-56 md:border-b-0 md:border-r md:px-3 md:py-6">
