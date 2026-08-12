@@ -1,6 +1,7 @@
-"use client";
+﻿"use client";
 
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import QRCode from "qrcode";
 import { getSupabase } from "@/lib/supabase";
 import { useStore } from "@/lib/store-context";
 
@@ -25,7 +26,93 @@ type Product = {
   on_offer: boolean;
   offer_price: number | null;
   sold_by_weight: boolean;
+  created_at: string;
 };
+
+type SalesStat = {
+  units_sold_recent: number;
+  revenue_recent: number;
+  profit_recent: number | null;
+  avg_daily_sales: number;
+  last_sold_at: string | null;
+};
+
+type StockMovement = {
+  id: string;
+  type: "compra" | "perda" | "quebra" | "outro";
+  quantity: number;
+  unit_cost: number | null;
+  note: string | null;
+  created_by: string | null;
+  created_at: string;
+};
+
+const MOVEMENT_LABEL: Record<StockMovement["type"], string> = {
+  compra: "Compra",
+  perda: "Perda",
+  quebra: "Quebra",
+  outro: "Outro",
+};
+
+// Levenshtein simples pra achar produto com nome parecido (cadastro
+// duplicado por engano, ex: "Arroz Tio Joao 5kg" digitado duas vezes).
+function normalizeForCompare(s: string) {
+  return s
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function levenshtein(a: string, b: string): number {
+  const m = a.length;
+  const n = b.length;
+  if (m === 0) return n;
+  if (n === 0) return m;
+  let prev = Array.from({ length: n + 1 }, (_, j) => j);
+  for (let i = 1; i <= m; i++) {
+    const cur = [i];
+    for (let j = 1; j <= n; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      cur[j] = Math.min(cur[j - 1] + 1, prev[j] + 1, prev[j - 1] + cost);
+    }
+    prev = cur;
+  }
+  return prev[n];
+}
+
+function similarProduct(name: string, others: Product[]): Product | null {
+  const target = normalizeForCompare(name);
+  if (target.length < 3) return null;
+  for (const p of others) {
+    const candidate = normalizeForCompare(p.name);
+    if (candidate === target) return p;
+    const maxLen = Math.max(target.length, candidate.length);
+    const distance = levenshtein(target, candidate);
+    if (distance / maxLen < 0.15) return p;
+  }
+  return null;
+}
+
+// A etiqueta usa QR code (via a mesma biblioteca já usada no cartaz da loja)
+// pra representar o código de barras de forma escaneável, em vez de desenhar
+// um código de barras tradicional na mão: sem uma leitora física pra testar,
+// arriscar errar o desenho e imprimir uma etiqueta que parece código de
+// barras mas não escaneia é pior do que não ter nada. QR code funciona com
+// qualquer leitor de câmera/celular, e o número grande embaixo continua
+// servindo pra digitar direto se precisar.
+
+function daysUntil(dateIso: string): number {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const target = new Date(dateIso + "T00:00:00");
+  return Math.round((target.getTime() - today.getTime()) / 86400000);
+}
+
+function daysSince(dateIso: string): number {
+  return Math.round((Date.now() - new Date(dateIso).getTime()) / 86400000);
+}
 
 function parseCsv(text: string): string[][] {
   const rows: string[][] = [];
@@ -179,12 +266,50 @@ export default function Produtos() {
   const [offerDrafts, setOfferDrafts] = useState<Record<string, string>>({});
   const [offerUiOpen, setOfferUiOpen] = useState<Record<string, boolean>>({});
 
+  const [search, setSearch] = useState("");
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [stats, setStats] = useState<Record<string, SalesStat>>({});
+  const [movements, setMovements] = useState<Record<string, StockMovement[]>>({});
+  const [lossDrafts, setLossDrafts] = useState<
+    Record<string, { type: StockMovement["type"]; quantity: string; note: string }>
+  >({});
+  const [savingLoss, setSavingLoss] = useState<string | null>(null);
+  const [duplicating, setDuplicating] = useState<string | null>(null);
+  const [adjustCategory, setAdjustCategory] = useState("");
+  const [adjustPercent, setAdjustPercent] = useState("");
+  const [adjustingPrices, setAdjustingPrices] = useState(false);
+  const [adjustResult, setAdjustResult] = useState<string | null>(null);
+
+  const categories = useMemo(() => {
+    const set = new Set<string>();
+    for (const p of products) if (p.category) set.add(p.category);
+    return Array.from(set).sort((a, b) => a.localeCompare(b, "pt-BR"));
+  }, [products]);
+
+  const filteredProducts = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return products;
+    return products.filter(
+      (p) =>
+        p.name.toLowerCase().includes(q) ||
+        (p.category && p.category.toLowerCase().includes(q)) ||
+        (p.barcode && p.barcode.includes(q)),
+    );
+  }, [products, search]);
+
+  const catalogGaps = useMemo(() => {
+    const withoutPhoto = products.filter((p) => !p.image_url).length;
+    const withoutCost = products.filter((p) => p.cost_price === null).length;
+    const withoutCategory = products.filter((p) => !p.category).length;
+    return { withoutPhoto, withoutCost, withoutCategory };
+  }, [products]);
+
   async function loadProducts() {
     setLoading(true);
     const { data } = await getSupabase()
       .from("products")
       .select(
-        "id, name, category, price, cost_price, image_url, stock, active, promo_buy_qty, promo_pay_qty, barcode, price_fiado, price_wholesale, wholesale_min_qty, stock_alert_threshold, expiry_date, supplier, on_offer, offer_price, sold_by_weight",
+        "id, name, category, price, cost_price, image_url, stock, active, promo_buy_qty, promo_pay_qty, barcode, price_fiado, price_wholesale, wholesale_min_qty, stock_alert_threshold, expiry_date, supplier, on_offer, offer_price, sold_by_weight, created_at",
       )
       .eq("store_id", store.id)
       .order("created_at", { ascending: false });
@@ -192,8 +317,29 @@ export default function Produtos() {
     setLoading(false);
   }
 
+  async function loadStats() {
+    const { data } = await getSupabase().rpc("product_sales_stats", { p_store_id: store.id, p_days: 30 });
+    if (!data) return;
+    const map: Record<string, SalesStat> = {};
+    for (const row of data as (SalesStat & { product_id: string })[]) {
+      map[row.product_id] = row;
+    }
+    setStats(map);
+  }
+
+  async function loadMovements(productId: string) {
+    const { data } = await getSupabase()
+      .from("stock_movements")
+      .select("id, type, quantity, unit_cost, note, created_by, created_at")
+      .eq("product_id", productId)
+      .order("created_at", { ascending: false })
+      .limit(10);
+    setMovements((prev) => ({ ...prev, [productId]: data ?? [] }));
+  }
+
   useEffect(() => {
     loadProducts();
+    loadStats();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [store.id]);
 
@@ -207,6 +353,19 @@ export default function Produtos() {
     if (!name.trim() || Number.isNaN(priceValue) || priceValue < 0) {
       setError("Preencha o nome e um preço válido.");
       return;
+    }
+
+    const similar = similarProduct(name, products);
+    if (similar) {
+      if (!window.confirm(`Já existe um produto parecido: "${similar.name}". Cadastrar mesmo assim?`)) return;
+    }
+
+    const trimmedBarcode = barcode.trim();
+    if (trimmedBarcode) {
+      const dupe = products.find((p) => p.barcode === trimmedBarcode);
+      if (dupe) {
+        if (!window.confirm(`Esse código de barras já está no produto "${dupe.name}". Cadastrar mesmo assim?`)) return;
+      }
     }
 
     setSaving(true);
@@ -426,9 +585,26 @@ export default function Produtos() {
     await getSupabase().from("products").delete().eq("id", id);
   }
 
+  const CSV_HEADER = [
+    "nome",
+    "categoria",
+    "preco",
+    "estoque",
+    "preco_custo",
+    "codigo_barras",
+    "por_peso",
+    "preco_atacado",
+    "qtd_minima_atacado",
+    "preco_fiado",
+    "leve",
+    "pague",
+    "fornecedor",
+    "validade",
+    "alerta_estoque",
+  ];
+
   function exportCsv() {
-    const header = ["nome", "categoria", "preco", "estoque", "preco_custo"];
-    const lines = [header.join(",")];
+    const lines = [CSV_HEADER.join(",")];
     for (const p of products) {
       lines.push(
         [
@@ -437,6 +613,16 @@ export default function Produtos() {
           String(p.price),
           String(p.stock),
           p.cost_price !== null ? String(p.cost_price) : "",
+          toCsvValue(p.barcode ?? ""),
+          p.sold_by_weight ? "sim" : "nao",
+          p.price_wholesale !== null ? String(p.price_wholesale) : "",
+          p.wholesale_min_qty !== null ? String(p.wholesale_min_qty) : "",
+          p.price_fiado !== null ? String(p.price_fiado) : "",
+          p.promo_buy_qty !== null ? String(p.promo_buy_qty) : "",
+          p.promo_pay_qty !== null ? String(p.promo_pay_qty) : "",
+          toCsvValue(p.supplier ?? ""),
+          p.expiry_date ?? "",
+          String(p.stock_alert_threshold),
         ].join(","),
       );
     }
@@ -447,6 +633,167 @@ export default function Produtos() {
     a.download = `produtos-${store.slug}.csv`;
     a.click();
     URL.revokeObjectURL(url);
+  }
+
+  async function handleDuplicate(p: Product) {
+    setDuplicating(p.id);
+    const { error: insertError } = await getSupabase()
+      .from("products")
+      .insert({
+        store_id: store.id,
+        name: `${p.name} (cópia)`,
+        category: p.category,
+        price: p.price,
+        cost_price: p.cost_price,
+        stock: 0,
+        image_url: p.image_url,
+        barcode: null,
+        price_fiado: p.price_fiado,
+        price_wholesale: p.price_wholesale,
+        wholesale_min_qty: p.wholesale_min_qty,
+        promo_buy_qty: p.promo_buy_qty,
+        promo_pay_qty: p.promo_pay_qty,
+        stock_alert_threshold: p.stock_alert_threshold,
+        supplier: p.supplier,
+        sold_by_weight: p.sold_by_weight,
+      });
+    setDuplicating(null);
+    if (insertError) {
+      setError("Não deu pra duplicar: " + insertError.message);
+      return;
+    }
+    loadProducts();
+  }
+
+  function lossDraftFor(id: string) {
+    return lossDrafts[id] ?? { type: "quebra" as StockMovement["type"], quantity: "", note: "" };
+  }
+
+  async function handleRegisterLoss(p: Product) {
+    const draft = lossDraftFor(p.id);
+    const qty = Number(draft.quantity.replace(",", "."));
+    if (!qty || Number.isNaN(qty) || qty <= 0) {
+      window.alert("Informe uma quantidade válida pra baixa.");
+      return;
+    }
+    setSavingLoss(p.id);
+    const { error: rpcError } = await getSupabase().rpc("register_stock_loss", {
+      p_store_id: store.id,
+      p_product_id: p.id,
+      p_type: draft.type,
+      p_quantity: qty,
+      p_note: draft.note.trim() || null,
+    });
+    setSavingLoss(null);
+    if (rpcError) {
+      window.alert("Não deu pra registrar a baixa: " + rpcError.message);
+      return;
+    }
+    setLossDrafts((prev) => {
+      const next = { ...prev };
+      delete next[p.id];
+      return next;
+    });
+    loadProducts();
+    loadMovements(p.id);
+  }
+
+  function toggleSelected(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  async function handleBulkAdjust() {
+    const percent = Number(adjustPercent.replace(",", "."));
+    if (!percent || Number.isNaN(percent)) {
+      window.alert("Informe uma porcentagem diferente de zero (ex: 8 ou -5).");
+      return;
+    }
+    const scope = adjustCategory ? `a categoria "${adjustCategory}"` : "TODOS os produtos";
+    if (!window.confirm(`Reajustar ${scope} em ${percent > 0 ? "+" : ""}${percent}%?`)) return;
+
+    setAdjustingPrices(true);
+    setAdjustResult(null);
+    const { data, error: rpcError } = await getSupabase().rpc("bulk_price_adjust", {
+      p_store_id: store.id,
+      p_percent: percent,
+      p_category: adjustCategory || null,
+    });
+    setAdjustingPrices(false);
+    if (rpcError) {
+      setAdjustResult("Não deu pra reajustar: " + rpcError.message);
+      return;
+    }
+    setAdjustResult(`${data} produto${data === 1 ? "" : "s"} reajustado${data === 1 ? "" : "s"}.`);
+    setAdjustPercent("");
+    loadProducts();
+  }
+
+  async function printLabels(list: Product[], forceOffer: boolean) {
+    if (list.length === 0) return;
+    const qrByBarcode = new Map<string, string>();
+    for (const p of list) {
+      if (p.barcode && !qrByBarcode.has(p.barcode)) {
+        try {
+          qrByBarcode.set(p.barcode, await QRCode.toDataURL(p.barcode, { width: 120, margin: 0 }));
+        } catch {
+          // sem QR pra esse código — a etiqueta continua útil só com o número
+        }
+      }
+    }
+
+    const cards = list
+      .map((p) => {
+        const isOffer = forceOffer && p.on_offer && p.offer_price !== null;
+        const pctOff = isOffer ? Math.round(((p.price - p.offer_price!) / p.price) * 100) : null;
+        const unitLabel = p.sold_by_weight ? "/kg" : "un.";
+        const qr = p.barcode ? qrByBarcode.get(p.barcode) : null;
+        return `
+        <div class="card">
+          ${p.image_url ? `<img src="${p.image_url}" class="photo" />` : ""}
+          <p class="name">${p.name}</p>
+          ${
+            isOffer
+              ? `<p class="old-price">${formatCurrency(p.price)}</p>
+                 <p class="price offer">${formatCurrency(p.offer_price!)} <span class="unit">${unitLabel}</span></p>
+                 <p class="pct">-${pctOff}%</p>`
+              : `<p class="price">${formatCurrency(p.price)} <span class="unit">${unitLabel}</span></p>`
+          }
+          ${p.price_wholesale && p.wholesale_min_qty ? `<p class="wholesale">${p.wholesale_min_qty}+ un: ${formatCurrency(p.price_wholesale)} cada</p>` : ""}
+          ${qr ? `<img src="${qr}" class="qr" />` : ""}
+          ${p.barcode ? `<p class="barcode-num">${p.barcode}</p>` : ""}
+        </div>`;
+      })
+      .join("");
+
+    const win = window.open("", "_blank", "width=480,height=640");
+    if (!win) return;
+    win.document.write(`
+      <html><head><title>Etiquetas</title>
+      <style>
+        body{font-family:sans-serif;margin:0;padding:8px;}
+        .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;}
+        .card{border:1px dashed #999;border-radius:6px;padding:6px;text-align:center;break-inside:avoid;}
+        .photo{width:100%;height:60px;object-fit:cover;border-radius:4px;}
+        .name{font-size:11px;font-weight:600;margin:3px 0;min-height:26px;}
+        .price{font-size:16px;font-weight:bold;margin:2px 0;}
+        .price .unit{font-size:10px;font-weight:normal;}
+        .old-price{font-size:11px;color:#888;text-decoration:line-through;margin:0;}
+        .price.offer{color:#b91c1c;}
+        .pct{font-size:11px;font-weight:bold;color:#b91c1c;margin:0 0 2px;}
+        .wholesale{font-size:9px;color:#555;margin:2px 0;}
+        .qr{width:60px;height:60px;margin-top:2px;}
+        .barcode-num{font-family:monospace;font-size:10px;margin:2px 0 0;letter-spacing:1px;}
+      </style></head><body>
+      <div class="grid">${cards}</div>
+      <script>window.print();</script>
+      </body></html>
+    `);
+    win.document.close();
   }
 
   async function handleImportFile(e: React.ChangeEvent<HTMLInputElement>) {
@@ -473,6 +820,16 @@ export default function Produtos() {
       price: header.indexOf("preco"),
       stock: header.indexOf("estoque"),
       costPrice: header.indexOf("preco_custo"),
+      barcode: header.indexOf("codigo_barras"),
+      soldByWeight: header.indexOf("por_peso"),
+      wholesalePrice: header.indexOf("preco_atacado"),
+      wholesaleMinQty: header.indexOf("qtd_minima_atacado"),
+      priceFiado: header.indexOf("preco_fiado"),
+      promoBuy: header.indexOf("leve"),
+      promoPay: header.indexOf("pague"),
+      supplier: header.indexOf("fornecedor"),
+      expiryDate: header.indexOf("validade"),
+      alertThreshold: header.indexOf("alerta_estoque"),
     };
 
     if (idx.name === -1 || idx.price === -1) {
@@ -483,6 +840,19 @@ export default function Produtos() {
 
     const supabase = getSupabase();
     const existingByName = new Map(products.map((p) => [p.name.trim().toLowerCase(), p]));
+
+    const numAt = (row: string[], col: number) => {
+      if (col === -1) return undefined;
+      const raw = (row[col] ?? "").trim();
+      if (!raw) return null;
+      const v = Number(raw.replace(",", "."));
+      return Number.isNaN(v) ? undefined : v;
+    };
+    const textAt = (row: string[], col: number) => {
+      if (col === -1) return undefined;
+      const raw = (row[col] ?? "").trim();
+      return raw || null;
+    };
 
     let created = 0;
     let updated = 0;
@@ -496,17 +866,37 @@ export default function Produtos() {
         continue;
       }
 
-      const stockRaw = idx.stock !== -1 ? (row[idx.stock] ?? "").trim() : "";
-      const stockValue = stockRaw ? Number(stockRaw) : undefined;
-      const costRaw = idx.costPrice !== -1 ? (row[idx.costPrice] ?? "").trim() : "";
-      const costValue = costRaw ? Number(costRaw.replace(",", ".")) : undefined;
-      const categoryValue = idx.category !== -1 ? (row[idx.category] ?? "").trim() : "";
+      const stockValue = numAt(row, idx.stock);
+      const costValue = numAt(row, idx.costPrice);
+      const categoryValue = textAt(row, idx.category);
+      const barcodeValue = textAt(row, idx.barcode);
+      const soldByWeightRaw = idx.soldByWeight !== -1 ? (row[idx.soldByWeight] ?? "").trim().toLowerCase() : "";
+      const wholesalePriceValue = numAt(row, idx.wholesalePrice);
+      const wholesaleMinQtyValue = numAt(row, idx.wholesaleMinQty);
+      const priceFiadoValue = numAt(row, idx.priceFiado);
+      const promoBuyValue = numAt(row, idx.promoBuy);
+      const promoPayValue = numAt(row, idx.promoPay);
+      const supplierValue = textAt(row, idx.supplier);
+      const expiryDateValue = idx.expiryDate !== -1 ? (row[idx.expiryDate] ?? "").trim() || null : undefined;
+      const alertThresholdValue = numAt(row, idx.alertThreshold);
+
+      const extra: Record<string, unknown> = {};
+      if (barcodeValue !== undefined) extra.barcode = barcodeValue;
+      if (idx.soldByWeight !== -1) extra.sold_by_weight = soldByWeightRaw === "sim";
+      if (wholesalePriceValue !== undefined) extra.price_wholesale = wholesalePriceValue;
+      if (wholesaleMinQtyValue !== undefined) extra.wholesale_min_qty = wholesaleMinQtyValue;
+      if (priceFiadoValue !== undefined) extra.price_fiado = priceFiadoValue;
+      if (promoBuyValue !== undefined) extra.promo_buy_qty = promoBuyValue;
+      if (promoPayValue !== undefined) extra.promo_pay_qty = promoPayValue;
+      if (supplierValue !== undefined) extra.supplier = supplierValue;
+      if (expiryDateValue !== undefined) extra.expiry_date = expiryDateValue;
+      if (alertThresholdValue !== undefined && alertThresholdValue !== null) extra.stock_alert_threshold = alertThresholdValue;
 
       const existing = existingByName.get(rowName.toLowerCase());
       if (existing) {
-        const patch: Record<string, unknown> = { price: priceValue };
-        if (stockValue !== undefined && !Number.isNaN(stockValue)) patch.stock = stockValue;
-        if (costValue !== undefined && !Number.isNaN(costValue)) patch.cost_price = costValue;
+        const patch: Record<string, unknown> = { price: priceValue, ...extra };
+        if (stockValue !== undefined && stockValue !== null) patch.stock = stockValue;
+        if (costValue !== undefined) patch.cost_price = costValue;
         if (categoryValue) patch.category = categoryValue;
         await supabase.from("products").update(patch).eq("id", existing.id);
         updated++;
@@ -516,8 +906,9 @@ export default function Produtos() {
           name: rowName,
           category: categoryValue || null,
           price: priceValue,
-          stock: stockValue !== undefined && !Number.isNaN(stockValue) ? stockValue : 0,
-          cost_price: costValue !== undefined && !Number.isNaN(costValue) ? costValue : null,
+          stock: stockValue ?? 0,
+          cost_price: costValue ?? null,
+          ...extra,
         });
         created++;
       }
@@ -548,8 +939,14 @@ export default function Produtos() {
           value={category}
           onChange={(e) => setCategory(e.target.value)}
           placeholder="Categoria"
+          list="categorias-existentes"
           className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
         />
+        <datalist id="categorias-existentes">
+          {categories.map((c) => (
+            <option key={c} value={c} />
+          ))}
+        </datalist>
         <input
           value={price}
           onChange={(e) => setPrice(e.target.value)}
@@ -648,7 +1045,20 @@ export default function Produtos() {
       </form>
       {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
 
+      {(catalogGaps.withoutPhoto > 0 || catalogGaps.withoutCost > 0 || catalogGaps.withoutCategory > 0) && (
+        <p className="mt-4 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:bg-amber-900/30 dark:text-amber-400">
+          📋 Falta completar o catálogo: {catalogGaps.withoutPhoto} produto{catalogGaps.withoutPhoto === 1 ? "" : "s"} sem foto ·{" "}
+          {catalogGaps.withoutCost} sem custo cadastrado · {catalogGaps.withoutCategory} sem categoria.
+        </p>
+      )}
+
       <div className="mt-4 flex flex-wrap items-center gap-2">
+        <input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Buscar por nome, categoria ou código de barras…"
+          className="min-w-0 flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+        />
         <button
           onClick={exportCsv}
           className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 dark:border-slate-700 dark:text-slate-300"
@@ -669,24 +1079,87 @@ export default function Produtos() {
           onChange={handleImportFile}
           className="hidden"
         />
-        <span className="text-xs text-slate-500 dark:text-slate-400">
-          Colunas: nome, categoria, preco, estoque, preco_custo — produto existente (mesmo nome) é atualizado, o resto é criado.
-        </span>
       </div>
+      <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+        Colunas do CSV: nome, categoria, preco, estoque, preco_custo, codigo_barras, por_peso (sim/nao),
+        preco_atacado, qtd_minima_atacado, preco_fiado, leve, pague, fornecedor, validade, alerta_estoque —
+        produto existente (mesmo nome) é atualizado, o resto é criado.
+      </p>
       {importMessage && <p className="mt-2 text-sm text-green-700 dark:text-green-400">{importMessage}</p>}
 
+      <details className="mt-4 rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
+        <summary className="cursor-pointer text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+          Reajuste de preço em massa
+        </summary>
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <select
+            value={adjustCategory}
+            onChange={(e) => setAdjustCategory(e.target.value)}
+            className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+          >
+            <option value="">Todas as categorias</option>
+            {categories.map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
+          </select>
+          <input
+            value={adjustPercent}
+            onChange={(e) => setAdjustPercent(e.target.value)}
+            placeholder="% (ex: 8 ou -5)"
+            inputMode="decimal"
+            className="w-40 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+          />
+          <button
+            onClick={handleBulkAdjust}
+            disabled={adjustingPrices}
+            className="rounded-lg bg-blue-900 px-4 py-2 text-sm font-semibold text-amber-300 disabled:opacity-60 dark:bg-blue-800"
+          >
+            {adjustingPrices ? "Aplicando…" : "Aplicar reajuste"}
+          </button>
+        </div>
+        {adjustResult && <p className="mt-2 text-sm text-slate-700 dark:text-slate-300">{adjustResult}</p>}
+      </details>
+
+      {selectedIds.size > 0 && (
+        <div className="mt-4 flex flex-wrap items-center gap-2 rounded-lg bg-blue-50 px-3 py-2 dark:bg-blue-900/20">
+          <span className="text-sm text-blue-900 dark:text-blue-300">{selectedIds.size} selecionado(s)</span>
+          <button
+            onClick={() => printLabels(products.filter((p) => selectedIds.has(p.id)), false)}
+            className="text-sm font-medium text-blue-900 underline dark:text-blue-400"
+          >
+            🖨️ Imprimir etiquetas
+          </button>
+          <button
+            onClick={() => printLabels(products.filter((p) => selectedIds.has(p.id)), true)}
+            className="text-sm font-medium text-blue-900 underline dark:text-blue-400"
+          >
+            🏷️ Imprimir etiquetas de promoção
+          </button>
+          <button
+            onClick={() => setSelectedIds(new Set())}
+            className="text-sm text-slate-500 underline dark:text-slate-400"
+          >
+            Limpar seleção
+          </button>
+        </div>
+      )}
+
       <div className="mt-4 overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800">
-        <table className="w-full min-w-[760px] text-left text-sm">
+        <table className="w-full min-w-[900px] text-left text-sm">
           <thead className="bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300">
             <tr>
+              <th className="px-3 py-2 font-medium"></th>
               <th className="px-3 py-2 font-medium">Nome</th>
               <th className="px-3 py-2 font-medium">Categoria</th>
               <th className="px-3 py-2 font-medium">Preço</th>
               <th className="px-3 py-2 font-medium">Custo</th>
-              <th className="px-3 py-2 font-medium">Margem</th>
+              <th className="px-3 py-2 font-medium">Margem / markup</th>
               <th className="px-3 py-2 font-medium">Estoque</th>
               <th className="px-3 py-2 font-medium">Por peso?</th>
               <th className="px-3 py-2 font-medium">Promoção (leve/pague)</th>
+              <th className="px-3 py-2 font-medium">Alertas</th>
               <th className="px-3 py-2 font-medium">Ativo</th>
               <th className="px-3 py-2 font-medium"></th>
             </tr>
@@ -694,23 +1167,49 @@ export default function Produtos() {
           <tbody className="divide-y divide-slate-200 bg-white dark:divide-slate-800 dark:bg-slate-900">
             {loading && (
               <tr>
-                <td colSpan={10} className="px-3 py-6 text-center text-slate-500">
+                <td colSpan={12} className="px-3 py-6 text-center text-slate-500">
                   Carregando…
                 </td>
               </tr>
             )}
-            {!loading && products.length === 0 && (
+            {!loading && filteredProducts.length === 0 && (
               <tr>
-                <td colSpan={10} className="px-3 py-6 text-center text-slate-500">
-                  Nenhum produto cadastrado ainda.
+                <td colSpan={12} className="px-3 py-6 text-center text-slate-500">
+                  {products.length === 0 ? "Nenhum produto cadastrado ainda." : "Nenhum produto encontrado pra essa busca."}
                 </td>
               </tr>
             )}
-            {products.map((p) => {
+            {filteredProducts.map((p) => {
               const margin = p.cost_price && p.price > 0 ? ((p.price - p.cost_price) / p.price) * 100 : null;
+              const markup = p.cost_price && p.cost_price > 0 ? ((p.price - p.cost_price) / p.cost_price) * 100 : null;
+              const stat = stats[p.id];
+              const isNew = daysSince(p.created_at) <= 7;
+              const isStalled = stat && stat.last_sold_at && daysSince(stat.last_sold_at) > 30;
+              const neverSold = stat && !stat.last_sold_at;
+              const daysToStockout =
+                stat && stat.avg_daily_sales > 0 ? Math.floor(p.stock / stat.avg_daily_sales) : null;
+              const priceIncoherent =
+                (p.price_wholesale !== null && p.price_wholesale >= p.price) ||
+                (p.offer_price !== null && p.offer_price >= p.price);
+              const expiryWarning = p.expiry_date ? daysUntil(p.expiry_date) : null;
               return (
                 <tr key={p.id}>
-                  <td className="px-3 py-2 text-slate-900 dark:text-slate-50">{p.name}</td>
+                  <td className="px-3 py-2">
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.has(p.id)}
+                      onChange={() => toggleSelected(p.id)}
+                      className="h-4 w-4 rounded border-slate-300"
+                    />
+                  </td>
+                  <td className="px-3 py-2 text-slate-900 dark:text-slate-50">
+                    {p.name}
+                    {isNew && (
+                      <span className="ml-1 rounded-full bg-blue-100 px-1.5 py-0.5 text-[10px] font-medium text-blue-800 dark:bg-blue-900/40 dark:text-blue-300">
+                        🆕 novo
+                      </span>
+                    )}
+                  </td>
                   <td className="px-3 py-2 text-slate-600 dark:text-slate-400">{p.category || "—"}</td>
                   <td className="px-3 py-2">
                     <input
@@ -741,7 +1240,19 @@ export default function Produtos() {
                     />
                   </td>
                   <td className="px-3 py-2 text-slate-600 dark:text-slate-400">
-                    {margin !== null ? `${margin.toFixed(0)}%` : "—"}
+                    {margin !== null ? (
+                      <>
+                        <p className={margin < 10 ? "font-medium text-red-600 dark:text-red-400" : ""}>
+                          margem {margin.toFixed(0)}%
+                        </p>
+                        <p className="text-xs text-slate-400">markup {markup !== null ? `${markup.toFixed(0)}%` : "—"}</p>
+                        {p.price <= (p.cost_price ?? 0) && (
+                          <p className="text-xs font-semibold text-red-600 dark:text-red-400">⚠️ no prejuízo</p>
+                        )}
+                      </>
+                    ) : (
+                      "—"
+                    )}
                   </td>
                   <td className="px-3 py-2">
                     <input
@@ -810,6 +1321,29 @@ export default function Produtos() {
                       </button>
                     </div>
                   </td>
+                  <td className="px-3 py-2 space-y-0.5">
+                    {expiryWarning !== null && expiryWarning <= 7 && (
+                      <p className={`text-[10px] font-medium ${expiryWarning < 0 ? "text-red-600" : "text-amber-600"} dark:text-amber-400`}>
+                        {expiryWarning < 0 ? "⏰ venceu" : `⏰ vence em ${expiryWarning}d`}
+                      </p>
+                    )}
+                    {priceIncoherent && (
+                      <p className="text-[10px] font-medium text-red-600 dark:text-red-400">⚠️ preço incoerente</p>
+                    )}
+                    {isStalled && (
+                      <p className="text-[10px] font-medium text-slate-500 dark:text-slate-400">
+                        😴 parado há {daysSince(stat!.last_sold_at!)}d
+                      </p>
+                    )}
+                    {neverSold && !isNew && (
+                      <p className="text-[10px] font-medium text-slate-500 dark:text-slate-400">😴 nunca vendeu</p>
+                    )}
+                    {daysToStockout !== null && daysToStockout <= 5 && (
+                      <p className="text-[10px] font-medium text-amber-600 dark:text-amber-400">
+                        📉 acaba em ~{daysToStockout}d
+                      </p>
+                    )}
+                  </td>
                   <td className="px-3 py-2">
                     <button
                       onClick={() => updateProduct(p.id, { active: !p.active })}
@@ -824,10 +1358,27 @@ export default function Produtos() {
                   </td>
                   <td className="px-3 py-2 text-right whitespace-nowrap">
                     <button
-                      onClick={() => setExpandedId(expandedId === p.id ? null : p.id)}
-                      className="mr-3 text-xs font-medium text-blue-900 hover:underline dark:text-blue-400"
+                      onClick={() => {
+                        const next = expandedId === p.id ? null : p.id;
+                        setExpandedId(next);
+                        if (next) loadMovements(p.id);
+                      }}
+                      className="mr-2 text-xs font-medium text-blue-900 hover:underline dark:text-blue-400"
                     >
-                      {expandedId === p.id ? "Fechar" : "Mais detalhes"}
+                      {expandedId === p.id ? "Fechar" : "Detalhes"}
+                    </button>
+                    <button
+                      onClick={() => printLabels([p], false)}
+                      className="mr-2 text-xs font-medium text-blue-900 hover:underline dark:text-blue-400"
+                    >
+                      Etiqueta
+                    </button>
+                    <button
+                      onClick={() => handleDuplicate(p)}
+                      disabled={duplicating === p.id}
+                      className="mr-2 text-xs font-medium text-blue-900 hover:underline disabled:opacity-60 dark:text-blue-400"
+                    >
+                      {duplicating === p.id ? "…" : "Duplicar"}
                     </button>
                     <button
                       onClick={() => deleteProduct(p.id, p.name)}
@@ -839,11 +1390,11 @@ export default function Produtos() {
                 </tr>
               );
             })}
-            {products.map(
+            {filteredProducts.map(
               (p) =>
                 expandedId === p.id && (
                   <tr key={`${p.id}-detalhes`}>
-                    <td colSpan={10} className="bg-slate-50 px-4 py-4 dark:bg-slate-800/50">
+                    <td colSpan={12} className="bg-slate-50 px-4 py-4 dark:bg-slate-800/50">
                       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
                         <div>
                           <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">
@@ -880,7 +1431,17 @@ export default function Produtos() {
                           <input
                             key={`barcode-${p.id}-${p.barcode}`}
                             defaultValue={p.barcode ?? ""}
-                            onBlur={(e) => updateProduct(p.id, { barcode: e.target.value.trim() || null })}
+                            onBlur={(e) => {
+                              const v = e.target.value.trim() || null;
+                              if (v) {
+                                const dupe = products.find((other) => other.id !== p.id && other.barcode === v);
+                                if (dupe && !window.confirm(`Esse código já está no produto "${dupe.name}". Salvar mesmo assim?`)) {
+                                  e.target.value = p.barcode ?? "";
+                                  return;
+                                }
+                              }
+                              updateProduct(p.id, { barcode: v });
+                            }}
                             className="mt-1 w-full rounded border border-slate-300 bg-white px-2 py-1 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
                           />
                         </div>
@@ -1011,13 +1572,94 @@ export default function Produtos() {
                           )}
                         </div>
                       </div>
+                      <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+                        <div>
+                          <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">
+                            Histórico de preço
+                          </label>
+                          <div className="mt-1">
+                            <PriceHistoryChart productId={p.id} />
+                          </div>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">
+                            Vendas nos últimos 30 dias
+                          </label>
+                          {stats[p.id] ? (
+                            <p className="mt-1 text-sm text-slate-700 dark:text-slate-300">
+                              {stats[p.id].units_sold_recent} un. vendida{stats[p.id].units_sold_recent === 1 ? "" : "s"} ·{" "}
+                              {formatCurrency(stats[p.id].revenue_recent)} em faturamento
+                              {stats[p.id].profit_recent !== null && (
+                                <> · {formatCurrency(stats[p.id].profit_recent!)} de lucro</>
+                              )}
+                              <br />
+                              {stats[p.id].last_sold_at
+                                ? `Última venda: ${new Date(stats[p.id].last_sold_at!).toLocaleDateString("pt-BR")}`
+                                : "Nunca vendeu"}
+                            </p>
+                          ) : (
+                            <p className="mt-1 text-xs text-slate-400">Carregando…</p>
+                          )}
+                        </div>
+                      </div>
+
                       <div className="mt-4">
                         <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">
-                          Histórico de preço
+                          Registrar perda / quebra
                         </label>
-                        <div className="mt-1">
-                          <PriceHistoryChart productId={p.id} />
+                        <div className="mt-1 flex flex-wrap items-center gap-1">
+                          <select
+                            value={lossDraftFor(p.id).type}
+                            onChange={(e) =>
+                              setLossDrafts((prev) => ({
+                                ...prev,
+                                [p.id]: { ...lossDraftFor(p.id), type: e.target.value as StockMovement["type"] },
+                              }))
+                            }
+                            className="rounded border border-slate-300 bg-white px-2 py-1 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                          >
+                            <option value="quebra">Quebra</option>
+                            <option value="perda">Perda / venceu / sumiu</option>
+                            <option value="outro">Outro</option>
+                          </select>
+                          <input
+                            type="number"
+                            step={p.sold_by_weight ? "0.001" : "1"}
+                            placeholder="Quantidade"
+                            value={lossDraftFor(p.id).quantity}
+                            onChange={(e) =>
+                              setLossDrafts((prev) => ({ ...prev, [p.id]: { ...lossDraftFor(p.id), quantity: e.target.value } }))
+                            }
+                            className="w-24 rounded border border-slate-300 bg-white px-2 py-1 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                          />
+                          <input
+                            placeholder="Nota (opcional)"
+                            value={lossDraftFor(p.id).note}
+                            onChange={(e) =>
+                              setLossDrafts((prev) => ({ ...prev, [p.id]: { ...lossDraftFor(p.id), note: e.target.value } }))
+                            }
+                            className="min-w-0 flex-1 rounded border border-slate-300 bg-white px-2 py-1 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                          />
+                          <button
+                            onClick={() => handleRegisterLoss(p)}
+                            disabled={savingLoss === p.id}
+                            className="rounded border border-slate-300 px-3 py-1 text-xs font-medium text-slate-700 disabled:opacity-60 dark:border-slate-700 dark:text-slate-300"
+                          >
+                            {savingLoss === p.id ? "Registrando…" : "Registrar baixa"}
+                          </button>
                         </div>
+                        {movements[p.id] && movements[p.id].length > 0 && (
+                          <ul className="mt-2 space-y-0.5 text-xs text-slate-500 dark:text-slate-400">
+                            {movements[p.id].map((m) => (
+                              <li key={m.id}>
+                                {MOVEMENT_LABEL[m.type]}: {m.quantity}
+                                {m.unit_cost ? ` (${formatCurrency(m.unit_cost)}/un.)` : ""}
+                                {m.note ? ` — ${m.note}` : ""} · {new Date(m.created_at).toLocaleDateString("pt-BR")}
+                                {m.created_by ? ` · ${m.created_by}` : ""}
+                              </li>
+                            ))}
+                          </ul>
+                        )}
                       </div>
                     </td>
                   </tr>

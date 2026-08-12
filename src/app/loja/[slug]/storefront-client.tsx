@@ -33,7 +33,12 @@ type Product = {
   wholesale_min_qty: number | null;
   on_offer: boolean;
   offer_price: number | null;
+  created_at: string;
 };
+
+function isNewProduct(createdAt: string) {
+  return Date.now() - new Date(createdAt).getTime() < 7 * 86400000;
+}
 
 function effectivePrice(product: Product) {
   return product.on_offer && product.offer_price !== null ? product.offer_price : product.price;
@@ -1604,6 +1609,11 @@ export default function StorefrontClient({
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-sm font-medium text-slate-900 dark:text-slate-50">
                           {product.name}
+                          {isNewProduct(product.created_at) && (
+                            <span className="ml-1.5 rounded-full bg-blue-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-blue-800 dark:bg-blue-900/40 dark:text-blue-300">
+                              🆕 Novo
+                            </span>
+                          )}
                         </p>
                         {product.on_offer && product.offer_price !== null ? (
                           <p className="text-sm">

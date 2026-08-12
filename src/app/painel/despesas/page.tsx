@@ -12,6 +12,12 @@ type Expense = {
   expense_date: string;
 };
 
+type ProductOption = {
+  id: string;
+  name: string;
+  sold_by_weight: boolean;
+};
+
 const CATEGORIES = [
   { value: "fornecedores", label: "Fornecedores" },
   { value: "aluguel", label: "Aluguel" },
@@ -43,6 +49,11 @@ export default function Despesas() {
   const [date, setDate] = useState(todayIso());
   const [saving, setSaving] = useState(false);
 
+  const [products, setProducts] = useState<ProductOption[]>([]);
+  const [isStockPurchase, setIsStockPurchase] = useState(false);
+  const [purchaseProductId, setPurchaseProductId] = useState("");
+  const [purchaseQuantity, setPurchaseQuantity] = useState("");
+
   async function loadExpenses() {
     setLoading(true);
     const { data } = await getSupabase()
@@ -54,8 +65,18 @@ export default function Despesas() {
     setLoading(false);
   }
 
+  async function loadProducts() {
+    const { data } = await getSupabase()
+      .from("products")
+      .select("id, name, sold_by_weight")
+      .eq("store_id", store.id)
+      .order("name", { ascending: true });
+    setProducts(data ?? []);
+  }
+
   useEffect(() => {
     loadExpenses();
+    loadProducts();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [store.id]);
 
@@ -64,30 +85,69 @@ export default function Despesas() {
     setError(null);
 
     const value = Number(amount.replace(",", "."));
-    if (!description.trim() || Number.isNaN(value) || value <= 0) {
-      setError("Preencha a descrição e um valor válido.");
+    if (Number.isNaN(value) || value <= 0) {
+      setError("Preencha um valor válido.");
       return;
     }
 
-    setSaving(true);
-    const { error: insertError } = await getSupabase().from("expenses").insert({
-      store_id: store.id,
-      description: description.trim(),
-      category,
-      amount: value,
-      expense_date: date,
-    });
-    setSaving(false);
+    if (isStockPurchase) {
+      const qty = Number(purchaseQuantity.replace(",", "."));
+      if (!purchaseProductId) {
+        setError("Escolha o produto que você comprou.");
+        return;
+      }
+      if (!qty || Number.isNaN(qty) || qty <= 0) {
+        setError("Informe uma quantidade válida.");
+        return;
+      }
 
-    if (insertError) {
-      setError("Não deu pra salvar a despesa: " + insertError.message);
-      return;
+      setSaving(true);
+      const { error: rpcError } = await getSupabase().rpc("register_stock_purchase", {
+        p_store_id: store.id,
+        p_product_id: purchaseProductId,
+        p_quantity: qty,
+        p_total_cost: value,
+        p_description: description.trim() || null,
+        p_category: category,
+        p_expense_date: date,
+      });
+      setSaving(false);
+
+      if (rpcError) {
+        setError("Não deu pra registrar a compra: " + rpcError.message);
+        return;
+      }
+
+      setPurchaseProductId("");
+      setPurchaseQuantity("");
+      setIsStockPurchase(false);
+    } else {
+      if (!description.trim()) {
+        setError("Preencha a descrição e um valor válido.");
+        return;
+      }
+
+      setSaving(true);
+      const { error: insertError } = await getSupabase().from("expenses").insert({
+        store_id: store.id,
+        description: description.trim(),
+        category,
+        amount: value,
+        expense_date: date,
+      });
+      setSaving(false);
+
+      if (insertError) {
+        setError("Não deu pra salvar a despesa: " + insertError.message);
+        return;
+      }
     }
 
     setDescription("");
     setAmount("");
     setDate(todayIso());
     loadExpenses();
+    loadProducts();
   }
 
   async function deleteExpense(id: string) {
@@ -156,7 +216,7 @@ export default function Despesas() {
         <input
           value={description}
           onChange={(e) => setDescription(e.target.value)}
-          placeholder="Descrição (ex: fornecedor de bebidas)"
+          placeholder={isStockPurchase ? "Descrição (opcional)" : "Descrição (ex: fornecedor de bebidas)"}
           className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50 lg:col-span-2"
         />
         <select
@@ -173,7 +233,7 @@ export default function Despesas() {
         <input
           value={amount}
           onChange={(e) => setAmount(e.target.value)}
-          placeholder="Valor (R$)"
+          placeholder="Valor total (R$)"
           inputMode="decimal"
           className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
         />
@@ -183,12 +243,48 @@ export default function Despesas() {
           onChange={(e) => setDate(e.target.value)}
           className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
         />
+        <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300 lg:col-span-2">
+          <input
+            type="checkbox"
+            checked={isStockPurchase}
+            onChange={(e) => setIsStockPurchase(e.target.checked)}
+            className="h-4 w-4 rounded border-slate-300"
+          />
+          📦 Isso é compra de mercadoria pra um produto? (já soma no estoque e atualiza o custo)
+        </label>
+        {isStockPurchase && (
+          <>
+            <select
+              value={purchaseProductId}
+              onChange={(e) => setPurchaseProductId(e.target.value)}
+              className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50 lg:col-span-2"
+            >
+              <option value="">Escolha o produto…</option>
+              {products.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+            <input
+              value={purchaseQuantity}
+              onChange={(e) => setPurchaseQuantity(e.target.value)}
+              placeholder={
+                purchaseProductId && products.find((p) => p.id === purchaseProductId)?.sold_by_weight
+                  ? "Quantidade (kg)"
+                  : "Quantidade"
+              }
+              inputMode="decimal"
+              className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+            />
+          </>
+        )}
         <button
           type="submit"
           disabled={saving}
           className="rounded-lg bg-blue-900 px-4 py-2 text-sm font-semibold text-amber-300 disabled:opacity-60 dark:bg-blue-800"
         >
-          {saving ? "Salvando…" : "Registrar despesa"}
+          {saving ? "Salvando…" : isStockPurchase ? "Registrar compra" : "Registrar despesa"}
         </button>
       </form>
       {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
