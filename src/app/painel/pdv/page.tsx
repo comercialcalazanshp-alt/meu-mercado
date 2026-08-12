@@ -9,6 +9,7 @@ type Product = {
   name: string;
   price: number;
   stock: number;
+  barcode: string | null;
 };
 
 type CartLine = {
@@ -17,6 +18,20 @@ type CartLine = {
   price: number;
   quantity: number;
   stock: number;
+};
+
+type RecentSale = {
+  id: string;
+  total: number;
+  payment_method: string | null;
+  created_at: string;
+};
+
+const PAYMENT_LABELS: Record<string, string> = {
+  dinheiro: "Dinheiro",
+  pix: "Pix",
+  cartao: "Cartão",
+  fiado: "Fiado",
 };
 
 type PaymentMethod = "dinheiro" | "pix" | "cartao" | "fiado";
@@ -42,26 +57,59 @@ export default function Pdv() {
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<{ total: number; troco: number | null } | null>(null);
+  const [success, setSuccess] = useState<{
+    total: number;
+    troco: number | null;
+    items: CartLine[];
+    method: PaymentMethod;
+  } | null>(null);
 
   const [quickAddOpen, setQuickAddOpen] = useState(false);
   const [quickAddPrice, setQuickAddPrice] = useState("");
   const [quickAddStock, setQuickAddStock] = useState("");
   const [quickAddSaving, setQuickAddSaving] = useState(false);
+  const [lastSale, setLastSale] = useState<CartLine[] | null>(null);
+  const [recentSales, setRecentSales] = useState<RecentSale[]>([]);
+  const [caixaAberto, setCaixaAberto] = useState<boolean | null>(null);
 
   async function loadProducts() {
     setLoadingProducts(true);
     const { data } = await getSupabase()
       .from("products")
-      .select("id, name, price, stock")
+      .select("id, name, price, stock, barcode")
       .eq("store_id", store.id)
       .order("name", { ascending: true });
     setProducts(data ?? []);
     setLoadingProducts(false);
   }
 
+  async function loadRecentSales() {
+    const startOfDay = new Date();
+    startOfDay.setHours(0, 0, 0, 0);
+    const { data } = await getSupabase()
+      .from("orders")
+      .select("id, total, payment_method, created_at")
+      .eq("store_id", store.id)
+      .eq("channel", "balcao")
+      .gte("created_at", startOfDay.toISOString())
+      .order("created_at", { ascending: false });
+    setRecentSales(data ?? []);
+  }
+
+  async function loadCaixaStatus() {
+    const { data } = await getSupabase()
+      .from("cash_sessions")
+      .select("id")
+      .eq("store_id", store.id)
+      .eq("status", "aberto")
+      .maybeSingle();
+    setCaixaAberto(!!data);
+  }
+
   useEffect(() => {
     loadProducts();
+    loadRecentSales();
+    loadCaixaStatus();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [store.id]);
 
@@ -72,8 +120,18 @@ export default function Pdv() {
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return [];
-    return products.filter((p) => p.name.toLowerCase().includes(q)).slice(0, 8);
+    return products
+      .filter((p) => p.name.toLowerCase().includes(q) || (p.barcode && p.barcode.includes(q)))
+      .slice(0, 8);
   }, [search, products]);
+
+  useEffect(() => {
+    const q = search.trim();
+    if (!q || q.length < 6) return;
+    const exactBarcode = products.find((p) => p.barcode === q);
+    if (exactBarcode) addToCart(exactBarcode);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search]);
 
   const total = cart.reduce((sum, line) => sum + line.price * line.quantity, 0);
   const cashReceivedValue = Number(cashReceived.replace(",", ".")) || 0;
@@ -121,6 +179,58 @@ export default function Pdv() {
     setCart((prev) => prev.filter((l) => l.productId !== productId));
   }
 
+  function cancelSale() {
+    if (cart.length === 0) return;
+    if (!window.confirm("Cancelar essa venda e limpar o carrinho?")) return;
+    setCart([]);
+    setPaymentMethod(null);
+    setCashReceived("");
+    setCustomerName("");
+    setCustomerPhone("");
+    setError(null);
+    focusSearch();
+  }
+
+  function repeatLastSale() {
+    if (!lastSale) return;
+    setCart(
+      lastSale.map((line) => {
+        const current = products.find((p) => p.id === line.productId);
+        return current ? { ...line, price: current.price, stock: current.stock } : line;
+      }),
+    );
+    setSuccess(null);
+    focusSearch();
+  }
+
+  function printReceipt(items: CartLine[], saleTotal: number, method: PaymentMethod, troco: number | null) {
+    const win = window.open("", "_blank", "width=380,height=500");
+    if (!win) return;
+    const itemsHtml = items
+      .map(
+        (line) =>
+          `<tr><td>${line.quantity}x ${line.name}</td><td style="text-align:right">${formatCurrency(line.price * line.quantity)}</td></tr>`,
+      )
+      .join("");
+    win.document.write(`
+      <html><head><title>Recibo</title>
+      <style>
+        body{font-family:sans-serif;padding:16px;font-size:14px;}
+        h2{margin:0 0 4px;} table{width:100%;border-collapse:collapse;margin-top:8px;}
+        td{padding:2px 0;border-top:1px solid #ddd;} .total{font-weight:bold;text-align:right;margin-top:8px;}
+      </style></head><body>
+      <h2>${store.name}</h2>
+      <p>${new Date().toLocaleString("pt-BR")}</p>
+      <table>${itemsHtml}</table>
+      <p class="total">Total: ${formatCurrency(saleTotal)}</p>
+      <p>Pagamento: ${PAYMENT_LABELS[method]}</p>
+      ${troco !== null ? `<p>Troco: ${formatCurrency(Math.max(0, troco))}</p>` : ""}
+      <script>window.print();</script>
+      </body></html>
+    `);
+    win.document.close();
+  }
+
   async function handleQuickAdd(e: FormEvent) {
     e.preventDefault();
     const priceValue = Number(quickAddPrice.replace(",", "."));
@@ -131,7 +241,7 @@ export default function Pdv() {
     const { data, error: insertError } = await getSupabase()
       .from("products")
       .insert({ store_id: store.id, name: search.trim(), price: priceValue, stock: stockValue })
-      .select("id, name, price, stock")
+      .select("id, name, price, stock, barcode")
       .single();
     setQuickAddSaving(false);
 
@@ -182,20 +292,43 @@ export default function Pdv() {
     setSuccess({
       total: sale.total,
       troco: paymentMethod === "dinheiro" ? cashReceivedValue - sale.total : null,
+      items: cart,
+      method: paymentMethod,
     });
+    setLastSale(cart);
     setCart([]);
     setPaymentMethod(null);
     setCashReceived("");
     setCustomerName("");
     setCustomerPhone("");
     loadProducts();
+    loadRecentSales();
     focusSearch();
   }
 
   return (
     <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_380px]">
       <div>
-        <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-50">PDV — venda no balcão</h1>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-50">PDV — venda no balcão</h1>
+          {lastSale && lastSale.length > 0 && (
+            <button
+              onClick={repeatLastSale}
+              className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-600 dark:border-slate-700 dark:text-slate-300"
+            >
+              🔁 Repetir última venda
+            </button>
+          )}
+        </div>
+
+        {caixaAberto === false && (
+          <p className="mt-2 rounded-lg bg-amber-100 px-3 py-2 text-sm text-amber-800 dark:bg-amber-900/40 dark:text-amber-400">
+            ⚠️ O caixa de hoje ainda não foi aberto.{" "}
+            <a href="/painel/caixa" className="underline">
+              Abrir caixa
+            </a>
+          </p>
+        )}
 
         <div className="relative mt-4">
           <input
@@ -206,7 +339,7 @@ export default function Pdv() {
               setQuickAddOpen(false);
             }}
             onKeyDown={handleSearchKeyDown}
-            placeholder="Buscar produto pelo nome…"
+            placeholder="Buscar por nome ou passar código de barras…"
             autoComplete="off"
             className="w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-base text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
           />
@@ -272,7 +405,18 @@ export default function Pdv() {
           )}
         </div>
 
-        <div className="mt-4 space-y-2">
+        {cart.length > 0 && (
+          <div className="mt-3 flex justify-end">
+            <button
+              onClick={cancelSale}
+              className="text-sm text-red-600 hover:underline dark:text-red-400"
+            >
+              Cancelar venda / limpar carrinho
+            </button>
+          </div>
+        )}
+
+        <div className="mt-2 space-y-2">
           {cart.length === 0 && (
             <p className="rounded-xl border border-dashed border-slate-300 px-4 py-8 text-center text-sm text-slate-500 dark:border-slate-700 dark:text-slate-400">
               Carrinho vazio — busque um produto acima pra começar a venda.
@@ -289,6 +433,11 @@ export default function Pdv() {
                 {line.quantity > line.stock && (
                   <p className="text-xs font-medium text-red-600">
                     Só tem {line.stock} em estoque
+                  </p>
+                )}
+                {line.quantity <= line.stock && line.quantity === line.stock && (
+                  <p className="text-xs font-medium text-amber-600 dark:text-amber-400">
+                    ⚠️ Vai zerar o estoque
                   </p>
                 )}
               </div>
@@ -321,6 +470,28 @@ export default function Pdv() {
             </div>
           ))}
         </div>
+
+        {recentSales.length > 0 && (
+          <details className="mt-6 rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
+            <summary className="cursor-pointer text-sm font-medium text-slate-700 dark:text-slate-300">
+              Vendas de hoje no balcão ({recentSales.length})
+            </summary>
+            <div className="mt-2 space-y-1 text-sm">
+              {recentSales.map((sale) => (
+                <div key={sale.id} className="flex justify-between text-slate-600 dark:text-slate-400">
+                  <span>
+                    {new Date(sale.created_at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
+                    {" · "}
+                    {sale.payment_method ? PAYMENT_LABELS[sale.payment_method] ?? sale.payment_method : "—"}
+                  </span>
+                  <span className="font-medium text-slate-900 dark:text-slate-50">
+                    {formatCurrency(sale.total)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </details>
+        )}
       </div>
 
       <div className="h-fit rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
@@ -330,6 +501,12 @@ export default function Pdv() {
             {success.troco !== null && (
               <p>Troco: {formatCurrency(Math.max(0, success.troco))}</p>
             )}
+            <button
+              onClick={() => printReceipt(success.items, success.total, success.method, success.troco)}
+              className="mt-2 text-sm font-medium underline"
+            >
+              🖨️ Imprimir recibo
+            </button>
           </div>
         )}
 
