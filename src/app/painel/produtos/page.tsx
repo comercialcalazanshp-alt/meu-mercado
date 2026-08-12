@@ -862,21 +862,21 @@ export default function Produtos() {
     win.document.write(`
       <html><head><title>Etiquetas</title>
       <style>
-        @page { size: 80mm auto; margin: 2mm; }
+        @page { size: 58mm auto; margin: 1.5mm; }
         * { box-sizing: border-box; }
         body{font-family:sans-serif;margin:0;padding:0;}
-        .label{width:76mm;text-align:center;padding:2mm 0;page-break-after:always;break-after:page;}
+        .label{width:55mm;text-align:center;padding:1.5mm 0;page-break-after:always;break-after:page;}
         .label:last-child{page-break-after:auto;break-after:auto;}
-        .photo{width:100%;max-height:28mm;object-fit:cover;border-radius:2mm;}
-        .name{font-size:14px;font-weight:600;margin:2mm 0 1mm;}
-        .price{font-size:26px;font-weight:bold;margin:1mm 0;}
-        .price .unit{font-size:13px;font-weight:normal;}
-        .old-price{font-size:13px;color:#888;text-decoration:line-through;margin:0;}
+        .photo{width:100%;max-height:20mm;object-fit:cover;border-radius:1.5mm;}
+        .name{font-size:12px;font-weight:600;margin:1.5mm 0 1mm;}
+        .price{font-size:20px;font-weight:bold;margin:1mm 0;}
+        .price .unit{font-size:11px;font-weight:normal;}
+        .old-price{font-size:11px;color:#888;text-decoration:line-through;margin:0;}
         .price.offer{color:#b91c1c;}
-        .pct{font-size:14px;font-weight:bold;color:#b91c1c;margin:0 0 1mm;}
-        .wholesale{font-size:11px;color:#555;margin:1mm 0;}
-        .qr{width:24mm;height:24mm;margin-top:1mm;}
-        .barcode-num{font-family:monospace;font-size:12px;margin:1mm 0 0;letter-spacing:1px;}
+        .pct{font-size:12px;font-weight:bold;color:#b91c1c;margin:0 0 1mm;}
+        .wholesale{font-size:9px;color:#555;margin:1mm 0;}
+        .qr{width:20mm;height:20mm;margin-top:1mm;}
+        .barcode-num{font-family:monospace;font-size:10px;margin:1mm 0 0;letter-spacing:0.5px;}
       </style></head><body>
       ${labels}
       <script>window.print();</script>
