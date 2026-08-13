@@ -259,6 +259,7 @@ export default function StorefrontClient({
   const [confirmedReferralCode, setConfirmedReferralCode] = useState<string | null>(null);
   const [confirmedReferralBonus, setConfirmedReferralBonus] = useState(0);
   const [neighborhoodId, setNeighborhoodId] = useState<string>("retirada");
+  const [deliveryAddress, setDeliveryAddress] = useState("");
   const [confirmedDeliveryFee, setConfirmedDeliveryFee] = useState(0);
   const [confirmedOrderId, setConfirmedOrderId] = useState<string | null>(null);
   const [paymentMethod, setPaymentMethod] = useState<"combinar" | "pix" | "cartao">("combinar");
@@ -680,6 +681,11 @@ export default function StorefrontClient({
       return;
     }
 
+    if (neighborhoodId !== "retirada" && !deliveryAddress.trim()) {
+      setError("Preencha o endereço de entrega.");
+      return;
+    }
+
     setSaving(true);
     // O preço e a baixa de estoque são recalculados no banco (função
     // "checkout") — o navegador só manda produto e quantidade, nunca preço,
@@ -698,6 +704,7 @@ export default function StorefrontClient({
       p_use_cashback: useCashback,
       p_birthday: birthday || undefined,
       p_neighborhood_id: neighborhoodId === "retirada" ? undefined : neighborhoodId,
+      p_delivery_address: neighborhoodId === "retirada" ? undefined : deliveryAddress.trim(),
     });
 
     if (rpcError) {
@@ -841,6 +848,9 @@ export default function StorefrontClient({
         "",
         `Total: ${formatCurrency(finalTotal)}`,
         ...(customerName.trim() ? [`Nome: ${customerName.trim()}`] : []),
+        ...(neighborhoodId !== "retirada" && deliveryAddress.trim()
+          ? [`Endereço: ${deliveryAddress.trim()}`]
+          : []),
       ].join("\n"),
     );
     return (
@@ -859,6 +869,11 @@ export default function StorefrontClient({
         {confirmedDeliveryFee > 0 && (
           <p className="text-sm text-slate-500 dark:text-slate-400">
             Inclui {formatCurrency(confirmedDeliveryFee)} de frete.
+          </p>
+        )}
+        {neighborhoodId !== "retirada" && deliveryAddress.trim() && (
+          <p className="max-w-md text-sm text-slate-500 dark:text-slate-400">
+            Entrega em: {deliveryAddress.trim()}
           </p>
         )}
         {confirmedScratchDiscount > 0 && (
@@ -1118,6 +1133,21 @@ export default function StorefrontClient({
                   </option>
                 ))}
               </select>
+              {neighborhoodId !== "retirada" && (
+                <div className="mt-2">
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
+                    Endereço completo
+                  </label>
+                  <textarea
+                    required
+                    value={deliveryAddress}
+                    onChange={(e) => setDeliveryAddress(e.target.value)}
+                    placeholder="Rua, número, complemento e ponto de referência"
+                    rows={2}
+                    className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                  />
+                </div>
+              )}
             </div>
           )}
 

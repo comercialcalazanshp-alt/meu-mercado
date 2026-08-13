@@ -3,6 +3,16 @@
 import { useEffect, useMemo, useState } from "react";
 import { getSupabase } from "@/lib/supabase";
 import { useStore } from "@/lib/store-context";
+import { printHtml } from "@/lib/receipt";
+
+function escapeHtml(value: string) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
 
 type OrderItem = {
   name: string;
@@ -23,6 +33,7 @@ type Order = {
   discount_amount: number;
   neighborhood_name: string | null;
   delivery_fee: number;
+  delivery_address: string | null;
   channel: string;
   payment_method: string | null;
   pix_paid_at: string | null;
@@ -123,7 +134,8 @@ function orderSummaryText(order: Order) {
   const lines = order.items.map(
     (item) => `${item.quantity}x ${item.name} — ${formatCurrency(item.line_total ?? item.price * item.quantity)}`,
   );
-  return `Pedido de ${order.customer_name}\n${lines.join("\n")}\nTotal: ${formatCurrency(order.total)}`;
+  const addressLine = order.delivery_address ? `\nEndereço: ${order.delivery_address}` : "";
+  return `Pedido de ${order.customer_name}\n${lines.join("\n")}\nTotal: ${formatCurrency(order.total)}${addressLine}`;
 }
 
 export default function Pedidos() {
@@ -175,7 +187,7 @@ export default function Pedidos() {
       const { data } = await getSupabase()
         .from("orders")
         .select(
-          "id, customer_name, customer_phone, items, total, status, created_at, coupon_code, discount_amount, neighborhood_name, delivery_fee, channel, payment_method, pix_paid_at, card_paid_at, card_last_digits, seen_at, internal_note, cancel_reason, refund_resolved",
+          "id, customer_name, customer_phone, items, total, status, created_at, coupon_code, discount_amount, neighborhood_name, delivery_fee, delivery_address, channel, payment_method, pix_paid_at, card_paid_at, card_last_digits, seen_at, internal_note, cancel_reason, refund_resolved",
         )
         .eq("store_id", store.id)
         .order("created_at", { ascending: false });
@@ -259,30 +271,33 @@ export default function Pedidos() {
   }
 
   function printLabel(order: Order) {
-    const win = window.open("", "_blank", "width=380,height=500");
-    if (!win) return;
     const itemsHtml = order.items
       .map(
         (item) =>
-          `<tr><td>${item.quantity}x ${item.name}</td><td style="text-align:right">${formatCurrency(item.line_total ?? item.price * item.quantity)}</td></tr>`,
+          `<tr><td>${item.quantity}x ${escapeHtml(item.name)}</td><td style="text-align:right">${formatCurrency(item.line_total ?? item.price * item.quantity)}</td></tr>`,
       )
       .join("");
-    win.document.write(`
-      <html><head><title>Etiqueta - ${order.customer_name}</title>
+    const deliveryHtml = order.neighborhood_name
+      ? `<p>Entrega: ${escapeHtml(order.neighborhood_name)}</p>${
+          order.delivery_address ? `<p><strong>Endereço:</strong> ${escapeHtml(order.delivery_address)}</p>` : ""
+        }`
+      : "<p>Retirar na loja</p>";
+    // Usa iframe em vez de window.open — abrir aba nova é bloqueado por popup
+    // blocker em muitos navegadores e falhava em silêncio.
+    printHtml(`
+      <html><head><title>Etiqueta - ${escapeHtml(order.customer_name)}</title>
       <style>
         body{font-family:sans-serif;padding:16px;font-size:14px;}
         h2{margin:0 0 4px;} table{width:100%;border-collapse:collapse;margin-top:8px;}
         td{padding:2px 0;border-top:1px solid #ddd;} .total{font-weight:bold;text-align:right;margin-top:8px;}
       </style></head><body>
-      <h2>${order.customer_name}</h2>
-      <p>${order.customer_phone}</p>
-      <p>${order.neighborhood_name ? `Entrega: ${order.neighborhood_name}` : "Retirar na loja"}</p>
+      <h2>${escapeHtml(order.customer_name)}</h2>
+      <p>${escapeHtml(order.customer_phone)}</p>
+      ${deliveryHtml}
       <table>${itemsHtml}</table>
       <p class="total">Total: ${formatCurrency(order.total)}</p>
-      <script>window.print();</script>
       </body></html>
     `);
-    win.document.close();
   }
 
   function exportCsv(rows: Order[]) {
@@ -793,6 +808,11 @@ export default function Pedidos() {
                         ? `Entrega: ${order.neighborhood_name} (${formatCurrency(order.delivery_fee)})`
                         : "Retirar na loja"}
                     </p>
+                    {order.delivery_address && (
+                      <p className="mt-1 rounded-lg bg-amber-50 px-2 py-1.5 text-sm text-amber-800 dark:bg-amber-900/30 dark:text-amber-400">
+                        📍 {order.delivery_address}
+                      </p>
+                    )}
                     <p className="mt-1 text-right font-semibold text-slate-900 dark:text-slate-50">
                       Total: {formatCurrency(order.total)}
                     </p>
