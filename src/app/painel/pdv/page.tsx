@@ -265,15 +265,6 @@ export default function Pdv() {
     return kits.filter((k) => k.name.toLowerCase().includes(q)).slice(0, 4);
   }, [search, qtyPrefix, kits]);
 
-  useEffect(() => {
-    const raw = qtyPrefix ? qtyPrefix.rest : search;
-    const q = raw.trim();
-    if (!q || q.length < 6) return;
-    const exactBarcode = products.find((p) => p.barcode === q);
-    if (exactBarcode) addToCart(exactBarcode, qtyPrefix?.qty);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search]);
-
   const subtotal = cart.reduce((sum, line) => sum + line.price * line.quantity, 0);
   const discountRaw = Number(discountValue.replace(",", ".")) || 0;
   const discountAmount = Math.min(
@@ -356,6 +347,25 @@ export default function Pdv() {
       e.preventDefault();
       addKitToCart(filteredKits[0], qtyPrefix?.qty);
     }
+  }
+
+  // Roda direto no onChange (síncrono) em vez de useEffect: um leitor de código
+  // de barras digita tudo e manda Enter em seguida tão rápido que um useEffect
+  // (assíncrono) ainda não tinha limpado a busca quando o Enter chegava, e o
+  // item acabava entrando 2x — uma vez por aqui, outra pelo handleSearchKeyDown.
+  function handleSearchChange(value: string) {
+    setQuickAddOpen(false);
+    const parsed = parseQtyPrefix(value);
+    const raw = parsed ? parsed.rest : value;
+    const q = raw.trim();
+    if (q.length >= 6) {
+      const exactBarcode = products.find((p) => p.barcode === q);
+      if (exactBarcode) {
+        addToCart(exactBarcode, parsed?.qty);
+        return;
+      }
+    }
+    setSearch(value);
   }
 
   function changeQuantity(productId: string, delta: number) {
@@ -733,10 +743,7 @@ export default function Pdv() {
           <input
             ref={searchInputRef}
             value={search}
-            onChange={(e) => {
-              setSearch(e.target.value);
-              setQuickAddOpen(false);
-            }}
+            onChange={(e) => handleSearchChange(e.target.value)}
             onKeyDown={handleSearchKeyDown}
             placeholder="Buscar por nome ou passar código de barras…"
             autoComplete="off"
