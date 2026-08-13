@@ -297,6 +297,8 @@ export default function Produtos() {
   const [scanError, setScanError] = useState<string | null>(null);
   const scanVideoRef = useRef<HTMLVideoElement>(null);
   const scanStreamRef = useRef<MediaStream | null>(null);
+  const [lookingUpBarcode, setLookingUpBarcode] = useState(false);
+  const [barcodeLookupResult, setBarcodeLookupResult] = useState<"achou" | "nao_achou" | null>(null);
 
   function openBarcodeScanner() {
     if (!getBarcodeDetectorCtor()) {
@@ -313,6 +315,31 @@ export default function Produtos() {
     setScanningBarcode(false);
     scanStreamRef.current?.getTracks().forEach((t) => t.stop());
     scanStreamRef.current = null;
+  }
+
+  // Busca o produto num banco de código de barras aberto e gratuito (Open
+  // Food Facts) só pra sugerir o nome — nunca trava o cadastro se o serviço
+  // estiver fora do ar ou não achar o produto, o dono sempre pode digitar.
+  async function lookupBarcodeProduct(code: string) {
+    const trimmed = code.trim();
+    if (!trimmed || name.trim()) return;
+    setLookingUpBarcode(true);
+    setBarcodeLookupResult(null);
+    try {
+      const res = await fetch(`/api/barcode-lookup?code=${encodeURIComponent(trimmed)}`);
+      const data = await res.json();
+      if (data.found) {
+        setName(data.name);
+        if (data.image_url && !imageUrl.trim()) setImageUrl(data.image_url);
+        setBarcodeLookupResult("achou");
+      } else {
+        setBarcodeLookupResult("nao_achou");
+      }
+    } catch {
+      setBarcodeLookupResult("nao_achou");
+    } finally {
+      setLookingUpBarcode(false);
+    }
   }
 
   useEffect(() => {
@@ -345,6 +372,7 @@ export default function Produtos() {
             if (codes.length > 0) {
               setBarcode(codes[0].rawValue);
               closeBarcodeScanner();
+              lookupBarcodeProduct(codes[0].rawValue);
               return;
             }
           } catch {
@@ -1041,15 +1069,53 @@ export default function Produtos() {
         onSubmit={handleAdd}
         className="mt-4 space-y-5 rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900"
       >
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <div>
-            <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">Nome do produto</label>
+            <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">
+              1. Código de barras (opcional)
+            </label>
+            <div className="mt-1 flex items-center gap-1">
+              <input
+                value={barcode}
+                onChange={(e) => setBarcode(e.target.value)}
+                onBlur={(e) => lookupBarcodeProduct(e.target.value)}
+                placeholder="Escaneie ou digite primeiro"
+                className="min-w-0 flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+              />
+              <button
+                type="button"
+                onClick={openBarcodeScanner}
+                title="Ler código de barras com a câmera"
+                className="shrink-0 rounded-lg border border-slate-300 px-2 py-2 text-sm dark:border-slate-700"
+              >
+                📷
+              </button>
+            </div>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">2. Nome do produto</label>
             <input
               value={name}
-              onChange={(e) => setName(e.target.value)}
+              onChange={(e) => {
+                setName(e.target.value);
+                setBarcodeLookupResult(null);
+              }}
               placeholder="Nome do produto"
               className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
             />
+            {lookingUpBarcode && (
+              <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">🔎 procurando esse produto…</p>
+            )}
+            {barcodeLookupResult === "achou" && (
+              <p className="mt-1 text-xs text-green-700 dark:text-green-400">
+                ✅ preenchido automaticamente, confira se está certo
+              </p>
+            )}
+            {barcodeLookupResult === "nao_achou" && (
+              <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
+                não achei esse produto, digite o nome
+              </p>
+            )}
           </div>
           <div>
             <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">Categoria</label>
@@ -1193,28 +1259,7 @@ export default function Produtos() {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-          <div>
-            <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">
-              Código de barras (opcional)
-            </label>
-            <div className="mt-1 flex items-center gap-1">
-              <input
-                value={barcode}
-                onChange={(e) => setBarcode(e.target.value)}
-                placeholder="Código de barras"
-                className="min-w-0 flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
-              />
-              <button
-                type="button"
-                onClick={openBarcodeScanner}
-                title="Ler código de barras com a câmera"
-                className="shrink-0 rounded-lg border border-slate-300 px-2 py-2 text-sm dark:border-slate-700"
-              >
-                📷
-              </button>
-            </div>
-          </div>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div>
             <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">Fornecedor (opcional)</label>
             <input
