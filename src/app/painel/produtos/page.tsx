@@ -259,6 +259,7 @@ export default function Produtos() {
   const [category, setCategory] = useState("");
   const [price, setPrice] = useState("");
   const [costPrice, setCostPrice] = useState("");
+  const [desiredMarkup, setDesiredMarkup] = useState("");
   const [stock, setStock] = useState("");
   const [imageUrl, setImageUrl] = useState("");
   const [barcode, setBarcode] = useState("");
@@ -497,6 +498,7 @@ export default function Produtos() {
     setCategory("");
     setPrice("");
     setCostPrice("");
+    setDesiredMarkup("");
     setExpiryDate("");
     setSupplier("");
     setStock("");
@@ -1093,6 +1095,27 @@ export default function Produtos() {
               </p>
             );
           })()}
+        </div>
+        <div>
+          <input
+            value={desiredMarkup}
+            onChange={(e) => {
+              const raw = e.target.value;
+              setDesiredMarkup(raw);
+              const c = Number(costPrice.replace(",", "."));
+              const pct = Number(raw.replace(",", "."));
+              if (raw.trim() !== "" && c > 0 && !Number.isNaN(c) && !Number.isNaN(pct) && pct >= 0) {
+                setPrice((c * (1 + pct / 100)).toFixed(2));
+              }
+            }}
+            placeholder={costPrice.trim() ? "ou: % que eu quero ganhar" : "preencha o custo primeiro"}
+            inputMode="decimal"
+            disabled={!costPrice.trim()}
+            className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+          />
+          <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
+            digitar aqui já preenche o Preço sozinho
+          </p>
         </div>
         <input
           value={stock}
