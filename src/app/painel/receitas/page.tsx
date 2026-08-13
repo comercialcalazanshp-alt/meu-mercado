@@ -1,12 +1,14 @@
 "use client";
 
-import { useEffect, useMemo, useState, type ChangeEvent } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { getSupabase } from "@/lib/supabase";
 import { useStore } from "@/lib/store-context";
+import PhotoField from "@/components/PhotoField";
 
 type ProductOption = {
   id: string;
   name: string;
+  image_url: string | null;
 };
 
 type Ingredient = {
@@ -25,36 +27,15 @@ type Recipe = {
   created_at: string;
 };
 
-function resizeImage(file: File): Promise<Blob> {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    const url = URL.createObjectURL(file);
-    img.onload = () => {
-      const maxSize = 900;
-      const scale = Math.min(1, maxSize / Math.max(img.width, img.height));
-      const canvas = document.createElement("canvas");
-      canvas.width = Math.round(img.width * scale);
-      canvas.height = Math.round(img.height * scale);
-      const ctx = canvas.getContext("2d");
-      if (!ctx) {
-        URL.revokeObjectURL(url);
-        reject(new Error("Canvas não disponível"));
-        return;
-      }
-      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-      URL.revokeObjectURL(url);
-      canvas.toBlob(
-        (blob) => (blob ? resolve(blob) : reject(new Error("Falha ao gerar imagem"))),
-        "image/jpeg",
-        0.85,
-      );
-    };
-    img.onerror = () => {
-      URL.revokeObjectURL(url);
-      reject(new Error("Não deu pra abrir a imagem"));
-    };
-    img.src = url;
-  });
+function buildRecipePrompt(recipeName: string, ingredientNames: string[]) {
+  const list = ingredientNames.filter((n) => n.trim()).join(", ");
+  return [
+    `Foto de prato pronto, estilo fotografia culinária profissional, mostrando a receita "${recipeName.trim() || "receita"}".`,
+    list ? `Ingredientes principais: ${list}.` : "",
+    "Apresentação apetitosa, iluminação natural, fundo neutro, sem texto, sem logotipos, sem marcas d'água.",
+  ]
+    .filter(Boolean)
+    .join(" ");
 }
 
 export default function Receitas() {
@@ -69,7 +50,6 @@ export default function Receitas() {
   const [description, setDescription] = useState("");
   const [instructions, setInstructions] = useState("");
   const [imageUrl, setImageUrl] = useState("");
-  const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [productSearch, setProductSearch] = useState("");
   const [selectedItems, setSelectedItems] = useState<Ingredient[]>([]);
   const [saving, setSaving] = useState(false);
@@ -84,7 +64,12 @@ export default function Receitas() {
         .select("id, name, description, instructions, image_url, ingredients, featured, created_at")
         .eq("store_id", store.id)
         .order("created_at", { ascending: false }),
-      supabase.from("products").select("id, name").eq("store_id", store.id).eq("active", true).order("name"),
+      supabase
+        .from("products")
+        .select("id, name, image_url")
+        .eq("store_id", store.id)
+        .eq("active", true)
+        .order("name"),
     ]);
     setRecipes((recipeData ?? []) as Recipe[]);
     setProducts((productData ?? []) as ProductOption[]);
@@ -140,25 +125,6 @@ export default function Receitas() {
     setSelectedItems((prev) =>
       prev.map((it) => (it.id === productId ? { ...it, qty: Math.max(1, qty || 1) } : it)),
     );
-  }
-
-  async function handlePhotoChange(e: ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    e.target.value = "";
-    if (!file) return;
-    setUploadingPhoto(true);
-    const blob = await resizeImage(file);
-    const path = `${store.id}/receita-${crypto.randomUUID()}.jpg`;
-    const { error: uploadError } = await getSupabase()
-      .storage.from("product-images")
-      .upload(path, blob, { contentType: "image/jpeg" });
-    setUploadingPhoto(false);
-    if (uploadError) {
-      setError("Não deu pra enviar a foto: " + uploadError.message);
-      return;
-    }
-    const { data } = getSupabase().storage.from("product-images").getPublicUrl(path);
-    setImageUrl(data.publicUrl);
   }
 
   async function handleSave() {
@@ -261,16 +227,17 @@ export default function Receitas() {
           <label className="mb-1 mt-3 block text-xs font-medium text-slate-600 dark:text-slate-400">
             Foto da receita
           </label>
-          <div className="flex items-center gap-3">
-            <label className="cursor-pointer rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 dark:border-slate-700 dark:text-slate-300">
-              {uploadingPhoto ? "Enviando…" : "📷 Escolher foto"}
-              <input type="file" accept="image/*" className="hidden" onChange={handlePhotoChange} />
-            </label>
-            {imageUrl && (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={imageUrl} alt="" className="h-14 w-14 rounded-lg object-cover" />
+          <PhotoField
+            storeId={store.id}
+            value={imageUrl}
+            onChange={setImageUrl}
+            uploadPrefix="receita"
+            promptSeed={buildRecipePrompt(
+              name,
+              selectedItems.map((it) => products.find((p) => p.id === it.id)?.name ?? ""),
             )}
-          </div>
+            catalogProducts={products}
+          />
 
           <label className="mb-1 mt-3 block text-xs font-medium text-slate-600 dark:text-slate-400">
             Modo de preparo

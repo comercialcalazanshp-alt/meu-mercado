@@ -3,6 +3,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { getSupabase } from "@/lib/supabase";
 import { useStore } from "@/lib/store-context";
+import PhotoField from "@/components/PhotoField";
 
 type Banner = {
   id: string;
@@ -13,6 +14,15 @@ type Banner = {
   end_at: string | null;
   active: boolean;
 };
+
+type ProductOption = { id: string; name: string; image_url: string | null };
+
+function buildBannerPrompt(title: string) {
+  return [
+    `Banner promocional pra loja de supermercado, estilo comercial e chamativo, com o tema "${title.trim() || "promoção"}".`,
+    "Cores vivas, boa legibilidade se tiver texto, sem marcas d'água, formato retangular horizontal.",
+  ].join(" ");
+}
 
 function toDateInputValue(iso: string | null) {
   if (!iso) return "";
@@ -34,6 +44,7 @@ function statusLabel(banner: Banner) {
 export default function Banners() {
   const store = useStore();
   const [banners, setBanners] = useState<Banner[]>([]);
+  const [products, setProducts] = useState<ProductOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -48,12 +59,21 @@ export default function Banners() {
 
   async function loadBanners() {
     setLoading(true);
-    const { data } = await getSupabase()
-      .from("banners")
-      .select("id, title, image_url, link_url, start_at, end_at, active")
-      .eq("store_id", store.id)
-      .order("created_at", { ascending: false });
+    const [{ data }, { data: productsData }] = await Promise.all([
+      getSupabase()
+        .from("banners")
+        .select("id, title, image_url, link_url, start_at, end_at, active")
+        .eq("store_id", store.id)
+        .order("created_at", { ascending: false }),
+      getSupabase()
+        .from("products")
+        .select("id, name, image_url")
+        .eq("store_id", store.id)
+        .eq("active", true)
+        .order("name"),
+    ]);
     setBanners(data ?? []);
+    setProducts(productsData ?? []);
     setLoading(false);
   }
 
@@ -155,12 +175,16 @@ export default function Banners() {
           placeholder="Título (ex: Promoção de fim de semana)"
           className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50 sm:col-span-2"
         />
-        <input
-          value={imageUrl}
-          onChange={(e) => setImageUrl(e.target.value)}
-          placeholder="Link da imagem do banner"
-          className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50 sm:col-span-2"
-        />
+        <div className="sm:col-span-2">
+          <PhotoField
+            storeId={store.id}
+            value={imageUrl}
+            onChange={setImageUrl}
+            uploadPrefix="banner"
+            promptSeed={buildBannerPrompt(title)}
+            catalogProducts={products}
+          />
+        </div>
         <input
           value={linkUrl}
           onChange={(e) => setLinkUrl(e.target.value)}

@@ -1,11 +1,12 @@
 import "server-only";
 import { createClient } from "@supabase/supabase-js";
 
-// Gera uma foto pro kit via IA (OpenAI). O dono escreve/edita o texto que
-// descreve a imagem, e pode escolher fotos de produtos do kit pra servirem
-// de referência — nesse caso usamos o endpoint de edição (gpt-image-1
-// aceita várias imagens de entrada), que reaproveita/recompõe as fotos de
-// verdade em vez de só descrever os produtos em texto. Sem referência, cai
+// Gera uma imagem via IA (OpenAI) pra qualquer módulo do painel (kits,
+// receitas, banners...). O dono escreve/edita o texto que descreve a
+// imagem, e pode escolher fotos (do catálogo ou tiradas na hora) pra
+// servirem de referência — nesse caso usamos o endpoint de edição
+// (gpt-image-1 aceita várias imagens de entrada), que reaproveita/recompõe
+// as fotos de verdade em vez de só descrever em texto. Sem referência, cai
 // pro endpoint de geração normal a partir só do texto. Fica no servidor
 // porque a chave da OpenAI não pode vazar pro navegador, e porque
 // precisamos confirmar que quem pediu é dono da loja antes de gastar
@@ -21,10 +22,16 @@ export async function POST(request: Request) {
     return Response.json({ error: "Não autenticado" }, { status: 401 });
   }
 
-  const { store_id, prompt, reference_image_urls } = (await request.json()) as {
+  const {
+    store_id,
+    prompt,
+    reference_image_urls,
+    prefix,
+  } = (await request.json()) as {
     store_id: string;
     prompt: string;
     reference_image_urls?: string[];
+    prefix?: string;
   };
 
   if (!store_id || !prompt?.trim()) {
@@ -95,7 +102,8 @@ export async function POST(request: Request) {
   }
 
   const bytes = Buffer.from(b64, "base64");
-  const path = `${store_id}/kit-${crypto.randomUUID()}.png`;
+  const safePrefix = (prefix || "img").replace(/[^a-z0-9-]/gi, "");
+  const path = `${store_id}/${safePrefix}-${crypto.randomUUID()}.png`;
   const { error: uploadError } = await scoped.storage
     .from("product-images")
     .upload(path, bytes, { contentType: "image/png" });
