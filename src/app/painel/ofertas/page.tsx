@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { getSupabase } from "@/lib/supabase";
 import { useStore } from "@/lib/store-context";
+import PhotoField from "@/components/PhotoField";
 
 type OfferProduct = {
   id: string;
@@ -16,10 +17,25 @@ function formatCurrency(value: number) {
   return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
+function buildOffersPrompt(storeName: string, products: OfferProduct[]) {
+  const list = products
+    .slice(0, 8)
+    .map((p) => `${p.name} de ${formatCurrency(p.price)} por ${formatCurrency(p.offer_price)}`)
+    .join(", ");
+  return [
+    `Banner promocional vertical (formato story de celular) pra loja "${storeName}", anunciando ofertas do dia.`,
+    list ? `Produtos em oferta: ${list}.` : "",
+    "Estilo comercial de supermercado, cores vivas e chamativas, bom contraste pros preços ficarem legíveis, sem marcas d'água.",
+  ]
+    .filter(Boolean)
+    .join(" ");
+}
+
 export default function Ofertas() {
   const store = useStore();
   const [products, setProducts] = useState<OfferProduct[]>([]);
   const [loading, setLoading] = useState(true);
+  const [aiStoryImage, setAiStoryImage] = useState("");
   const today = new Date().toLocaleDateString("pt-BR", { weekday: "long", day: "2-digit", month: "long" });
 
   async function load() {
@@ -105,6 +121,39 @@ export default function Ofertas() {
               📲 Peça pelo site · {store.name}
             </div>
           </div>
+        </div>
+      )}
+
+      {!loading && products.length > 0 && (
+        <div className="mx-auto mt-6 max-w-[340px] print:hidden">
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
+            Ou gere uma imagem prontinha com IA
+          </p>
+          <div className="mt-2">
+            <PhotoField
+              storeId={store.id}
+              value={aiStoryImage}
+              onChange={setAiStoryImage}
+              uploadPrefix="oferta"
+              promptSeed={buildOffersPrompt(store.name, products)}
+              catalogProducts={products}
+            />
+          </div>
+          {aiStoryImage && (
+            <div className="mt-3">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={aiStoryImage} alt="Ofertas do dia" className="w-full rounded-2xl shadow-lg" />
+              <a
+                href={aiStoryImage}
+                download
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-2 inline-block text-sm font-medium text-blue-900 underline dark:text-blue-400"
+              >
+                ⬇️ Baixar imagem
+              </a>
+            </div>
+          )}
         </div>
       )}
     </div>
