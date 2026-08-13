@@ -3,6 +3,15 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { getSupabase } from "@/lib/supabase";
 import { useStore } from "@/lib/store-context";
+import PhotoField from "@/components/PhotoField";
+
+function buildProductPrompt(name: string, category: string | null) {
+  return [
+    `Foto de produto para catálogo de mercado: "${name}"${category ? ` (categoria: ${category})` : ""}.`,
+    "Fundo branco ou neutro, bem iluminada, produto centralizado e ocupando bem o quadro,",
+    "estilo padronizado de e-commerce, sem marcas d'água, sem texto sobreposto.",
+  ].join(" ");
+}
 
 type Product = {
   id: string;
@@ -265,20 +274,21 @@ export default function Produtos() {
   const [expiryDate, setExpiryDate] = useState("");
   const [supplier, setSupplier] = useState("");
   const [soldByWeight, setSoldByWeight] = useState(false);
+  const [wholesaleModeNew, setWholesaleModeNew] = useState<"valor" | "percentual">("valor");
   const [wholesalePriceNew, setWholesalePriceNew] = useState("");
   const [wholesaleMinQtyNew, setWholesaleMinQtyNew] = useState("");
   const [saving, setSaving] = useState(false);
-  const [uploadingPhoto, setUploadingPhoto] = useState(false);
-  const photoInputRef = useRef<HTMLInputElement>(null);
   const [promoDrafts, setPromoDrafts] = useState<Record<string, { buy: string; pay: string }>>({});
   const [wholesaleDrafts, setWholesaleDrafts] = useState<
-    Record<string, { price: string; minQty: string }>
+    Record<string, { price: string; minQty: string; mode: "valor" | "percentual" }>
   >({});
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [offerDrafts, setOfferDrafts] = useState<Record<string, string>>({});
   const [offerUiOpen, setOfferUiOpen] = useState<Record<string, boolean>>({});
 
   const [search, setSearch] = useState("");
+  const [gapFilter, setGapFilter] = useState<"photo" | "cost" | "category" | null>(null);
+  const productsTableRef = useRef<HTMLDivElement>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [stats, setStats] = useState<Record<string, SalesStat>>({});
   const [movements, setMovements] = useState<Record<string, StockMovement[]>>({});
@@ -402,15 +412,20 @@ export default function Produtos() {
   }, [products]);
 
   const filteredProducts = useMemo(() => {
+    let list = products;
+    if (gapFilter === "photo") list = list.filter((p) => !p.image_url);
+    else if (gapFilter === "cost") list = list.filter((p) => p.cost_price === null);
+    else if (gapFilter === "category") list = list.filter((p) => !p.category);
+
     const q = search.trim().toLowerCase();
-    if (!q) return products;
-    return products.filter(
+    if (!q) return list;
+    return list.filter(
       (p) =>
         p.name.toLowerCase().includes(q) ||
         (p.category && p.category.toLowerCase().includes(q)) ||
         (p.barcode && p.barcode.includes(q)),
     );
-  }, [products, search]);
+  }, [products, search, gapFilter]);
 
   const catalogGaps = useMemo(() => {
     const withoutPhoto = products.filter((p) => !p.image_url).length;
@@ -418,6 +433,20 @@ export default function Produtos() {
     const withoutCategory = products.filter((p) => !p.category).length;
     return { withoutPhoto, withoutCost, withoutCategory };
   }, [products]);
+
+  function jumpToGap(kind: "photo" | "cost" | "category") {
+    setGapFilter((prev) => (prev === kind ? null : kind));
+    setSearch("");
+    setTimeout(() => productsTableRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 0);
+  }
+
+  useEffect(() => {
+    if (gapFilter && filteredProducts.length > 0) {
+      setExpandedId(filteredProducts[0].id);
+      if (filteredProducts[0].id) loadMovements(filteredProducts[0].id);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gapFilter]);
 
   async function loadProducts() {
     setLoading(true);
@@ -523,7 +552,13 @@ export default function Produtos() {
       }
     }
 
-    const wholesalePriceValue = wholesalePriceNew.trim() ? Number(wholesalePriceNew.replace(",", ".")) : null;
+    const wholesaleRaw = wholesalePriceNew.trim() ? Number(wholesalePriceNew.replace(",", ".")) : null;
+    const wholesalePriceValue =
+      wholesaleRaw === null
+        ? null
+        : wholesaleModeNew === "percentual"
+          ? Math.round(priceValue * (1 - wholesaleRaw / 100) * 100) / 100
+          : wholesaleRaw;
     const wholesaleMinQtyValue = wholesaleMinQtyNew.trim() ? Number(wholesaleMinQtyNew) : null;
     if (wholesalePriceValue !== null || wholesaleMinQtyValue !== null) {
       if (
@@ -531,7 +566,8 @@ export default function Produtos() {
         !wholesaleMinQtyValue ||
         Number.isNaN(wholesalePriceValue) ||
         Number.isNaN(wholesaleMinQtyValue) ||
-        wholesalePriceValue >= priceValue
+        wholesalePriceValue >= priceValue ||
+        wholesalePriceValue <= 0
       ) {
         setError('Preencha "Preço atacado" e "A partir de quantos" válidos, com o preço atacado menor que o preço normal.');
         return;
@@ -575,72 +611,6 @@ export default function Produtos() {
     setWholesalePriceNew("");
     setWholesaleMinQtyNew("");
     loadProducts();
-  }
-
-  function resizeImage(file: File): Promise<Blob> {
-    return new Promise((resolve, reject) => {
-      const img = new Image();
-      const url = URL.createObjectURL(file);
-      img.onload = () => {
-        const maxSize = 800;
-        const scale = Math.min(1, maxSize / Math.max(img.width, img.height));
-        const canvas = document.createElement("canvas");
-        canvas.width = Math.round(img.width * scale);
-        canvas.height = Math.round(img.height * scale);
-        const ctx = canvas.getContext("2d");
-        if (!ctx) {
-          URL.revokeObjectURL(url);
-          reject(new Error("Canvas não disponível"));
-          return;
-        }
-        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-        URL.revokeObjectURL(url);
-        canvas.toBlob(
-          (blob) => (blob ? resolve(blob) : reject(new Error("Falha ao gerar imagem"))),
-          "image/jpeg",
-          0.85,
-        );
-      };
-      img.onerror = () => {
-        URL.revokeObjectURL(url);
-        reject(new Error("Não deu pra abrir a imagem"));
-      };
-      img.src = url;
-    });
-  }
-
-  async function uploadProductPhoto(file: File): Promise<string | null> {
-    const blob = await resizeImage(file);
-    const path = `${store.id}/${crypto.randomUUID()}.jpg`;
-    const { error: uploadError } = await getSupabase()
-      .storage.from("product-images")
-      .upload(path, blob, { contentType: "image/jpeg" });
-    if (uploadError) {
-      setError("Não deu pra enviar a foto: " + uploadError.message);
-      return null;
-    }
-    const { data } = getSupabase().storage.from("product-images").getPublicUrl(path);
-    return data.publicUrl;
-  }
-
-  async function handleNewProductPhoto(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    e.target.value = "";
-    if (!file) return;
-    setUploadingPhoto(true);
-    const url = await uploadProductPhoto(file);
-    setUploadingPhoto(false);
-    if (url) setImageUrl(url);
-  }
-
-  async function handleExistingProductPhoto(id: string, e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    e.target.value = "";
-    if (!file) return;
-    setUploadingPhoto(true);
-    const url = await uploadProductPhoto(file);
-    setUploadingPhoto(false);
-    if (url) await updateProduct(id, { image_url: url });
   }
 
   async function updateProduct(id: string, patch: Partial<Product>) {
@@ -690,13 +660,20 @@ export default function Produtos() {
       wholesaleDrafts[p.id] ?? {
         price: p.price_wholesale ? String(p.price_wholesale) : "",
         minQty: p.wholesale_min_qty ? String(p.wholesale_min_qty) : "",
+        mode: "valor" as const,
       }
     );
   }
 
   async function handleSaveWholesale(p: Product) {
     const draft = wholesaleDraftFor(p);
-    const wholesalePrice = draft.price.trim() ? Number(draft.price.replace(",", ".")) : null;
+    const rawPrice = draft.price.trim() ? Number(draft.price.replace(",", ".")) : null;
+    const wholesalePrice =
+      rawPrice === null
+        ? null
+        : draft.mode === "percentual"
+          ? Math.round(p.price * (1 - rawPrice / 100) * 100) / 100
+          : rawPrice;
     const minQty = draft.minQty.trim() ? Number(draft.minQty) : null;
 
     if (wholesalePrice === null && minQty === null) {
@@ -709,7 +686,7 @@ export default function Produtos() {
       return;
     }
 
-    if (!wholesalePrice || !minQty || wholesalePrice >= p.price) {
+    if (!wholesalePrice || !minQty || wholesalePrice >= p.price || wholesalePrice <= 0) {
       window.alert(
         'Preencha "Preço atacado" e "Qtd mínima" válidos, sendo o preço atacado menor que o preço normal.',
       );
@@ -1258,13 +1235,35 @@ export default function Produtos() {
           <div className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div>
               <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">Preço atacado</label>
-              <input
-                value={wholesalePriceNew}
-                onChange={(e) => setWholesalePriceNew(e.target.value)}
-                placeholder="R$"
-                inputMode="decimal"
-                className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
-              />
+              <div className="mt-1 flex items-center gap-1">
+                <select
+                  value={wholesaleModeNew}
+                  onChange={(e) => setWholesaleModeNew(e.target.value as "valor" | "percentual")}
+                  className="rounded-lg border border-slate-300 bg-white px-2 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                >
+                  <option value="valor">R$</option>
+                  <option value="percentual">%</option>
+                </select>
+                <input
+                  value={wholesalePriceNew}
+                  onChange={(e) => setWholesalePriceNew(e.target.value)}
+                  placeholder={wholesaleModeNew === "percentual" ? "ex: 10" : "R$"}
+                  inputMode="decimal"
+                  className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                />
+              </div>
+              {wholesaleModeNew === "percentual" && price && wholesalePriceNew.trim() && (
+                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                  = {formatCurrency(
+                    Math.round(
+                      Number(price.replace(",", ".")) *
+                        (1 - Number(wholesalePriceNew.replace(",", ".")) / 100) *
+                        100,
+                    ) / 100,
+                  )}{" "}
+                  no atacado
+                </p>
+              )}
             </div>
             <div>
               <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">
@@ -1306,39 +1305,16 @@ export default function Produtos() {
 
         <div>
           <p className="text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">Foto</p>
-          <div className="mt-2 flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => photoInputRef.current?.click()}
-              disabled={uploadingPhoto}
-              className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 disabled:opacity-60 dark:border-slate-700 dark:text-slate-300"
-            >
-              {uploadingPhoto ? "Enviando…" : "📷 Tirar foto / Escolher da galeria"}
-            </button>
-            <input
-              ref={photoInputRef}
-              type="file"
-              accept="image/*"
-              capture="environment"
-              onChange={handleNewProductPhoto}
-              className="hidden"
-            />
-            {imageUrl && (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={imageUrl} alt="" className="h-10 w-10 rounded-lg object-cover" />
-            )}
-          </div>
-          <details className="mt-1">
-            <summary className="cursor-pointer text-xs text-slate-500 dark:text-slate-400">
-              Prefiro colar o link de uma imagem
-            </summary>
-            <input
+          <div className="mt-2">
+            <PhotoField
+              storeId={store.id}
               value={imageUrl}
-              onChange={(e) => setImageUrl(e.target.value)}
-              placeholder="https://..."
-              className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+              onChange={setImageUrl}
+              uploadPrefix="produto"
+              promptSeed={buildProductPrompt(name || "produto novo", category || null)}
+              catalogProducts={products.filter((p) => p.image_url)}
             />
-          </details>
+          </div>
         </div>
 
         <button
@@ -1375,10 +1351,59 @@ export default function Produtos() {
       )}
 
       {(catalogGaps.withoutPhoto > 0 || catalogGaps.withoutCost > 0 || catalogGaps.withoutCategory > 0) && (
-        <p className="mt-4 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:bg-amber-900/30 dark:text-amber-400">
-          📋 Falta completar o catálogo: {catalogGaps.withoutPhoto} produto{catalogGaps.withoutPhoto === 1 ? "" : "s"} sem foto ·{" "}
-          {catalogGaps.withoutCost} sem custo cadastrado · {catalogGaps.withoutCategory} sem categoria.
-        </p>
+        <div className="mt-4 rounded-lg bg-amber-50 px-3 py-2 dark:bg-amber-900/30">
+          <p className="text-sm text-amber-800 dark:text-amber-400">📋 Falta completar o catálogo — clique pra ver e corrigir:</p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {catalogGaps.withoutPhoto > 0 && (
+              <button
+                type="button"
+                onClick={() => jumpToGap("photo")}
+                className={`rounded-full px-3 py-1 text-xs font-medium ${
+                  gapFilter === "photo"
+                    ? "bg-amber-700 text-white"
+                    : "bg-amber-100 text-amber-800 hover:bg-amber-200 dark:bg-amber-900/50 dark:text-amber-300"
+                }`}
+              >
+                📷 {catalogGaps.withoutPhoto} sem foto
+              </button>
+            )}
+            {catalogGaps.withoutCost > 0 && (
+              <button
+                type="button"
+                onClick={() => jumpToGap("cost")}
+                className={`rounded-full px-3 py-1 text-xs font-medium ${
+                  gapFilter === "cost"
+                    ? "bg-amber-700 text-white"
+                    : "bg-amber-100 text-amber-800 hover:bg-amber-200 dark:bg-amber-900/50 dark:text-amber-300"
+                }`}
+              >
+                💰 {catalogGaps.withoutCost} sem custo
+              </button>
+            )}
+            {catalogGaps.withoutCategory > 0 && (
+              <button
+                type="button"
+                onClick={() => jumpToGap("category")}
+                className={`rounded-full px-3 py-1 text-xs font-medium ${
+                  gapFilter === "category"
+                    ? "bg-amber-700 text-white"
+                    : "bg-amber-100 text-amber-800 hover:bg-amber-200 dark:bg-amber-900/50 dark:text-amber-300"
+                }`}
+              >
+                🏷️ {catalogGaps.withoutCategory} sem categoria
+              </button>
+            )}
+            {gapFilter && (
+              <button
+                type="button"
+                onClick={() => setGapFilter(null)}
+                className="rounded-full px-3 py-1 text-xs font-medium text-amber-700 underline dark:text-amber-400"
+              >
+                ✕ limpar filtro
+              </button>
+            )}
+          </div>
+        </div>
       )}
 
       <div className="mt-4 flex flex-wrap items-center gap-2">
@@ -1507,7 +1532,7 @@ export default function Produtos() {
         </div>
       )}
 
-      <div className="mt-4 overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800">
+      <div ref={productsTableRef} className="mt-4 overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800">
         <table className="w-full min-w-[900px] text-left text-sm">
           <thead className="bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300">
             <tr>
@@ -1588,7 +1613,20 @@ export default function Produtos() {
                       </button>
                     </div>
                   </td>
-                  <td className="px-3 py-2 text-slate-600 dark:text-slate-400">{p.category || "—"}</td>
+                  <td className="px-3 py-2">
+                    <input
+                      key={`category-${p.id}-${p.category}`}
+                      defaultValue={p.category ?? ""}
+                      list="categorias-existentes"
+                      placeholder="sem categoria"
+                      onBlur={(e) => updateProduct(p.id, { category: e.target.value.trim() || null })}
+                      className={`w-28 rounded border px-2 py-1 dark:bg-slate-900 ${
+                        p.category
+                          ? "border-slate-300 bg-white text-slate-900 dark:border-slate-700 dark:text-slate-50"
+                          : "border-amber-300 bg-amber-50 text-amber-800 placeholder:text-amber-500 dark:border-amber-900/50 dark:bg-amber-900/20 dark:text-amber-300"
+                      }`}
+                    />
+                  </td>
                   <td className="px-3 py-2">
                     <input
                       key={`price-${p.id}-${p.price}`}
@@ -1761,32 +1799,19 @@ export default function Produtos() {
                   <tr key={`${p.id}-detalhes`}>
                     <td colSpan={12} className="bg-slate-50 px-4 py-4 dark:bg-slate-800/50">
                       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                        <div>
+                        <div className="sm:col-span-2">
                           <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">
                             Foto
                           </label>
-                          <div className="mt-1 flex items-center gap-2">
-                            {p.image_url ? (
-                              // eslint-disable-next-line @next/next/no-img-element
-                              <img
-                                src={p.image_url}
-                                alt={p.name}
-                                className="h-10 w-10 rounded-lg object-cover"
-                              />
-                            ) : (
-                              <div className="h-10 w-10 rounded-lg bg-slate-200 dark:bg-slate-700" />
-                            )}
-                            <label className="cursor-pointer text-xs font-medium text-blue-900 hover:underline dark:text-blue-400">
-                              {uploadingPhoto ? "Enviando…" : "Trocar foto"}
-                              <input
-                                type="file"
-                                accept="image/*"
-                                capture="environment"
-                                onChange={(e) => handleExistingProductPhoto(p.id, e)}
-                                disabled={uploadingPhoto}
-                                className="hidden"
-                              />
-                            </label>
+                          <div className="mt-1">
+                            <PhotoField
+                              storeId={store.id}
+                              value={p.image_url ?? ""}
+                              onChange={(url) => updateProduct(p.id, { image_url: url })}
+                              uploadPrefix="produto"
+                              promptSeed={buildProductPrompt(p.name, p.category)}
+                              catalogProducts={products.filter((other) => other.id !== p.id && other.image_url)}
+                            />
                           </div>
                         </div>
                         <div>
@@ -1857,10 +1882,23 @@ export default function Produtos() {
                             Preço atacado / qtd mínima
                           </label>
                           <div className="mt-1 flex items-center gap-1">
+                            <select
+                              value={wholesaleDraftFor(p).mode}
+                              onChange={(e) =>
+                                setWholesaleDrafts((prev) => ({
+                                  ...prev,
+                                  [p.id]: { ...wholesaleDraftFor(p), mode: e.target.value as "valor" | "percentual" },
+                                }))
+                              }
+                              className="rounded border border-slate-300 bg-white px-1 py-1 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                            >
+                              <option value="valor">R$</option>
+                              <option value="percentual">%</option>
+                            </select>
                             <input
                               type="number"
                               step="0.01"
-                              placeholder="R$"
+                              placeholder={wholesaleDraftFor(p).mode === "percentual" ? "ex: 10" : "R$"}
                               value={wholesaleDraftFor(p).price}
                               onChange={(e) =>
                                 setWholesaleDrafts((prev) => ({
@@ -1868,7 +1906,7 @@ export default function Produtos() {
                                   [p.id]: { ...wholesaleDraftFor(p), price: e.target.value },
                                 }))
                               }
-                              className="w-20 rounded border border-slate-300 bg-white px-2 py-1 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                              className="w-16 rounded border border-slate-300 bg-white px-2 py-1 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
                             />
                             <input
                               type="number"
@@ -1880,7 +1918,7 @@ export default function Produtos() {
                                   [p.id]: { ...wholesaleDraftFor(p), minQty: e.target.value },
                                 }))
                               }
-                              className="w-16 rounded border border-slate-300 bg-white px-2 py-1 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                              className="w-14 rounded border border-slate-300 bg-white px-2 py-1 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
                             />
                             <button
                               onClick={() => handleSaveWholesale(p)}
@@ -1889,6 +1927,13 @@ export default function Produtos() {
                               Salvar
                             </button>
                           </div>
+                          {wholesaleDraftFor(p).mode === "percentual" && wholesaleDraftFor(p).price.trim() && (
+                            <p className="mt-0.5 text-[10px] text-slate-500 dark:text-slate-400">
+                              = {formatCurrency(
+                                Math.round(p.price * (1 - Number(wholesaleDraftFor(p).price.replace(",", ".")) / 100) * 100) / 100,
+                              )}
+                            </p>
+                          )}
                         </div>
                         <div>
                           <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">

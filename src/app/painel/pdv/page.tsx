@@ -423,8 +423,6 @@ export default function Pdv() {
     saleSubtotal?: number,
     saleDiscount?: number,
   ) {
-    const win = window.open("", "_blank", "width=380,height=500");
-    if (!win) return;
     const itemsHtml = items
       .map(
         (line) =>
@@ -438,7 +436,7 @@ export default function Pdv() {
       saleDiscount && saleDiscount > 0
         ? `<p>Subtotal: ${formatCurrency(saleSubtotal ?? saleTotal + saleDiscount)}</p><p>Desconto: -${formatCurrency(saleDiscount)}</p>`
         : "";
-    win.document.write(`
+    const html = `
       <html><head><title>Recibo</title>
       <style>
         body{font-family:sans-serif;padding:16px;font-size:14px;}
@@ -452,10 +450,29 @@ export default function Pdv() {
       <p class="total">Total: ${formatCurrency(saleTotal)}</p>
       ${paymentHtml}
       ${troco !== null ? `<p>Troco: ${formatCurrency(Math.max(0, troco))}</p>` : ""}
-      <script>window.print();</script>
       </body></html>
-    `);
-    win.document.close();
+    `;
+
+    // Usa um iframe escondido em vez de window.open: abrir aba/janela nova é
+    // bloqueado por popup blocker em muitos celulares e navegadores, e falhava
+    // em silêncio (sem imprimir e sem avisar nada). Imprimir dentro da própria
+    // página não é bloqueado.
+    const iframe = document.createElement("iframe");
+    iframe.style.cssText = "position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden;";
+    document.body.appendChild(iframe);
+    const doc = iframe.contentWindow?.document;
+    if (!doc) {
+      iframe.remove();
+      return;
+    }
+    doc.open();
+    doc.write(html);
+    doc.close();
+    setTimeout(() => {
+      iframe.contentWindow?.focus();
+      iframe.contentWindow?.print();
+      setTimeout(() => iframe.remove(), 1000);
+    }, 200);
   }
 
   async function handleQuickAdd(e: FormEvent) {
