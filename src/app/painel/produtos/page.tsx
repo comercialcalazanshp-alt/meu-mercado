@@ -1,7 +1,6 @@
 ﻿"use client";
 
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
-import QRCode from "qrcode";
 import { getSupabase } from "@/lib/supabase";
 import { useStore } from "@/lib/store-context";
 
@@ -869,28 +868,16 @@ export default function Produtos() {
     loadProducts();
   }
 
-  async function printLabels(list: Product[], forceOffer: boolean) {
+  function printLabels(list: Product[], forceOffer: boolean) {
     if (list.length === 0) return;
-    const qrByBarcode = new Map<string, string>();
-    for (const p of list) {
-      if (p.barcode && !qrByBarcode.has(p.barcode)) {
-        try {
-          qrByBarcode.set(p.barcode, await QRCode.toDataURL(p.barcode, { width: 120, margin: 0 }));
-        } catch {
-          // sem QR pra esse código — a etiqueta continua útil só com o número
-        }
-      }
-    }
 
     const labels = list
       .map((p) => {
         const isOffer = forceOffer && p.on_offer && p.offer_price !== null;
         const pctOff = isOffer ? Math.round(((p.price - p.offer_price!) / p.price) * 100) : null;
         const unitLabel = p.sold_by_weight ? "/kg" : "un.";
-        const qr = p.barcode ? qrByBarcode.get(p.barcode) : null;
         return `
         <div class="label">
-          ${p.image_url ? `<img src="${p.image_url}" class="photo" />` : ""}
           <p class="name">${p.name}</p>
           ${
             isOffer
@@ -900,14 +887,12 @@ export default function Produtos() {
               : `<p class="price">${formatCurrency(p.price)} <span class="unit">${unitLabel}</span></p>`
           }
           ${p.price_wholesale && p.wholesale_min_qty ? `<p class="wholesale">${p.wholesale_min_qty}+ un: ${formatCurrency(p.price_wholesale)} cada</p>` : ""}
-          ${qr ? `<img src="${qr}" class="qr" />` : ""}
-          ${p.barcode ? `<p class="barcode-num">${p.barcode}</p>` : ""}
         </div>`;
       })
       .join("");
 
     // Uma etiqueta por página — pra impressora térmica tipo Epson TM-T20X
-    // (rolo de 80mm) cortar cada uma sozinha, sem precisar de tesoura.
+    // (rolo de 58mm) cortar cada uma sozinha, sem precisar de tesoura.
     const win = window.open("", "_blank", "width=380,height=600");
     if (!win) return;
     win.document.write(`
@@ -916,18 +901,15 @@ export default function Produtos() {
         @page { size: 58mm auto; margin: 1.5mm; }
         * { box-sizing: border-box; }
         body{font-family:sans-serif;margin:0;padding:0;}
-        .label{width:55mm;text-align:center;padding:1.5mm 0;page-break-after:always;break-after:page;}
+        .label{width:55mm;text-align:center;padding:2mm 0;page-break-after:always;break-after:page;}
         .label:last-child{page-break-after:auto;break-after:auto;}
-        .photo{width:100%;max-height:20mm;object-fit:cover;border-radius:1.5mm;}
-        .name{font-size:12px;font-weight:600;margin:1.5mm 0 1mm;}
-        .price{font-size:20px;font-weight:bold;margin:1mm 0;}
-        .price .unit{font-size:11px;font-weight:normal;}
-        .old-price{font-size:11px;color:#888;text-decoration:line-through;margin:0;}
+        .name{font-size:14px;font-weight:600;margin:0 0 1.5mm;}
+        .price{font-size:24px;font-weight:bold;margin:1mm 0;}
+        .price .unit{font-size:12px;font-weight:normal;}
+        .old-price{font-size:12px;color:#888;text-decoration:line-through;margin:0;}
         .price.offer{color:#b91c1c;}
-        .pct{font-size:12px;font-weight:bold;color:#b91c1c;margin:0 0 1mm;}
-        .wholesale{font-size:9px;color:#555;margin:1mm 0;}
-        .qr{width:20mm;height:20mm;margin-top:1mm;}
-        .barcode-num{font-family:monospace;font-size:10px;margin:1mm 0 0;letter-spacing:0.5px;}
+        .pct{font-size:13px;font-weight:bold;color:#b91c1c;margin:0 0 1mm;}
+        .wholesale{font-size:10px;color:#555;margin:1mm 0;}
       </style></head><body>
       ${labels}
       <script>window.print();</script>
