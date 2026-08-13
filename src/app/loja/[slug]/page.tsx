@@ -83,7 +83,7 @@ export default async function Loja({ params }: { params: Promise<{ slug: string 
       .order("created_at", { ascending: false }),
     supabase
       .from("kits")
-      .select("id, name, image_url, price, kit_items(quantity, products(name, stock))")
+      .select("id, name, image_url, price, starts_at, ends_at, kit_items(quantity, product_id, products(name, price, stock))")
       .eq("store_id", store.id)
       .eq("active", true)
       .order("created_at", { ascending: false }),
@@ -110,12 +110,19 @@ export default async function Loja({ params }: { params: Promise<{ slug: string 
       .limit(1),
   ]);
 
+  const now = Date.now();
+  const activeKits = (kits ?? []).filter((k) => {
+    const startsOk = !k.starts_at || new Date(k.starts_at).getTime() <= now;
+    const endsOk = !k.ends_at || new Date(k.ends_at).getTime() >= now;
+    return startsOk && endsOk;
+  });
+
   return (
     <StorefrontClient
       store={store}
       products={products ?? []}
       banners={banners ?? []}
-      kits={(kits as unknown as import("./storefront-client").Kit[]) ?? []}
+      kits={activeKits as unknown as import("./storefront-client").Kit[]}
       reviews={reviews ?? []}
       neighborhoods={neighborhoods ?? []}
       storeReviews={storeReviews ?? []}

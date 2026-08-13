@@ -13,6 +13,13 @@ type Product = {
   sold_by_weight: boolean;
 };
 
+type KitOption = {
+  id: string;
+  name: string;
+  price: number;
+  buildable: number;
+};
+
 type CartLine = {
   productId: string;
   name: string;
@@ -20,6 +27,7 @@ type CartLine = {
   quantity: number;
   stock: number;
   soldByWeight: boolean;
+  isKit?: boolean;
 };
 
 type RecentSale = {
@@ -106,6 +114,7 @@ export default function Pdv() {
   const store = useStore();
   const [products, setProducts] = useState<Product[]>([]);
   const [loadingProducts, setLoadingProducts] = useState(true);
+  const [kits, setKits] = useState<KitOption[]>([]);
   const [search, setSearch] = useState("");
   const [cart, setCart] = useState<CartLine[]>([]);
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -162,6 +171,26 @@ export default function Pdv() {
     setLoadingProducts(false);
   }
 
+  async function loadKits() {
+    const { data } = await getSupabase()
+      .from("kits")
+      .select("id, name, price, active, kit_items(quantity, products(stock))")
+      .eq("store_id", store.id)
+      .eq("active", true);
+    const options: KitOption[] = (
+      (data as unknown as { id: string; name: string; price: number; kit_items: { quantity: number; products: { stock: number } | null }[] }[]) ?? []
+    ).map((k) => ({
+      id: k.id,
+      name: k.name,
+      price: k.price,
+      buildable:
+        k.kit_items.length === 0
+          ? 0
+          : Math.min(...k.kit_items.map((i) => Math.floor((i.products?.stock ?? 0) / (i.quantity || 1)))),
+    }));
+    setKits(options);
+  }
+
   async function loadRecentSales() {
     const startOfDay = new Date();
     startOfDay.setHours(0, 0, 0, 0);
@@ -187,6 +216,7 @@ export default function Pdv() {
 
   useEffect(() => {
     loadProducts();
+    loadKits();
     loadRecentSales();
     loadCaixaStatus();
     getSupabase()
@@ -227,6 +257,13 @@ export default function Pdv() {
       .filter((p) => p.name.toLowerCase().includes(q) || (p.barcode && p.barcode.includes(q)))
       .slice(0, 8);
   }, [search, qtyPrefix, products]);
+
+  const filteredKits = useMemo(() => {
+    const raw = qtyPrefix ? qtyPrefix.rest : search;
+    const q = raw.trim().toLowerCase();
+    if (!q) return [];
+    return kits.filter((k) => k.name.toLowerCase().includes(q)).slice(0, 4);
+  }, [search, qtyPrefix, kits]);
 
   useEffect(() => {
     const raw = qtyPrefix ? qtyPrefix.rest : search;
@@ -283,10 +320,41 @@ export default function Pdv() {
     focusSearch();
   }
 
+  function addKitToCart(kit: KitOption, qtyOverride?: number) {
+    const qty = qtyOverride && qtyOverride > 0 ? qtyOverride : 1;
+    setCart((prev) => {
+      const existing = prev.find((l) => l.productId === kit.id && l.isKit);
+      if (existing) {
+        return prev.map((l) => (l.productId === kit.id && l.isKit ? { ...l, quantity: round3(l.quantity + qty) } : l));
+      }
+      return [
+        ...prev,
+        {
+          productId: kit.id,
+          name: `Kit: ${kit.name}`,
+          price: kit.price,
+          quantity: qty,
+          stock: kit.buildable,
+          soldByWeight: false,
+          isKit: true,
+        },
+      ];
+    });
+    playBeep();
+    setSearch("");
+    setQuickAddOpen(false);
+    setSuccess(null);
+    focusSearch();
+  }
+
   function handleSearchKeyDown(e: KeyboardEvent<HTMLInputElement>) {
-    if (e.key === "Enter" && filtered.length > 0) {
+    if (e.key !== "Enter") return;
+    if (filtered.length > 0) {
       e.preventDefault();
       addToCart(filtered[0], qtyPrefix?.qty);
+    } else if (filteredKits.length > 0) {
+      e.preventDefault();
+      addKitToCart(filteredKits[0], qtyPrefix?.qty);
     }
   }
 
@@ -322,6 +390,10 @@ export default function Pdv() {
     if (!lastSale) return;
     setCart(
       lastSale.map((line) => {
+        if (line.isKit) {
+          const currentKit = kits.find((k) => k.id === line.productId);
+          return currentKit ? { ...line, price: currentKit.price, stock: currentKit.buildable } : line;
+        }
         const current = products.find((p) => p.id === line.productId);
         return current
           ? { ...line, price: current.price, stock: current.stock, soldByWeight: current.sold_by_weight }
@@ -489,10 +561,14 @@ export default function Pdv() {
     setSaving(true);
     setError(null);
 
+    const items = cart.map((l) =>
+      l.isKit ? { kit_id: l.productId, quantity: l.quantity } : { product_id: l.productId, quantity: l.quantity },
+    );
+
     const payload: Record<string, unknown> = splitMode
       ? {
           p_store_id: store.id,
-          p_items: cart.map((l) => ({ product_id: l.productId, quantity: l.quantity })),
+          p_items: items,
           p_payment_method: "dividido",
           p_customer_name: customerName.trim() || "Cliente balcão",
           p_customer_phone: customerPhone.trim() || null,
@@ -501,7 +577,7 @@ export default function Pdv() {
         }
       : {
           p_store_id: store.id,
-          p_items: cart.map((l) => ({ product_id: l.productId, quantity: l.quantity })),
+          p_items: items,
           p_payment_method: paymentMethod,
           p_customer_name: customerName.trim() || "Cliente balcão",
           p_customer_phone: customerPhone.trim() || null,
@@ -543,6 +619,7 @@ export default function Pdv() {
       ]);
     }
     loadProducts();
+    loadKits();
     loadRecentSales();
     focusSearch();
   }
@@ -670,7 +747,7 @@ export default function Pdv() {
             <div className="absolute z-10 mt-1 w-full rounded-lg border border-slate-200 bg-white shadow-lg dark:border-slate-800 dark:bg-slate-900">
               {loadingProducts ? (
                 <p className="px-4 py-3 text-sm text-slate-500">Carregando…</p>
-              ) : filtered.length > 0 ? (
+              ) : filtered.length > 0 || filteredKits.length > 0 ? (
                 <>
                   {filtered.map((p) => (
                     <button
@@ -688,6 +765,19 @@ export default function Pdv() {
                         {formatCurrency(p.price)}
                         {p.sold_by_weight ? "/kg" : ""} · estoque{" "}
                         {Number.isInteger(p.stock) ? p.stock : p.stock.toFixed(3)}
+                      </span>
+                    </button>
+                  ))}
+                  {filteredKits.map((k) => (
+                    <button
+                      key={k.id}
+                      onClick={() => addKitToCart(k, qtyPrefix?.qty)}
+                      disabled={k.buildable <= 0}
+                      className="flex w-full items-center justify-between px-4 py-2 text-left text-sm hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-slate-800"
+                    >
+                      <span className="text-slate-900 dark:text-slate-50">🎁 Kit: {k.name}</span>
+                      <span className="text-slate-500 dark:text-slate-400">
+                        {formatCurrency(k.price)} · {k.buildable > 0 ? `dá pra montar ${k.buildable}` : "sem estoque"}
                       </span>
                     </button>
                   ))}

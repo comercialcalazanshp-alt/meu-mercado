@@ -452,11 +452,51 @@ export default function Produtos() {
     setMovements((prev) => ({ ...prev, [productId]: data ?? [] }));
   }
 
+  const [kitUsage, setKitUsage] = useState<Record<string, string[]>>({});
+
+  async function loadKitUsage() {
+    const { data } = await getSupabase()
+      .from("kits")
+      .select("name, kit_items(product_id)")
+      .eq("store_id", store.id)
+      .eq("active", true);
+    const map: Record<string, string[]> = {};
+    for (const k of (data as { name: string; kit_items: { product_id: string }[] }[]) ?? []) {
+      for (const item of k.kit_items) {
+        (map[item.product_id] ??= []).push(k.name);
+      }
+    }
+    setKitUsage(map);
+  }
+
   useEffect(() => {
     loadProducts();
     loadStats();
+    loadKitUsage();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [store.id]);
+
+  const restockGroups = useMemo(() => {
+    const low = products.filter((p) => p.active && p.stock <= p.stock_alert_threshold);
+    const groups = new Map<string, Product[]>();
+    for (const p of low) {
+      const key = p.supplier?.trim() || "Sem fornecedor definido";
+      const list = groups.get(key) ?? [];
+      list.push(p);
+      groups.set(key, list);
+    }
+    return Array.from(groups.entries()).sort((a, b) => a[0].localeCompare(b[0], "pt-BR"));
+  }, [products]);
+
+  function openWhatsAppRestock(supplierName: string, items: Product[]) {
+    const lines = items.map((p) => {
+      const kitNote = kitUsage[p.id]?.length ? ` (também usado no kit "${kitUsage[p.id].join('", "')}")` : "";
+      const stockLabel = p.sold_by_weight ? `${p.stock.toFixed(3)}kg` : `${p.stock}`;
+      return `- ${p.name}: só ${stockLabel} (mínimo ${p.stock_alert_threshold})${kitNote}`;
+    });
+    const text = `Lista de reposição — ${store.name}\nFornecedor: ${supplierName}\n\n${lines.join("\n")}`;
+    window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, "_blank");
+  }
 
   async function handleAdd(e: FormEvent) {
     e.preventDefault();
@@ -1410,6 +1450,38 @@ export default function Produtos() {
         </div>
         {adjustResult && <p className="mt-2 text-sm text-slate-700 dark:text-slate-300">{adjustResult}</p>}
       </details>
+
+      {restockGroups.length > 0 && (
+        <details className="mt-4 rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
+          <summary className="cursor-pointer text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+            📋 Lista de compras pro fornecedor ({restockGroups.reduce((sum, [, items]) => sum + items.length, 0)} produto(s) com
+            estoque baixo)
+          </summary>
+          <div className="mt-3 space-y-3">
+            {restockGroups.map(([supplierName, items]) => (
+              <div key={supplierName} className="rounded-lg border border-slate-200 p-3 dark:border-slate-800">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-sm font-medium text-slate-900 dark:text-slate-50">{supplierName}</p>
+                  <button
+                    onClick={() => openWhatsAppRestock(supplierName, items)}
+                    className="text-xs font-medium text-green-700 underline dark:text-green-400"
+                  >
+                    📱 Enviar por WhatsApp
+                  </button>
+                </div>
+                <ul className="mt-1 space-y-0.5 text-xs text-slate-600 dark:text-slate-400">
+                  {items.map((p) => (
+                    <li key={p.id}>
+                      {p.name}: só {p.sold_by_weight ? p.stock.toFixed(3) : p.stock} (mínimo {p.stock_alert_threshold})
+                      {kitUsage[p.id]?.length ? ` — também usado no kit "${kitUsage[p.id].join('", "')}"` : ""}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </div>
+        </details>
+      )}
 
       {selectedIds.size > 0 && (
         <div className="mt-4 flex flex-wrap items-center gap-2 rounded-lg bg-blue-50 px-3 py-2 dark:bg-blue-900/20">

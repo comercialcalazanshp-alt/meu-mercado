@@ -122,7 +122,8 @@ type StoreReviewSummary = {
 
 type KitComponent = {
   quantity: number;
-  products: { name: string; stock: number } | null;
+  product_id: string;
+  products: { name: string; price: number; stock: number } | null;
 };
 
 export type Kit = {
@@ -198,6 +199,11 @@ function kitMaxQuantity(kit: Kit) {
   return Math.min(
     ...kit.kit_items.map((item) => Math.floor((item.products?.stock ?? 0) / item.quantity)),
   );
+}
+
+function kitSavings(kit: Kit) {
+  const separateTotal = kit.kit_items.reduce((sum, item) => sum + item.quantity * (item.products?.price ?? 0), 0);
+  return separateTotal - kit.price;
 }
 
 export default function StorefrontClient({
@@ -295,6 +301,18 @@ export default function StorefrontClient({
     "--brand-bg": store.brand_color,
     "--brand-text": readableTextColor(store.brand_color),
   } as React.CSSProperties;
+
+  const kitsByProductId = useMemo(() => {
+    const map = new Map<string, Kit[]>();
+    for (const kit of kits) {
+      for (const item of kit.kit_items) {
+        const list = map.get(item.product_id) ?? [];
+        list.push(kit);
+        map.set(item.product_id, list);
+      }
+    }
+    return map;
+  }, [kits]);
 
   const cartItems = useMemo(() => {
     const lines: CartLine[] = [];
@@ -1453,7 +1471,7 @@ export default function StorefrontClient({
         )}
 
         {kits.length > 0 && (
-          <section className="mb-6">
+          <section id="kits-section" className="mb-6">
             <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
               Kits e combos
             </h2>
@@ -1462,6 +1480,7 @@ export default function StorefrontClient({
                 const key = `kit:${kit.id}`;
                 const quantity = cart[key] ?? 0;
                 const maxQty = kitMaxQuantity(kit);
+                const savings = kitSavings(kit);
                 return (
                   <div
                     key={kit.id}
@@ -1490,6 +1509,11 @@ export default function StorefrontClient({
                           .map((item) => `${item.quantity}x ${item.products?.name ?? ""}`)
                           .join(", ")}
                       </p>
+                      {savings > 0.005 && (
+                        <p className="text-xs font-medium text-emerald-700 dark:text-emerald-400">
+                          Economize {formatCurrency(savings)} levando o kit
+                        </p>
+                      )}
                       {maxQty <= 0 && <p className="text-xs text-red-500">Sem estoque</p>}
                     </div>
                     {quantity === 0 ? (
@@ -1648,6 +1672,21 @@ export default function StorefrontClient({
                         {product.stock <= 0 && (
                           <p className="text-xs text-red-500">Sem estoque</p>
                         )}
+                        {(() => {
+                          const kitsWithProduct = kitsByProductId.get(product.id);
+                          if (!kitsWithProduct || kitsWithProduct.length === 0) return null;
+                          const firstKit = kitsWithProduct[0];
+                          const savings = kitSavings(firstKit);
+                          return (
+                            <a
+                              href="#kits-section"
+                              className="block text-xs font-medium text-purple-700 underline dark:text-purple-400"
+                            >
+                              🎁 Esse produto tá no Kit &quot;{firstKit.name}&quot;
+                              {savings > 0.005 ? ` — economize ${formatCurrency(savings)}` : ""}
+                            </a>
+                          );
+                        })()}
                         <button
                           type="button"
                           onClick={() => setExpandedProductId(isExpanded ? null : product.id)}
