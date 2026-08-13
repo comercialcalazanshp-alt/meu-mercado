@@ -833,9 +833,9 @@ export default function StorefrontClient({
     return (
       <div
         style={brandStyle}
-        className="flex flex-1 flex-col items-center justify-center gap-3 bg-slate-50 px-6 py-24 text-center dark:bg-slate-950"
+        className="flex flex-1 flex-col items-center justify-center gap-3 bg-[#f7f5f2] px-6 py-24 text-center dark:bg-slate-950"
       >
-        <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[var(--brand-bg)] text-2xl font-bold text-[var(--brand-text)]">
+        <div className="flex h-16 w-16 items-center justify-center rounded-full bg-[var(--brand-bg)] text-2xl font-bold text-[var(--brand-text)] shadow-lg">
           ✓
         </div>
         <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-50">Pedido enviado!</h1>
@@ -869,7 +869,7 @@ export default function StorefrontClient({
           </p>
         )}
         {confirmedReferralCode && (
-          <div className="mt-1 max-w-xs rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm dark:border-slate-800 dark:bg-slate-900">
+          <div className="mt-1 max-w-xs rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm shadow-sm dark:border-slate-800 dark:bg-slate-900">
             <p className="text-slate-600 dark:text-slate-400">Indique a loja pra um amigo com seu código:</p>
             <p className="mt-1 text-lg font-bold tracking-wide text-[var(--brand-bg)]">
               {confirmedReferralCode}
@@ -891,7 +891,7 @@ export default function StorefrontClient({
             href={`https://wa.me/55${store.whatsapp.replace(/\D/g, "")}?text=${whatsappMessage}`}
             target="_blank"
             rel="noopener noreferrer"
-            className="mt-2 rounded-lg bg-green-600 px-4 py-2.5 text-sm font-semibold text-white"
+            className="mt-2 rounded-full bg-green-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:brightness-110"
           >
             Avisar a loja no WhatsApp
           </a>
@@ -906,7 +906,7 @@ export default function StorefrontClient({
         )}
 
         {paymentMethod === "pix" && (
-          <div className="mt-2 w-full max-w-xs rounded-xl border border-slate-200 bg-white p-4 text-center dark:border-slate-800 dark:bg-slate-900">
+          <div className="mt-2 w-full max-w-xs rounded-2xl border border-slate-200 bg-white p-4 text-center shadow-sm dark:border-slate-800 dark:bg-slate-900">
             {pixLoading && (
               <p className="text-sm text-slate-500 dark:text-slate-400">Gerando o QR code do Pix…</p>
             )}
@@ -943,7 +943,7 @@ export default function StorefrontClient({
         )}
 
         {paymentMethod === "cartao" && (
-          <div className="mt-2 w-full max-w-xs rounded-xl border border-slate-200 bg-white p-4 text-center dark:border-slate-800 dark:bg-slate-900">
+          <div className="mt-2 w-full max-w-xs rounded-2xl border border-slate-200 bg-white p-4 text-center shadow-sm dark:border-slate-800 dark:bg-slate-900">
             {cardLoading && (
               <p className="text-sm text-slate-500 dark:text-slate-400">Processando o cartão…</p>
             )}
@@ -958,7 +958,7 @@ export default function StorefrontClient({
           </div>
         )}
 
-        <div className="mt-4 w-full max-w-xs rounded-xl border border-slate-200 bg-white p-4 text-left dark:border-slate-800 dark:bg-slate-900">
+        <div className="mt-4 w-full max-w-xs rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-sm dark:border-slate-800 dark:bg-slate-900">
           {storeReviewSubmitted ? (
             <p className="text-center text-sm text-green-700 dark:text-green-400">
               Obrigado pela avaliação! 🙏
@@ -1004,8 +1004,8 @@ export default function StorefrontClient({
 
   if (view === "checkout") {
     return (
-      <div style={brandStyle} className="flex flex-1 flex-col items-center bg-slate-50 px-6 py-10 dark:bg-slate-950">
-        <div className="w-full max-w-sm">
+      <div style={brandStyle} className="flex flex-1 flex-col items-center bg-[#f7f5f2] px-4 py-10 dark:bg-slate-950">
+        <div className="w-full max-w-md rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
           <button
             onClick={() => setView("catalogo")}
             className="mb-4 text-sm text-slate-500 hover:underline dark:text-slate-400"
@@ -1297,7 +1297,7 @@ export default function StorefrontClient({
             <button
               type="submit"
               disabled={saving || !storeStatus.open}
-              className="w-full rounded-lg bg-[var(--brand-bg)] px-4 py-2.5 font-semibold text-[var(--brand-text)] disabled:opacity-60"
+              className="w-full rounded-full bg-[var(--brand-bg)] px-4 py-3 font-semibold text-[var(--brand-text)] shadow-sm transition hover:brightness-110 disabled:opacity-60"
             >
               {saving ? "Enviando…" : "Enviar pedido"}
             </button>
@@ -1308,30 +1308,46 @@ export default function StorefrontClient({
   }
 
   return (
-    <div style={brandStyle} className="flex flex-1 flex-col bg-slate-50 pb-24 dark:bg-slate-950">
-      <header className="border-b border-slate-200 bg-white px-6 py-6 text-center dark:border-slate-800 dark:bg-slate-900">
-        <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-[var(--brand-bg)] text-lg font-bold text-[var(--brand-text)]">
-          {store.name.slice(0, 2).toUpperCase()}
+    <div style={brandStyle} className="flex flex-1 flex-col bg-[#f7f5f2] pb-28 dark:bg-slate-950">
+      <header className="relative overflow-hidden bg-[var(--brand-bg)] px-6 pb-10 pt-10 text-center text-[var(--brand-text)] sm:pb-14 sm:pt-14">
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-0 opacity-[0.07]"
+          style={{
+            backgroundImage:
+              "radial-gradient(circle at 20% 20%, currentColor 1.5px, transparent 1.5px), radial-gradient(circle at 60% 70%, currentColor 1.5px, transparent 1.5px)",
+            backgroundSize: "48px 48px",
+          }}
+        />
+        <div className="relative mx-auto flex max-w-3xl flex-col items-center">
+          <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-[var(--brand-text)]/15 text-2xl font-bold ring-1 ring-inset ring-[var(--brand-text)]/25 backdrop-blur-sm sm:h-20 sm:w-20 sm:text-3xl">
+            {store.name.slice(0, 2).toUpperCase()}
+          </div>
+          <h1 className="mt-4 text-2xl font-bold tracking-tight text-balance sm:text-4xl">{store.name}</h1>
+          {storeReviews.length > 0 && (
+            <p className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-[var(--brand-text)]/10 px-3 py-1 text-xs font-medium sm:text-sm">
+              <span className="tracking-tight text-amber-300">
+                {"★".repeat(Math.round(storeRatingAvg))}
+                {"☆".repeat(5 - Math.round(storeRatingAvg))}
+              </span>
+              <span>
+                {storeRatingAvg.toFixed(1)} · {storeReviews.length}{" "}
+                {storeReviews.length === 1 ? "avaliação" : "avaliações"}
+              </span>
+            </p>
+          )}
         </div>
-        <h1 className="mt-3 text-xl font-bold text-slate-900 dark:text-slate-50">{store.name}</h1>
-        {storeReviews.length > 0 && (
-          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-            {"★".repeat(Math.round(storeRatingAvg))}
-            {"☆".repeat(5 - Math.round(storeRatingAvg))} {storeRatingAvg.toFixed(1)} (
-            {storeReviews.length} {storeReviews.length === 1 ? "avaliação" : "avaliações"})
-          </p>
-        )}
       </header>
 
       {!storeStatus.open && storeStatus.message && (
-        <div className="bg-amber-100 px-4 py-2 text-center text-sm font-medium text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
+        <div className="bg-amber-100 px-4 py-2.5 text-center text-sm font-medium text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
           🕒 {storeStatus.message} Você pode ver o catálogo, mas o pedido só é enviado quando a loja
           reabrir.
         </div>
       )}
 
       {showInstallBanner && (
-        <div className="flex items-center justify-between gap-3 bg-[var(--brand-bg)] px-4 py-2.5 text-sm text-[var(--brand-text)]">
+        <div className="flex items-center justify-between gap-3 bg-slate-900 px-4 py-2.5 text-sm text-white">
           {isIosInstallHint ? (
             <span>
               📲 Instale esse site como app: toque em <strong>Compartilhar</strong> e depois em{" "}
@@ -1344,7 +1360,7 @@ export default function StorefrontClient({
             {!isIosInstallHint && (
               <button
                 onClick={handleInstallClick}
-                className="rounded-lg bg-white px-3 py-1 text-xs font-semibold text-[var(--brand-bg)]"
+                className="rounded-lg bg-white px-3 py-1 text-xs font-semibold text-slate-900"
               >
                 Instalar
               </button>
@@ -1352,7 +1368,7 @@ export default function StorefrontClient({
             <button
               onClick={dismissInstallBanner}
               aria-label="Fechar"
-              className="text-amber-100 hover:text-white"
+              className="text-slate-400 hover:text-white"
             >
               ✕
             </button>
@@ -1361,8 +1377,8 @@ export default function StorefrontClient({
       )}
 
       {store.scratch_enabled && (
-        <div className="mx-auto w-full max-w-2xl px-4 pt-4">
-          <div className="rounded-xl border border-purple-200 bg-purple-50 p-3 dark:border-purple-900 dark:bg-purple-950/40">
+        <div className="mx-auto w-full max-w-5xl px-4 pt-5 sm:px-6">
+          <div className="rounded-2xl border border-purple-200 bg-purple-50 p-4 shadow-sm dark:border-purple-900 dark:bg-purple-950/40">
             <p className="text-xs font-bold uppercase tracking-wide text-purple-700 dark:text-purple-400">
               🎟️ Raspadinha semanal
             </p>
@@ -1406,41 +1422,41 @@ export default function StorefrontClient({
       )}
 
       {recipe && (
-        <div className="mx-auto w-full max-w-2xl px-4 pt-4">
-          <div className="flex items-center gap-3 overflow-hidden rounded-xl border border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/40">
+        <div className="mx-auto w-full max-w-5xl px-4 pt-5 sm:px-6">
+          <div className="flex items-center gap-4 overflow-hidden rounded-2xl border border-amber-200 bg-amber-50 shadow-sm dark:border-amber-900 dark:bg-amber-950/40">
             {recipe.image_url && (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={recipe.image_url} alt={recipe.name} className="h-20 w-20 shrink-0 object-cover" />
+              <img src={recipe.image_url} alt={recipe.name} className="h-24 w-24 shrink-0 object-cover sm:h-28 sm:w-28" />
             )}
             <div className="min-w-0 flex-1 py-2 pr-3">
               <p className="text-[10px] font-bold uppercase tracking-wide text-amber-700 dark:text-amber-400">
-                Receita da semana
+                🍳 Receita da semana
               </p>
               <p className="truncate font-semibold text-slate-900 dark:text-slate-50">{recipe.name}</p>
               {recipe.description && (
                 <p className="truncate text-xs text-slate-600 dark:text-slate-400">{recipe.description}</p>
               )}
+              <button
+                onClick={addRecipeToCart}
+                className="mt-1.5 rounded-full bg-amber-400 px-3 py-1.5 text-xs font-semibold text-amber-950 shadow-sm transition hover:bg-amber-300"
+              >
+                Adicionar tudo ao carrinho
+              </button>
             </div>
-            <button
-              onClick={addRecipeToCart}
-              className="mr-3 shrink-0 rounded-lg bg-amber-400 px-3 py-1.5 text-xs font-semibold text-amber-950"
-            >
-              Adicionar tudo
-            </button>
           </div>
         </div>
       )}
 
       {banners.length > 0 && (
-        <div className="mx-auto w-full max-w-2xl px-4 pt-4">
-          <div className="flex snap-x gap-3 overflow-x-auto pb-1">
+        <div className="mx-auto w-full max-w-5xl px-4 pt-5 sm:px-6">
+          <div className="flex snap-x gap-4 overflow-x-auto pb-1">
             {banners.map((banner) => {
               const content = (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
                   src={banner.image_url}
                   alt={banner.title}
-                  className="h-32 w-full shrink-0 snap-start rounded-xl object-cover sm:w-80"
+                  className="h-40 w-full shrink-0 snap-start rounded-2xl object-cover shadow-sm sm:h-52 sm:w-[26rem]"
                 />
               );
               return banner.link_url ? (
@@ -1449,7 +1465,7 @@ export default function StorefrontClient({
                   href={banner.link_url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="shrink-0"
+                  className="shrink-0 transition hover:opacity-90"
                 >
                   {content}
                 </a>
@@ -1463,7 +1479,31 @@ export default function StorefrontClient({
         </div>
       )}
 
-      <div className="mx-auto w-full max-w-2xl flex-1 px-4 py-6">
+      {categories.length > 1 && (
+        <nav className="sticky top-0 z-20 mt-5 border-y border-slate-200 bg-[#f7f5f2]/95 py-2.5 backdrop-blur dark:border-slate-800 dark:bg-slate-950/95">
+          <div className="mx-auto flex max-w-5xl gap-2 overflow-x-auto px-4 sm:px-6">
+            {kits.length > 0 && (
+              <a
+                href="#kits-section"
+                className="shrink-0 rounded-full border border-slate-300 px-3.5 py-1.5 text-xs font-medium text-slate-600 transition hover:border-[var(--brand-bg)] hover:text-[var(--brand-bg)] dark:border-slate-700 dark:text-slate-300"
+              >
+                🎁 Kits
+              </a>
+            )}
+            {categories.map(([category]) => (
+              <a
+                key={category}
+                href={`#cat-${category}`}
+                className="shrink-0 rounded-full border border-slate-300 px-3.5 py-1.5 text-xs font-medium text-slate-600 transition hover:border-[var(--brand-bg)] hover:text-[var(--brand-bg)] dark:border-slate-700 dark:text-slate-300"
+              >
+                {category}
+              </a>
+            ))}
+          </div>
+        </nav>
+      )}
+
+      <div className="mx-auto w-full max-w-5xl flex-1 px-4 py-7 sm:px-6">
         {products.length === 0 && kits.length === 0 && (
           <p className="text-center text-sm text-slate-500 dark:text-slate-400">
             Essa loja ainda não cadastrou produtos.
@@ -1471,11 +1511,11 @@ export default function StorefrontClient({
         )}
 
         {kits.length > 0 && (
-          <section id="kits-section" className="mb-6">
-            <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-              Kits e combos
+          <section id="kits-section" className="mb-9 scroll-mt-16">
+            <h2 className="mb-3 flex items-center gap-2 text-base font-bold text-slate-900 dark:text-slate-50">
+              <span aria-hidden>🎁</span> Kits e combos
             </h2>
-            <div className="space-y-2">
+            <div className="space-y-3">
               {kits.map((kit) => {
                 const key = `kit:${kit.id}`;
                 const quantity = cart[key] ?? 0;
@@ -1484,24 +1524,26 @@ export default function StorefrontClient({
                 return (
                   <div
                     key={kit.id}
-                    className="rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900"
+                    className="rounded-2xl border border-slate-200 bg-white p-3.5 shadow-sm transition hover:shadow-md dark:border-slate-800 dark:bg-slate-900"
                   >
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-4">
                     {kit.image_url ? (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img
                         src={kit.image_url}
                         alt={kit.name}
-                        className="h-14 w-14 shrink-0 rounded-lg object-cover"
+                        className="h-20 w-20 shrink-0 rounded-xl object-cover"
                       />
                     ) : (
-                      <div className="h-14 w-14 shrink-0 rounded-lg bg-slate-100 dark:bg-slate-800" />
+                      <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-xl bg-purple-50 text-2xl dark:bg-purple-950/40">
+                        🎁
+                      </div>
                     )}
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium text-slate-900 dark:text-slate-50">
+                      <p className="truncate font-semibold text-slate-900 dark:text-slate-50">
                         {kit.name}
                       </p>
-                      <p className="text-sm text-slate-600 dark:text-slate-400">
+                      <p className="text-base font-bold text-slate-900 dark:text-slate-50">
                         {formatCurrency(kit.price)}
                       </p>
                       <p className="truncate text-xs text-slate-400 dark:text-slate-500">
@@ -1510,8 +1552,8 @@ export default function StorefrontClient({
                           .join(", ")}
                       </p>
                       {savings > 0.005 && (
-                        <p className="text-xs font-medium text-emerald-700 dark:text-emerald-400">
-                          Economize {formatCurrency(savings)} levando o kit
+                        <p className="mt-0.5 inline-flex items-center rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400">
+                          Economize {formatCurrency(savings)}
                         </p>
                       )}
                       {maxQty <= 0 && <p className="text-xs text-red-500">Sem estoque</p>}
@@ -1520,26 +1562,26 @@ export default function StorefrontClient({
                       <button
                         onClick={() => setQuantity(key, 1)}
                         disabled={maxQty <= 0}
-                        className="shrink-0 rounded-lg bg-[var(--brand-bg)] px-3 py-1.5 text-sm font-semibold text-[var(--brand-text)] disabled:opacity-40"
+                        className="shrink-0 rounded-full bg-[var(--brand-bg)] px-4 py-2 text-sm font-semibold text-[var(--brand-text)] shadow-sm transition hover:brightness-110 disabled:opacity-40"
                       >
                         Adicionar
                       </button>
                     ) : (
-                      <div className="flex shrink-0 items-center gap-2">
+                      <div className="flex shrink-0 items-center gap-2.5 rounded-full bg-slate-100 px-1 py-1 dark:bg-slate-800">
                         <button
                           onClick={() => setQuantity(key, quantity - 1)}
-                          className="h-7 w-7 rounded-full bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-200"
+                          className="flex h-7 w-7 items-center justify-center rounded-full bg-white text-slate-700 shadow-sm dark:bg-slate-700 dark:text-slate-200"
                           aria-label="Diminuir quantidade"
                         >
                           −
                         </button>
-                        <span className="w-4 text-center text-sm text-slate-900 dark:text-slate-50">
+                        <span className="w-4 text-center text-sm font-semibold text-slate-900 dark:text-slate-50">
                           {quantity}
                         </span>
                         <button
                           onClick={() => setQuantity(key, Math.min(quantity + 1, maxQty))}
                           disabled={quantity >= maxQty}
-                          className="h-7 w-7 rounded-full bg-slate-200 text-slate-700 disabled:opacity-40 dark:bg-slate-700 dark:text-slate-200"
+                          className="flex h-7 w-7 items-center justify-center rounded-full bg-white text-slate-700 shadow-sm disabled:opacity-40 dark:bg-slate-700 dark:text-slate-200"
                           aria-label="Aumentar quantidade"
                         >
                           +
@@ -1603,11 +1645,9 @@ export default function StorefrontClient({
         )}
 
         {categories.map(([category, items]) => (
-          <section key={category} className="mb-6">
-            <h2 className="mb-2 text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-              {category}
-            </h2>
-            <div className="space-y-2">
+          <section key={category} id={`cat-${category}`} className="mb-9 scroll-mt-16">
+            <h2 className="mb-3 text-base font-bold text-slate-900 dark:text-slate-50">{category}</h2>
+            <div className="grid grid-cols-2 gap-3.5 sm:grid-cols-3 sm:gap-5 lg:grid-cols-4">
               {items.map((product) => {
                 const key = `product:${product.id}`;
                 const quantity = cart[key] ?? 0;
@@ -1617,61 +1657,79 @@ export default function StorefrontClient({
                 return (
                   <div
                     key={product.id}
-                    className="rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900"
+                    className={`group flex flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md dark:border-slate-800 dark:bg-slate-900 ${isExpanded ? "col-span-2 sm:col-span-3 lg:col-span-4" : ""}`}
                   >
-                    <div className="flex items-center gap-3 p-3">
-                      {product.image_url ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
-                          src={product.image_url}
-                          alt={product.name}
-                          className="h-14 w-14 shrink-0 rounded-lg object-cover"
-                        />
-                      ) : (
-                        <div className="h-14 w-14 shrink-0 rounded-lg bg-slate-100 dark:bg-slate-800" />
-                      )}
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-medium text-slate-900 dark:text-slate-50">
-                          {product.name}
-                          {isNewProduct(product.created_at) && (
-                            <span className="ml-1.5 rounded-full bg-blue-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-blue-800 dark:bg-blue-900/40 dark:text-blue-300">
-                              🆕 Novo
-                            </span>
+                    <div className={isExpanded ? "flex flex-col sm:flex-row" : ""}>
+                      <div className={isExpanded ? "sm:w-56 sm:shrink-0" : ""}>
+                        <div className="relative aspect-square w-full overflow-hidden bg-slate-100 dark:bg-slate-800">
+                          {product.image_url ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                              src={product.image_url}
+                              alt={product.name}
+                              className="h-full w-full object-cover transition duration-300 group-hover:scale-105"
+                            />
+                          ) : (
+                            <div className="flex h-full w-full items-center justify-center text-3xl text-slate-300 dark:text-slate-700">
+                              🛒
+                            </div>
                           )}
+                          <div className="absolute left-2 top-2 flex flex-col gap-1">
+                            {product.on_offer && product.offer_price !== null && (
+                              <span className="rounded-full bg-red-600 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white shadow-sm">
+                                Oferta
+                              </span>
+                            )}
+                            {isNewProduct(product.created_at) && (
+                              <span className="rounded-full bg-blue-600 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white shadow-sm">
+                                Novo
+                              </span>
+                            )}
+                          </div>
+                          {product.stock <= 0 && (
+                            <div className="absolute inset-0 flex items-center justify-center bg-white/70 backdrop-blur-[1px] dark:bg-slate-900/70">
+                              <span className="rounded-full bg-slate-900/90 px-3 py-1 text-xs font-semibold text-white">
+                                Sem estoque
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="flex flex-1 flex-col p-3">
+                        <p className="line-clamp-2 min-h-[2.5em] text-sm font-medium leading-tight text-slate-900 dark:text-slate-50">
+                          {product.name}
                         </p>
-                        {product.on_offer && product.offer_price !== null ? (
-                          <p className="text-sm">
-                            <span className="mr-1.5 text-slate-400 line-through dark:text-slate-500">
+
+                        <div className="mt-1.5">
+                          {product.on_offer && product.offer_price !== null ? (
+                            <p className="flex items-baseline gap-1.5">
+                              <span className="text-base font-bold text-red-600">
+                                {formatCurrency(product.offer_price)}
+                              </span>
+                              <span className="text-xs text-slate-400 line-through dark:text-slate-500">
+                                {formatCurrency(product.price)}
+                              </span>
+                            </p>
+                          ) : (
+                            <p className="text-base font-bold text-slate-900 dark:text-slate-50">
                               {formatCurrency(product.price)}
-                            </span>
-                            <span className="font-semibold text-red-600">
-                              {formatCurrency(product.offer_price)}
-                            </span>
-                            <span className="ml-1.5 rounded-full bg-red-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-red-700 dark:bg-red-900/40 dark:text-red-400">
-                              Oferta
-                            </span>
-                          </p>
-                        ) : (
-                          <p className="text-sm text-slate-600 dark:text-slate-400">
-                            {formatCurrency(product.price)}
-                          </p>
-                        )}
+                            </p>
+                          )}
+                        </div>
+
                         {!product.on_offer && product.promo_buy_qty && product.promo_pay_qty && (
-                          <p className="text-xs font-medium text-green-600">
+                          <p className="mt-0.5 text-xs font-medium text-emerald-700 dark:text-emerald-400">
                             Leve {product.promo_buy_qty}, pague {product.promo_pay_qty}
                           </p>
                         )}
                         {!product.on_offer &&
                           product.price_wholesale &&
                           product.wholesale_min_qty && (
-                            <p className="text-xs font-medium text-blue-700 dark:text-blue-400">
-                              A partir de {product.wholesale_min_qty}un:{" "}
-                              {formatCurrency(product.price_wholesale)} cada
+                            <p className="mt-0.5 text-xs font-medium text-blue-700 dark:text-blue-400">
+                              {product.wholesale_min_qty}+un: {formatCurrency(product.price_wholesale)} cada
                             </p>
                           )}
-                        {product.stock <= 0 && (
-                          <p className="text-xs text-red-500">Sem estoque</p>
-                        )}
                         {(() => {
                           const kitsWithProduct = kitsByProductId.get(product.id);
                           if (!kitsWithProduct || kitsWithProduct.length === 0) return null;
@@ -1680,57 +1738,61 @@ export default function StorefrontClient({
                           return (
                             <a
                               href="#kits-section"
-                              className="block text-xs font-medium text-purple-700 underline dark:text-purple-400"
+                              className="mt-0.5 block truncate text-xs font-medium text-purple-700 underline dark:text-purple-400"
                             >
-                              🎁 Esse produto tá no Kit &quot;{firstKit.name}&quot;
+                              🎁 No kit &quot;{firstKit.name}&quot;
                               {savings > 0.005 ? ` — economize ${formatCurrency(savings)}` : ""}
                             </a>
                           );
                         })()}
+
                         <button
                           type="button"
                           onClick={() => setExpandedProductId(isExpanded ? null : product.id)}
-                          className="text-xs text-[var(--brand-bg)] underline"
+                          className="mt-1 self-start text-xs text-slate-500 underline decoration-slate-300 hover:text-[var(--brand-bg)] dark:text-slate-400"
                         >
                           {rating
                             ? `${"★".repeat(Math.round(rating.avg))}${"☆".repeat(5 - Math.round(rating.avg))} (${rating.count})`
                             : "Avaliar produto"}
                         </button>
-                      </div>
-                      {quantity === 0 ? (
-                        <button
-                          onClick={() => setQuantity(key, 1)}
-                          disabled={product.stock <= 0}
-                          className="shrink-0 rounded-lg bg-[var(--brand-bg)] px-3 py-1.5 text-sm font-semibold text-[var(--brand-text)] disabled:opacity-40"
-                        >
-                          Adicionar
-                        </button>
-                      ) : (
-                        <div className="flex shrink-0 items-center gap-2">
-                          <button
-                            onClick={() => setQuantity(key, quantity - 1)}
-                            className="h-7 w-7 rounded-full bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-200"
-                            aria-label="Diminuir quantidade"
-                          >
-                            −
-                          </button>
-                          <span className="w-4 text-center text-sm text-slate-900 dark:text-slate-50">
-                            {quantity}
-                          </span>
-                          <button
-                            onClick={() => setQuantity(key, Math.min(quantity + 1, product.stock))}
-                            disabled={quantity >= product.stock}
-                            className="h-7 w-7 rounded-full bg-slate-200 text-slate-700 disabled:opacity-40 dark:bg-slate-700 dark:text-slate-200"
-                            aria-label="Aumentar quantidade"
-                          >
-                            +
-                          </button>
+
+                        <div className="mt-auto pt-2.5">
+                          {quantity === 0 ? (
+                            <button
+                              onClick={() => setQuantity(key, 1)}
+                              disabled={product.stock <= 0}
+                              className="w-full rounded-full bg-[var(--brand-bg)] px-3 py-2 text-sm font-semibold text-[var(--brand-text)] shadow-sm transition hover:brightness-110 disabled:opacity-40"
+                            >
+                              Adicionar
+                            </button>
+                          ) : (
+                            <div className="flex w-full items-center justify-between rounded-full bg-slate-100 px-1 py-1 dark:bg-slate-800">
+                              <button
+                                onClick={() => setQuantity(key, quantity - 1)}
+                                className="flex h-7 w-7 items-center justify-center rounded-full bg-white text-slate-700 shadow-sm dark:bg-slate-700 dark:text-slate-200"
+                                aria-label="Diminuir quantidade"
+                              >
+                                −
+                              </button>
+                              <span className="text-sm font-semibold text-slate-900 dark:text-slate-50">
+                                {quantity}
+                              </span>
+                              <button
+                                onClick={() => setQuantity(key, Math.min(quantity + 1, product.stock))}
+                                disabled={quantity >= product.stock}
+                                className="flex h-7 w-7 items-center justify-center rounded-full bg-white text-slate-700 shadow-sm disabled:opacity-40 dark:bg-slate-700 dark:text-slate-200"
+                                aria-label="Aumentar quantidade"
+                              >
+                                +
+                              </button>
+                            </div>
+                          )}
                         </div>
-                      )}
+                      </div>
                     </div>
 
                     {isExpanded && (
-                      <div className="border-t border-slate-100 p-3 dark:border-slate-800">
+                      <div className="border-t border-slate-100 p-4 dark:border-slate-800">
                         <ul className="space-y-2">
                           {productReviews.length === 0 && (
                             <li className="text-sm text-slate-400 dark:text-slate-500">
@@ -1751,7 +1813,7 @@ export default function StorefrontClient({
                           ))}
                         </ul>
 
-                        <div className="mt-3 space-y-2 border-t border-slate-100 pt-3 dark:border-slate-800">
+                        <div className="mt-3 grid gap-2 border-t border-slate-100 pt-3 sm:grid-cols-2 dark:border-slate-800">
                           <input
                             value={reviewerName}
                             onChange={(e) => setReviewerName(e.target.value)}
@@ -1774,13 +1836,13 @@ export default function StorefrontClient({
                             onChange={(e) => setReviewerComment(e.target.value)}
                             placeholder="Comentário (opcional)"
                             rows={2}
-                            className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                            className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50 sm:col-span-2"
                           />
                           <button
                             type="button"
                             onClick={() => handleSubmitReview(product.id)}
                             disabled={!reviewerName.trim() || submittingReview}
-                            className="w-full rounded-lg bg-[var(--brand-bg)] px-3 py-2 text-sm font-semibold text-[var(--brand-text)] disabled:opacity-50"
+                            className="w-full rounded-full bg-[var(--brand-bg)] px-3 py-2 text-sm font-semibold text-[var(--brand-text)] disabled:opacity-50 sm:col-span-2"
                           >
                             {submittingReview ? "Enviando…" : "Enviar avaliação"}
                           </button>
@@ -1795,7 +1857,7 @@ export default function StorefrontClient({
         ))}
       </div>
 
-      <footer className="mx-auto w-full max-w-2xl px-4 pb-6 text-center text-xs text-slate-400 dark:text-slate-600">
+      <footer className="mx-auto w-full max-w-5xl px-4 pb-8 pt-4 text-center text-xs text-slate-400 sm:px-6 dark:text-slate-600">
         <a href="/privacidade" className="underline">
           Aviso de privacidade
         </a>
@@ -1806,12 +1868,17 @@ export default function StorefrontClient({
       </footer>
 
       {cartCount > 0 && (
-        <div className="fixed inset-x-0 bottom-0 border-t border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
+        <div className="fixed inset-x-0 bottom-0 z-30 px-4 pb-4 sm:px-6">
           <button
             onClick={() => setView("checkout")}
-            className="mx-auto flex w-full max-w-2xl items-center justify-between rounded-lg bg-[var(--brand-bg)] px-4 py-3 font-semibold text-[var(--brand-text)]"
+            className="mx-auto flex w-full max-w-5xl items-center justify-between rounded-2xl bg-[var(--brand-bg)] px-5 py-3.5 font-semibold text-[var(--brand-text)] shadow-xl shadow-black/10 ring-1 ring-black/5 transition hover:brightness-110"
           >
-            <span>{cartCount} {cartCount === 1 ? "item" : "itens"}</span>
+            <span className="flex items-center gap-2">
+              <span className="flex h-6 min-w-6 items-center justify-center rounded-full bg-[var(--brand-text)]/20 px-1.5 text-xs">
+                {cartCount}
+              </span>
+              Ver carrinho
+            </span>
             <span>{formatCurrency(total)}</span>
           </button>
         </div>
