@@ -1039,41 +1039,80 @@ export default function Produtos() {
 
       <form
         onSubmit={handleAdd}
-        className="mt-4 grid grid-cols-1 gap-3 rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900 sm:grid-cols-2 lg:grid-cols-6"
+        className="mt-4 space-y-5 rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900"
       >
-        <input
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="Nome do produto"
-          className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50 lg:col-span-2"
-        />
-        <input
-          value={category}
-          onChange={(e) => setCategory(e.target.value)}
-          placeholder="Categoria"
-          list="categorias-existentes"
-          className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
-        />
-        <datalist id="categorias-existentes">
-          {categories.map((c) => (
-            <option key={c} value={c} />
-          ))}
-        </datalist>
-        <input
-          value={price}
-          onChange={(e) => setPrice(e.target.value)}
-          placeholder="Preço (R$)"
-          inputMode="decimal"
-          className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
-        />
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div>
+            <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">Nome do produto</label>
+            <input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Nome do produto"
+              className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">Categoria</label>
+            <input
+              value={category}
+              onChange={(e) => setCategory(e.target.value)}
+              placeholder="Categoria"
+              list="categorias-existentes"
+              className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+            />
+            <datalist id="categorias-existentes">
+              {categories.map((c) => (
+                <option key={c} value={c} />
+              ))}
+            </datalist>
+          </div>
+        </div>
+
         <div>
-          <input
-            value={costPrice}
-            onChange={(e) => setCostPrice(e.target.value)}
-            placeholder="Custo (opcional)"
-            inputMode="decimal"
-            className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
-          />
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">Preço</p>
+          <div className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <div>
+              <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">Preço de venda (R$)</label>
+              <input
+                value={price}
+                onChange={(e) => setPrice(e.target.value)}
+                placeholder="R$"
+                inputMode="decimal"
+                className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">Custo (opcional)</label>
+              <input
+                value={costPrice}
+                onChange={(e) => setCostPrice(e.target.value)}
+                placeholder="R$"
+                inputMode="decimal"
+                className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">
+                Ou: % que eu quero ganhar
+              </label>
+              <input
+                value={desiredMarkup}
+                onChange={(e) => {
+                  const raw = e.target.value;
+                  setDesiredMarkup(raw);
+                  const c = Number(costPrice.replace(",", "."));
+                  const pct = Number(raw.replace(",", "."));
+                  if (raw.trim() !== "" && c > 0 && !Number.isNaN(c) && !Number.isNaN(pct) && pct >= 0) {
+                    setPrice((c * (1 + pct / 100)).toFixed(2));
+                  }
+                }}
+                placeholder={costPrice.trim() ? "%" : "preencha o custo primeiro"}
+                inputMode="decimal"
+                disabled={!costPrice.trim()}
+                className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+              />
+            </div>
+          </div>
           {(() => {
             const p = Number(price.replace(",", "."));
             const c = Number(costPrice.replace(",", "."));
@@ -1082,116 +1121,125 @@ export default function Produtos() {
             if (!priceOk) return null;
             if (!costOk) {
               return (
-                <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
-                  preencha o custo aqui do lado pra ver a margem
+                <p className="mt-2 text-xs text-slate-400 dark:text-slate-500">
+                  preencha o custo pra ver a margem
                 </p>
               );
             }
             const margin = ((p - c) / p) * 100;
             const markup = ((p - c) / c) * 100;
             return (
-              <p className="mt-1 text-xs font-medium text-slate-600 dark:text-slate-300">
+              <p className="mt-2 text-xs font-medium text-slate-600 dark:text-slate-300">
                 margem {margin.toFixed(0)}% · markup {markup.toFixed(0)}%
               </p>
             );
           })()}
         </div>
+
         <div>
-          <input
-            value={desiredMarkup}
-            onChange={(e) => {
-              const raw = e.target.value;
-              setDesiredMarkup(raw);
-              const c = Number(costPrice.replace(",", "."));
-              const pct = Number(raw.replace(",", "."));
-              if (raw.trim() !== "" && c > 0 && !Number.isNaN(c) && !Number.isNaN(pct) && pct >= 0) {
-                setPrice((c * (1 + pct / 100)).toFixed(2));
-              }
-            }}
-            placeholder={costPrice.trim() ? "ou: % que eu quero ganhar" : "preencha o custo primeiro"}
-            inputMode="decimal"
-            disabled={!costPrice.trim()}
-            className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
-          />
-          <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
-            digitar aqui já preenche o Preço sozinho
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">Estoque</p>
+          <div className="mt-2 grid grid-cols-1 items-end gap-3 sm:grid-cols-2">
+            <div>
+              <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">
+                {soldByWeight ? "Estoque (kg)" : "Estoque"}
+              </label>
+              <input
+                value={stock}
+                onChange={(e) => setStock(e.target.value)}
+                placeholder="0"
+                inputMode="decimal"
+                className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+              />
+            </div>
+            <label className="flex items-center gap-2 text-sm text-slate-700 sm:pb-2 dark:text-slate-300">
+              <input
+                type="checkbox"
+                checked={soldByWeight}
+                onChange={(e) => setSoldByWeight(e.target.checked)}
+                className="h-4 w-4 rounded border-slate-300"
+              />
+              ⚖️ Vendido por peso (kg)
+            </label>
+          </div>
+        </div>
+
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
+            Atacado (opcional)
           </p>
+          <div className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div>
+              <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">Preço atacado</label>
+              <input
+                value={wholesalePriceNew}
+                onChange={(e) => setWholesalePriceNew(e.target.value)}
+                placeholder="R$"
+                inputMode="decimal"
+                className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">
+                Sai em atacado a partir de quantos
+              </label>
+              <input
+                value={wholesaleMinQtyNew}
+                onChange={(e) => setWholesaleMinQtyNew(e.target.value)}
+                placeholder="ex: 12"
+                inputMode="numeric"
+                className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+              />
+            </div>
+          </div>
         </div>
-        <input
-          value={stock}
-          onChange={(e) => setStock(e.target.value)}
-          placeholder={soldByWeight ? "Estoque (kg)" : "Estoque"}
-          inputMode="decimal"
-          className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
-        />
-        <div className="flex items-center gap-1">
-          <input
-            value={barcode}
-            onChange={(e) => setBarcode(e.target.value)}
-            placeholder="Código de barras (opcional)"
-            className="min-w-0 flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
-          />
-          <button
-            type="button"
-            onClick={openBarcodeScanner}
-            title="Ler código de barras com a câmera"
-            className="shrink-0 rounded-lg border border-slate-300 px-2 py-2 text-sm dark:border-slate-700"
-          >
-            📷
-          </button>
+
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <div>
+            <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">
+              Código de barras (opcional)
+            </label>
+            <div className="mt-1 flex items-center gap-1">
+              <input
+                value={barcode}
+                onChange={(e) => setBarcode(e.target.value)}
+                placeholder="Código de barras"
+                className="min-w-0 flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+              />
+              <button
+                type="button"
+                onClick={openBarcodeScanner}
+                title="Ler código de barras com a câmera"
+                className="shrink-0 rounded-lg border border-slate-300 px-2 py-2 text-sm dark:border-slate-700"
+              >
+                📷
+              </button>
+            </div>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">Fornecedor (opcional)</label>
+            <input
+              value={supplier}
+              onChange={(e) => setSupplier(e.target.value)}
+              placeholder="Fornecedor"
+              className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">
+              Validade (opcional, pra perecíveis)
+            </label>
+            <input
+              type="date"
+              value={expiryDate}
+              onChange={(e) => setExpiryDate(e.target.value)}
+              className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+            />
+          </div>
         </div>
-        <input
-          value={supplier}
-          onChange={(e) => setSupplier(e.target.value)}
-          placeholder="Fornecedor (opcional)"
-          className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
-        />
+
         <div>
-          <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">
-            Validade (opcional, pra perecíveis)
-          </label>
-          <input
-            type="date"
-            value={expiryDate}
-            onChange={(e) => setExpiryDate(e.target.value)}
-            className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
-          />
-        </div>
-        <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300">
-          <input
-            type="checkbox"
-            checked={soldByWeight}
-            onChange={(e) => setSoldByWeight(e.target.checked)}
-            className="h-4 w-4 rounded border-slate-300"
-          />
-          ⚖️ Vendido por peso (kg)
-        </label>
-        <div>
-          <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">
-            Preço atacado (opcional)
-          </label>
-          <input
-            value={wholesalePriceNew}
-            onChange={(e) => setWholesalePriceNew(e.target.value)}
-            placeholder="R$"
-            inputMode="decimal"
-            className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
-          />
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">
-            Sai em atacado a partir de quantos
-          </label>
-          <input
-            value={wholesaleMinQtyNew}
-            onChange={(e) => setWholesaleMinQtyNew(e.target.value)}
-            placeholder="ex: 12"
-            inputMode="numeric"
-            className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
-          />
-        </div>
-        <div className="sm:col-span-2 lg:col-span-3">
-          <div className="flex items-center gap-2">
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">Foto</p>
+          <div className="mt-2 flex items-center gap-2">
             <button
               type="button"
               onClick={() => photoInputRef.current?.click()}
@@ -1225,6 +1273,7 @@ export default function Produtos() {
             />
           </details>
         </div>
+
         <button
           type="submit"
           disabled={saving}
