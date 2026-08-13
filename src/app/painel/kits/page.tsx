@@ -301,7 +301,13 @@ export default function Kits() {
       .join(" ");
   }
 
-  const [aiPanel, setAiPanel] = useState<{ target: "new" | string; prompt: string; refs: Set<string> } | null>(null);
+  const [aiPanel, setAiPanel] = useState<{
+    target: "new" | string;
+    prompt: string;
+    refs: Set<string>;
+    extraRefs: string[];
+    uploadingExtraRef: boolean;
+  } | null>(null);
 
   function openAiPanelForNew() {
     if (!name.trim()) {
@@ -309,7 +315,7 @@ export default function Kits() {
       return;
     }
     setError(null);
-    setAiPanel({ target: "new", prompt: buildDefaultPrompt(name, []), refs: new Set() });
+    setAiPanel({ target: "new", prompt: buildDefaultPrompt(name, []), refs: new Set(), extraRefs: [], uploadingExtraRef: false });
   }
 
   function openAiPanelForKit(kit: Kit) {
@@ -318,17 +324,26 @@ export default function Kits() {
       target: kit.id,
       prompt: buildDefaultPrompt(kit.name, kit.kit_items.map((i) => i.products?.name ?? "")),
       refs: new Set(),
+      extraRefs: [],
+      uploadingExtraRef: false,
     });
+  }
+
+  async function handleAddExtraRefPhoto(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file || !aiPanel) return;
+    setAiPanel((prev) => (prev ? { ...prev, uploadingExtraRef: true } : prev));
+    const url = await uploadKitPhoto(file);
+    setAiPanel((prev) => (prev ? { ...prev, uploadingExtraRef: false, extraRefs: url ? [...prev.extraRefs, url] : prev.extraRefs } : prev));
   }
 
   async function submitAiPanel() {
     if (!aiPanel || !aiPanel.prompt.trim()) return;
-    const kit = aiPanel.target === "new" ? null : kits.find((k) => k.id === aiPanel.target);
-    const refUrls = kit
-      ? kit.kit_items
-          .filter((i) => aiPanel.refs.has(i.product_id) && i.products?.image_url)
-          .map((i) => i.products!.image_url as string)
-      : [];
+    const refUrls = [
+      ...products.filter((p) => aiPanel.refs.has(p.id) && p.image_url).map((p) => p.image_url as string),
+      ...aiPanel.extraRefs,
+    ];
     setGeneratingImage(true);
     setError(null);
     const url = await generateKitImage(aiPanel.prompt, refUrls);
@@ -1081,21 +1096,54 @@ export default function Kits() {
               rows={5}
               className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
             />
+
+            <div className="mt-3">
+              <p className="text-xs font-medium text-slate-500 dark:text-slate-400">
+                Tirar foto ou escolher da galeria pra usar como referência (opcional)
+              </p>
+              <div className="mt-1 flex flex-wrap items-center gap-2">
+                <label className="cursor-pointer rounded-lg border border-purple-300 px-3 py-1.5 text-xs font-medium text-purple-700 dark:border-purple-800 dark:text-purple-300">
+                  {aiPanel.uploadingExtraRef ? "Enviando…" : "📷 Adicionar foto"}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    onChange={handleAddExtraRefPhoto}
+                    disabled={aiPanel.uploadingExtraRef}
+                    className="hidden"
+                  />
+                </label>
+                {aiPanel.extraRefs.map((url, i) => (
+                  <div key={url} className="relative">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={url} alt="" className="h-10 w-10 rounded-lg border border-purple-300 object-cover" />
+                    <button
+                      type="button"
+                      onClick={() => setAiPanel((prev) => (prev ? { ...prev, extraRefs: prev.extraRefs.filter((_, idx) => idx !== i) } : prev))}
+                      className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-red-600 text-[10px] text-white"
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+
             {(() => {
-              const kit = aiPanel.target === "new" ? null : kits.find((k) => k.id === aiPanel.target);
-              const withPhoto = kit?.kit_items.filter((i) => i.products?.image_url) ?? [];
+              const withPhoto = products.filter((p) => p.image_url);
               if (withPhoto.length === 0) return null;
               return (
                 <div className="mt-3">
                   <p className="text-xs font-medium text-slate-500 dark:text-slate-400">
-                    Usar fotos dos produtos como referência (opcional) — a IA edita/combina essas fotos de verdade
+                    Usar fotos de produtos do seu catálogo como referência (opcional) — a IA edita/combina essas fotos de
+                    verdade, em vez de só imaginar a partir do texto
                   </p>
-                  <div className="mt-1 flex flex-wrap gap-2">
-                    {withPhoto.map((item) => {
-                      const checked = aiPanel.refs.has(item.product_id);
+                  <div className="mt-1 flex max-h-40 flex-wrap gap-2 overflow-y-auto">
+                    {withPhoto.map((p) => {
+                      const checked = aiPanel.refs.has(p.id);
                       return (
                         <label
-                          key={item.product_id}
+                          key={p.id}
                           className={`flex items-center gap-1.5 rounded-lg border px-2 py-1 text-xs ${
                             checked ? "border-purple-400 bg-purple-50 dark:bg-purple-900/20" : "border-slate-300 dark:border-slate-700"
                           }`}
@@ -1105,14 +1153,14 @@ export default function Kits() {
                             checked={checked}
                             onChange={(e) => {
                               const next = new Set(aiPanel.refs);
-                              if (e.target.checked) next.add(item.product_id);
-                              else next.delete(item.product_id);
+                              if (e.target.checked) next.add(p.id);
+                              else next.delete(p.id);
                               setAiPanel({ ...aiPanel, refs: next });
                             }}
                           />
                           {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img src={item.products!.image_url as string} alt="" className="h-6 w-6 rounded object-cover" />
-                          {item.products?.name}
+                          <img src={p.image_url as string} alt="" className="h-6 w-6 rounded object-cover" />
+                          {p.name}
                         </label>
                       );
                     })}
