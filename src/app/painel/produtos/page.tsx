@@ -1510,12 +1510,29 @@ export default function Produtos() {
                     />
                   </td>
                   <td className="px-3 py-2 text-slate-900 dark:text-slate-50">
-                    {p.name}
-                    {isNew && (
-                      <span className="ml-1 rounded-full bg-blue-100 px-1.5 py-0.5 text-[10px] font-medium text-blue-800 dark:bg-blue-900/40 dark:text-blue-300">
-                        🆕 novo
-                      </span>
-                    )}
+                    <p>
+                      {p.name}
+                      {isNew && (
+                        <span className="ml-1 rounded-full bg-blue-100 px-1.5 py-0.5 text-[10px] font-medium text-blue-800 dark:bg-blue-900/40 dark:text-blue-300">
+                          🆕 novo
+                        </span>
+                      )}
+                    </p>
+                    <div className="mt-1 flex flex-wrap gap-2">
+                      <button
+                        onClick={() => printLabels([p], false)}
+                        className="text-xs font-medium text-blue-900 hover:underline dark:text-blue-400"
+                      >
+                        🏷️ Etiqueta
+                      </button>
+                      <button
+                        onClick={() => handleDuplicate(p)}
+                        disabled={duplicating === p.id}
+                        className="text-xs font-medium text-blue-900 hover:underline disabled:opacity-60 dark:text-blue-400"
+                      >
+                        {duplicating === p.id ? "duplicando…" : "📋 Duplicar"}
+                      </button>
+                    </div>
                   </td>
                   <td className="px-3 py-2 text-slate-600 dark:text-slate-400">{p.category || "—"}</td>
                   <td className="px-3 py-2">
@@ -1673,19 +1690,6 @@ export default function Produtos() {
                       className="mr-2 text-xs font-medium text-blue-900 hover:underline dark:text-blue-400"
                     >
                       {expandedId === p.id ? "Fechar" : "Detalhes"}
-                    </button>
-                    <button
-                      onClick={() => printLabels([p], false)}
-                      className="mr-2 text-xs font-medium text-blue-900 hover:underline dark:text-blue-400"
-                    >
-                      Etiqueta
-                    </button>
-                    <button
-                      onClick={() => handleDuplicate(p)}
-                      disabled={duplicating === p.id}
-                      className="mr-2 text-xs font-medium text-blue-900 hover:underline disabled:opacity-60 dark:text-blue-400"
-                    >
-                      {duplicating === p.id ? "…" : "Duplicar"}
                     </button>
                     <button
                       onClick={() => deleteProduct(p.id, p.name)}
