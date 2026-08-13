@@ -4,6 +4,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { getSupabase } from "@/lib/supabase";
 import { useStore } from "@/lib/store-context";
+import { buildReceiptHtml, printHtml } from "@/lib/receipt";
 import { deleteMyAccount } from "./actions";
 
 const WEEKDAYS = [
@@ -18,6 +19,14 @@ const WEEKDAYS = [
 
 const PAPER_WIDTHS = [55, 58, 80];
 
+function previewTextColor(hex: string) {
+  const luminance =
+    parseInt(hex.slice(1, 3), 16) * 0.299 +
+    parseInt(hex.slice(3, 5), 16) * 0.587 +
+    parseInt(hex.slice(5, 7), 16) * 0.114;
+  return luminance > 140 ? "#1e293b" : "#fbbf24";
+}
+
 export default function Configuracoes() {
   const store = useStore();
   const router = useRouter();
@@ -29,6 +38,7 @@ export default function Configuracoes() {
   const [whatsapp, setWhatsapp] = useState(store.whatsapp ?? "");
   const [cnpj, setCnpj] = useState(store.cnpj ?? "");
   const [brandColor, setBrandColor] = useState("#1e3a8a");
+  const [accentColor, setAccentColor] = useState("#f59e0b");
   const [savingStore, setSavingStore] = useState(false);
   const [storeSaved, setStoreSaved] = useState(false);
 
@@ -69,7 +79,7 @@ export default function Configuracoes() {
     getSupabase()
       .from("stores")
       .select(
-        "business_hours_enabled, opens_at, closes_at, open_days, manually_closed, accountant_token, brand_color, cashback_percent, referral_bonus, loyalty_silver_threshold, loyalty_gold_threshold, credit_interest_percent, sales_goal",
+        "business_hours_enabled, opens_at, closes_at, open_days, manually_closed, accountant_token, brand_color, accent_color, cashback_percent, referral_bonus, loyalty_silver_threshold, loyalty_gold_threshold, credit_interest_percent, sales_goal",
       )
       .eq("id", store.id)
       .single()
@@ -82,6 +92,7 @@ export default function Configuracoes() {
         setManuallyClosed(data.manually_closed);
         setAccountantToken(data.accountant_token);
         if (data.brand_color) setBrandColor(data.brand_color);
+        if (data.accent_color) setAccentColor(data.accent_color);
         setCashbackPercent(data.cashback_percent > 0 ? String(data.cashback_percent) : "");
         setReferralBonus(data.referral_bonus > 0 ? String(data.referral_bonus) : "");
         setSilverThreshold(data.loyalty_silver_threshold > 0 ? String(data.loyalty_silver_threshold) : "");
@@ -128,6 +139,7 @@ export default function Configuracoes() {
         whatsapp: whatsapp.trim() || null,
         cnpj: cnpj.trim() || null,
         brand_color: brandColor,
+        accent_color: accentColor,
       })
       .eq("id", store.id);
     setSavingStore(false);
@@ -135,6 +147,23 @@ export default function Configuracoes() {
       setStoreSaved(true);
       setTimeout(() => window.location.reload(), 600);
     }
+  }
+
+  function handleTestPrint() {
+    const html = buildReceiptHtml({
+      storeName: name || store.name,
+      whatsapp: whatsapp || null,
+      cnpj: cnpj || null,
+      paperMm: paperWidth,
+      items: [
+        { name: "Produto de teste", qtyLabel: "2", lineTotal: 15 },
+        { name: "Outro produto", qtyLabel: "1", lineTotal: 8.5 },
+      ],
+      total: 23.5,
+      paymentLines: ["Pagamento: Dinheiro"],
+      troco: 6.5,
+    });
+    printHtml(html);
   }
 
   async function handleSavePaper(e: FormEvent) {
@@ -298,11 +327,10 @@ export default function Configuracoes() {
           </div>
           <div>
             <label className="block text-sm text-slate-600 dark:text-slate-400">
-              Cor da loja no site
+              Cor da loja (identidade)
             </label>
             <p className="mt-0.5 text-xs text-slate-400 dark:text-slate-500">
-              Usada no cabeçalho e nos botões principais da vitrine — o texto em cima se ajusta
-              sozinho pra ficar legível.
+              Usada no cabeçalho da vitrine — o texto em cima se ajusta sozinho pra ficar legível.
             </p>
             <div className="mt-1 flex items-center gap-3">
               <input
@@ -313,18 +341,32 @@ export default function Configuracoes() {
               />
               <span
                 className="rounded-lg px-3 py-1.5 text-sm font-semibold"
-                style={{
-                  backgroundColor: brandColor,
-                  color:
-                    parseInt(brandColor.slice(1, 3), 16) * 0.299 +
-                      parseInt(brandColor.slice(3, 5), 16) * 0.587 +
-                      parseInt(brandColor.slice(5, 7), 16) * 0.114 >
-                    140
-                      ? "#1e293b"
-                      : "#fbbf24",
-                }}
+                style={{ backgroundColor: brandColor, color: previewTextColor(brandColor) }}
               >
                 Prévia
+              </span>
+            </div>
+          </div>
+          <div>
+            <label className="block text-sm text-slate-600 dark:text-slate-400">
+              Cor de destaque (botões)
+            </label>
+            <p className="mt-0.5 text-xs text-slate-400 dark:text-slate-500">
+              Usada nos botões de ação da vitrine (adicionar ao carrinho, finalizar pedido) — vale a
+              pena escolher uma cor que contraste com a de cima.
+            </p>
+            <div className="mt-1 flex items-center gap-3">
+              <input
+                type="color"
+                value={accentColor}
+                onChange={(e) => setAccentColor(e.target.value)}
+                className="h-10 w-14 cursor-pointer rounded-lg border border-slate-300 bg-white p-1 dark:border-slate-700 dark:bg-slate-900"
+              />
+              <span
+                className="rounded-lg px-3 py-1.5 text-sm font-semibold"
+                style={{ backgroundColor: accentColor, color: previewTextColor(accentColor) }}
+              >
+                Adicionar
               </span>
             </div>
           </div>
@@ -368,7 +410,7 @@ export default function Configuracoes() {
             </button>
           ))}
         </div>
-        <div className="mt-3 flex items-center gap-2">
+        <div className="mt-3 flex flex-wrap items-center gap-2">
           <button
             type="submit"
             disabled={savingPaper}
@@ -376,8 +418,24 @@ export default function Configuracoes() {
           >
             {savingPaper ? "Salvando…" : "Salvar"}
           </button>
+          <button
+            type="button"
+            onClick={handleTestPrint}
+            className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 dark:border-slate-700 dark:text-slate-300"
+          >
+            🖨️ Testar impressão
+          </button>
           {paperSaved && <span className="text-sm text-green-600">Salvo!</span>}
         </div>
+        <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:bg-amber-900/30 dark:text-amber-400">
+          Se o teste sair certinho aqui mas na hora da venda continuar imprimindo a bobina toda: o
+          problema é a configuração da impressora no Windows, não desse site. Vá em{" "}
+          <strong>Painel de Controle → Dispositivos e Impressoras</strong>, clique com o botão direito
+          na sua impressora térmica → <strong>Preferências de impressão</strong>, e troque o tamanho do
+          papel de &quot;A4&quot; ou &quot;Carta&quot; pra uma opção de bobina/recibo (geralmente chamada
+          &quot;Roll paper&quot; ou o tamanho exato em mm). O navegador só consegue pedir o tamanho —
+          quem decide de verdade é essa configuração do Windows.
+        </p>
       </form>
 
       <form

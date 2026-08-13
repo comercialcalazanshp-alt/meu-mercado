@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
 import { getSupabase } from "@/lib/supabase";
 import { useStore } from "@/lib/store-context";
+import { buildReceiptHtml, printHtml } from "@/lib/receipt";
 
 type Product = {
   id: string;
@@ -423,74 +424,25 @@ export default function Pdv() {
     saleSubtotal?: number,
     saleDiscount?: number,
   ) {
-    const itemsHtml = items
-      .map(
-        (line) =>
-          `<tr><td>${formatQty(line)} ${line.name}</td><td style="text-align:right">${formatCurrency(line.price * line.quantity)}</td></tr>`,
-      )
-      .join("");
-    const paymentHtml = split
-      ? split.map((p) => `<p>${PAYMENT_LABELS[p.method]}: ${formatCurrency(p.amount)}</p>`).join("")
-      : `<p>Pagamento: ${PAYMENT_LABELS[method]}</p>`;
-    const discountHtml =
-      saleDiscount && saleDiscount > 0
-        ? `<p>Subtotal: ${formatCurrency(saleSubtotal ?? saleTotal + saleDiscount)}</p><p>Desconto: -${formatCurrency(saleDiscount)}</p>`
-        : "";
-    // Tamanho de bobina térmica (configurável em Configurações) com altura
-    // automática — sem isso o navegador usa o tamanho de folha padrão
-    // (A4/Carta) e desperdiça bobina imprimindo uma página inteira pra um
-    // cupom pequeno.
-    const paperMm = store.receipt_paper_mm || 55;
-    const headerHtml = [
-      `<h2>${store.name}</h2>`,
-      store.whatsapp ? `<p class="center">${store.whatsapp}</p>` : "",
-      store.cnpj ? `<p class="center">CNPJ ${store.cnpj}</p>` : "",
-    ]
-      .filter(Boolean)
-      .join("");
-    const html = `
-      <html><head><title>Recibo</title>
-      <style>
-        @page { size: ${paperMm}mm auto; margin: 0; }
-        * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-        body{font-family:'Courier New',monospace;font-weight:700;width:${paperMm}mm;margin:0;padding:2mm;font-size:12px;color:#000;}
-        h2{margin:0 0 1mm;font-size:14px;text-align:center;}
-        p{margin:1mm 0;}
-        .center{text-align:center;}
-        table{width:100%;border-collapse:collapse;margin-top:2mm;}
-        td{padding:0.5mm 0;font-size:12px;vertical-align:top;}
-        .total{font-weight:700;border-top:2px solid #000;margin-top:2mm;padding-top:2mm;text-align:right;}
-      </style></head><body>
-      ${headerHtml}
-      <p>${new Date().toLocaleString("pt-BR")}</p>
-      <table>${itemsHtml}</table>
-      ${discountHtml}
-      <p class="total">Total: ${formatCurrency(saleTotal)}</p>
-      ${paymentHtml}
-      ${troco !== null ? `<p>Troco: ${formatCurrency(Math.max(0, troco))}</p>` : ""}
-      </body></html>
-    `;
-
-    // Usa um iframe escondido em vez de window.open: abrir aba/janela nova é
-    // bloqueado por popup blocker em muitos celulares e navegadores, e falhava
-    // em silêncio (sem imprimir e sem avisar nada). Imprimir dentro da própria
-    // página não é bloqueado.
-    const iframe = document.createElement("iframe");
-    iframe.style.cssText = "position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden;";
-    document.body.appendChild(iframe);
-    const doc = iframe.contentWindow?.document;
-    if (!doc) {
-      iframe.remove();
-      return;
-    }
-    doc.open();
-    doc.write(html);
-    doc.close();
-    setTimeout(() => {
-      iframe.contentWindow?.focus();
-      iframe.contentWindow?.print();
-      setTimeout(() => iframe.remove(), 1000);
-    }, 200);
+    const html = buildReceiptHtml({
+      storeName: store.name,
+      whatsapp: store.whatsapp,
+      cnpj: store.cnpj,
+      paperMm: store.receipt_paper_mm || 55,
+      items: items.map((line) => ({
+        name: line.name,
+        qtyLabel: formatQty(line),
+        lineTotal: line.price * line.quantity,
+      })),
+      subtotal: saleSubtotal,
+      discount: saleDiscount,
+      total: saleTotal,
+      paymentLines: split
+        ? split.map((p) => `${PAYMENT_LABELS[p.method]}: ${formatCurrency(p.amount)}`)
+        : [`Pagamento: ${PAYMENT_LABELS[method]}`],
+      troco,
+    });
+    printHtml(html);
   }
 
   async function handleQuickAdd(e: FormEvent) {

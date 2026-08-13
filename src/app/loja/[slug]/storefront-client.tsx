@@ -74,6 +74,7 @@ type Store = {
   manually_closed: boolean;
   scratch_enabled: boolean;
   brand_color: string;
+  accent_color: string;
 };
 
 function isStoreOpenNow(store: Store): { open: boolean; message: string | null } {
@@ -300,6 +301,8 @@ export default function StorefrontClient({
   const brandStyle = {
     "--brand-bg": store.brand_color,
     "--brand-text": readableTextColor(store.brand_color),
+    "--accent-bg": store.accent_color,
+    "--accent-text": readableTextColor(store.accent_color),
   } as React.CSSProperties;
 
   const kitsByProductId = useMemo(() => {
@@ -827,13 +830,23 @@ export default function StorefrontClient({
 
   if (view === "confirmado") {
     const finalTotal = confirmedTotal ?? total;
+    const itemLines = cartItems
+      .map((item) => `• ${item.quantity}x ${item.name} — ${formatCurrency(item.lineTotal)}`)
+      .join("\n");
     const whatsappMessage = encodeURIComponent(
-      `Olá! Acabei de fazer um pedido na ${store.name} no valor de ${formatCurrency(finalTotal)}.`,
+      [
+        `Olá! Acabei de fazer um pedido na ${store.name}:`,
+        "",
+        itemLines,
+        "",
+        `Total: ${formatCurrency(finalTotal)}`,
+        ...(customerName.trim() ? [`Nome: ${customerName.trim()}`] : []),
+      ].join("\n"),
     );
     return (
       <div
         style={brandStyle}
-        className="flex flex-1 flex-col items-center justify-center gap-3 bg-[#f7f5f2] px-6 py-24 text-center dark:bg-slate-950"
+        className="flex flex-1 flex-col items-center justify-center gap-3 bg-[#f5f6f8] px-6 py-24 text-center dark:bg-slate-950"
       >
         <div className="flex h-16 w-16 items-center justify-center rounded-full bg-[var(--brand-bg)] text-2xl font-bold text-[var(--brand-text)] shadow-lg">
           ✓
@@ -930,7 +943,7 @@ export default function StorefrontClient({
                 )}
                 <button
                   onClick={() => navigator.clipboard.writeText(pixQrCodeText)}
-                  className="mt-2 w-full rounded-lg bg-[var(--brand-bg)] px-3 py-2 text-sm font-semibold text-[var(--brand-text)]"
+                  className="mt-2 w-full rounded-lg bg-[var(--accent-bg)] px-3 py-2 text-sm font-semibold text-[var(--accent-text)]"
                 >
                   Copiar código Pix
                 </button>
@@ -991,7 +1004,7 @@ export default function StorefrontClient({
               <button
                 onClick={handleSubmitStoreReview}
                 disabled={submittingStoreReview}
-                className="mt-2 w-full rounded-lg bg-[var(--brand-bg)] px-3 py-2 text-sm font-semibold text-[var(--brand-text)] disabled:opacity-60"
+                className="mt-2 w-full rounded-lg bg-[var(--accent-bg)] px-3 py-2 text-sm font-semibold text-[var(--accent-text)] disabled:opacity-60"
               >
                 {submittingStoreReview ? "Enviando…" : "Enviar avaliação"}
               </button>
@@ -1004,7 +1017,7 @@ export default function StorefrontClient({
 
   if (view === "checkout") {
     return (
-      <div style={brandStyle} className="flex flex-1 flex-col items-center bg-[#f7f5f2] px-4 py-10 dark:bg-slate-950">
+      <div style={brandStyle} className="flex flex-1 flex-col items-center bg-[#f5f6f8] px-4 py-10 dark:bg-slate-950">
         <div className="w-full max-w-md rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
           <button
             onClick={() => setView("catalogo")}
@@ -1297,7 +1310,7 @@ export default function StorefrontClient({
             <button
               type="submit"
               disabled={saving || !storeStatus.open}
-              className="w-full rounded-full bg-[var(--brand-bg)] px-4 py-3 font-semibold text-[var(--brand-text)] shadow-sm transition hover:brightness-110 disabled:opacity-60"
+              className="w-full rounded-full bg-[var(--accent-bg)] px-4 py-3 font-semibold text-[var(--accent-text)] shadow-sm transition hover:brightness-110 disabled:opacity-60"
             >
               {saving ? "Enviando…" : "Enviar pedido"}
             </button>
@@ -1308,7 +1321,7 @@ export default function StorefrontClient({
   }
 
   return (
-    <div style={brandStyle} className="flex flex-1 flex-col bg-[#f7f5f2] pb-28 dark:bg-slate-950">
+    <div style={brandStyle} className="flex flex-1 flex-col bg-[#f5f6f8] pb-28 dark:bg-slate-950">
       <header className="relative overflow-hidden bg-[var(--brand-bg)] px-6 pb-10 pt-10 text-center text-[var(--brand-text)] sm:pb-14 sm:pt-14">
         <div
           aria-hidden
@@ -1480,7 +1493,7 @@ export default function StorefrontClient({
       )}
 
       {categories.length > 1 && (
-        <nav className="sticky top-0 z-20 mt-5 border-y border-slate-200 bg-[#f7f5f2]/95 py-2.5 backdrop-blur dark:border-slate-800 dark:bg-slate-950/95">
+        <nav className="sticky top-0 z-20 mt-5 border-y border-slate-200 bg-[#f5f6f8]/95 py-2.5 backdrop-blur dark:border-slate-800 dark:bg-slate-950/95">
           <div className="mx-auto flex max-w-5xl gap-2 overflow-x-auto px-4 sm:px-6">
             {kits.length > 0 && (
               <a
@@ -1562,7 +1575,7 @@ export default function StorefrontClient({
                       <button
                         onClick={() => setQuantity(key, 1)}
                         disabled={maxQty <= 0}
-                        className="shrink-0 rounded-full bg-[var(--brand-bg)] px-4 py-2 text-sm font-semibold text-[var(--brand-text)] shadow-sm transition hover:brightness-110 disabled:opacity-40"
+                        className="shrink-0 rounded-full bg-[var(--accent-bg)] px-4 py-2 text-sm font-semibold text-[var(--accent-text)] shadow-sm transition hover:brightness-110 disabled:opacity-40"
                       >
                         Adicionar
                       </button>
@@ -1614,7 +1627,7 @@ export default function StorefrontClient({
                           <button
                             onClick={() => handleSubscribe(kit)}
                             disabled={subSaving}
-                            className="rounded-lg bg-[var(--brand-bg)] px-3 py-1.5 text-xs font-semibold text-[var(--brand-text)] disabled:opacity-60"
+                            className="rounded-lg bg-[var(--accent-bg)] px-3 py-1.5 text-xs font-semibold text-[var(--accent-text)] disabled:opacity-60"
                           >
                             {subSaving ? "Assinando…" : "Confirmar assinatura"}
                           </button>
@@ -1761,7 +1774,7 @@ export default function StorefrontClient({
                             <button
                               onClick={() => setQuantity(key, 1)}
                               disabled={product.stock <= 0}
-                              className="w-full rounded-full bg-[var(--brand-bg)] px-3 py-2 text-sm font-semibold text-[var(--brand-text)] shadow-sm transition hover:brightness-110 disabled:opacity-40"
+                              className="w-full rounded-full bg-[var(--accent-bg)] px-3 py-2 text-sm font-semibold text-[var(--accent-text)] shadow-sm transition hover:brightness-110 disabled:opacity-40"
                             >
                               Adicionar
                             </button>
@@ -1842,7 +1855,7 @@ export default function StorefrontClient({
                             type="button"
                             onClick={() => handleSubmitReview(product.id)}
                             disabled={!reviewerName.trim() || submittingReview}
-                            className="w-full rounded-full bg-[var(--brand-bg)] px-3 py-2 text-sm font-semibold text-[var(--brand-text)] disabled:opacity-50 sm:col-span-2"
+                            className="w-full rounded-full bg-[var(--accent-bg)] px-3 py-2 text-sm font-semibold text-[var(--accent-text)] disabled:opacity-50 sm:col-span-2"
                           >
                             {submittingReview ? "Enviando…" : "Enviar avaliação"}
                           </button>
@@ -1871,10 +1884,10 @@ export default function StorefrontClient({
         <div className="fixed inset-x-0 bottom-0 z-30 px-4 pb-4 sm:px-6">
           <button
             onClick={() => setView("checkout")}
-            className="mx-auto flex w-full max-w-5xl items-center justify-between rounded-2xl bg-[var(--brand-bg)] px-5 py-3.5 font-semibold text-[var(--brand-text)] shadow-xl shadow-black/10 ring-1 ring-black/5 transition hover:brightness-110"
+            className="mx-auto flex w-full max-w-5xl items-center justify-between rounded-2xl bg-[var(--accent-bg)] px-5 py-3.5 font-semibold text-[var(--accent-text)] shadow-xl shadow-black/10 ring-1 ring-black/5 transition hover:brightness-110"
           >
             <span className="flex items-center gap-2">
-              <span className="flex h-6 min-w-6 items-center justify-center rounded-full bg-[var(--brand-text)]/20 px-1.5 text-xs">
+              <span className="flex h-6 min-w-6 items-center justify-center rounded-full bg-[var(--accent-text)]/20 px-1.5 text-xs">
                 {cartCount}
               </span>
               Ver carrinho
