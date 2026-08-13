@@ -163,7 +163,7 @@ export default function PainelInicio() {
             </li>
             <li className="flex items-center gap-2">
               <span>{store.whatsapp ? "✅" : "⬜"}</span>
-              <a href="/painel/conta" className="text-blue-900 underline dark:text-blue-400">
+              <a href="/painel/configuracoes" className="text-blue-900 underline dark:text-blue-400">
                 Confirme o WhatsApp da loja
               </a>
             </li>

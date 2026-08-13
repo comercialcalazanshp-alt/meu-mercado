@@ -436,14 +436,32 @@ export default function Pdv() {
       saleDiscount && saleDiscount > 0
         ? `<p>Subtotal: ${formatCurrency(saleSubtotal ?? saleTotal + saleDiscount)}</p><p>Desconto: -${formatCurrency(saleDiscount)}</p>`
         : "";
+    // Tamanho de bobina térmica (configurável em Configurações) com altura
+    // automática — sem isso o navegador usa o tamanho de folha padrão
+    // (A4/Carta) e desperdiça bobina imprimindo uma página inteira pra um
+    // cupom pequeno.
+    const paperMm = store.receipt_paper_mm || 55;
+    const headerHtml = [
+      `<h2>${store.name}</h2>`,
+      store.whatsapp ? `<p class="center">${store.whatsapp}</p>` : "",
+      store.cnpj ? `<p class="center">CNPJ ${store.cnpj}</p>` : "",
+    ]
+      .filter(Boolean)
+      .join("");
     const html = `
       <html><head><title>Recibo</title>
       <style>
-        body{font-family:sans-serif;padding:16px;font-size:14px;}
-        h2{margin:0 0 4px;} table{width:100%;border-collapse:collapse;margin-top:8px;}
-        td{padding:2px 0;border-top:1px solid #ddd;} .total{font-weight:bold;text-align:right;margin-top:8px;}
+        @page { size: ${paperMm}mm auto; margin: 0; }
+        * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        body{font-family:'Courier New',monospace;font-weight:700;width:${paperMm}mm;margin:0;padding:2mm;font-size:12px;color:#000;}
+        h2{margin:0 0 1mm;font-size:14px;text-align:center;}
+        p{margin:1mm 0;}
+        .center{text-align:center;}
+        table{width:100%;border-collapse:collapse;margin-top:2mm;}
+        td{padding:0.5mm 0;font-size:12px;vertical-align:top;}
+        .total{font-weight:700;border-top:2px solid #000;margin-top:2mm;padding-top:2mm;text-align:right;}
       </style></head><body>
-      <h2>${store.name}</h2>
+      ${headerHtml}
       <p>${new Date().toLocaleString("pt-BR")}</p>
       <table>${itemsHtml}</table>
       ${discountHtml}

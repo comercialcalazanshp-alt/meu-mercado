@@ -16,7 +16,9 @@ const WEEKDAYS = [
   { value: 6, label: "Sáb" },
 ];
 
-export default function MinhaConta() {
+const PAPER_WIDTHS = [55, 58, 80];
+
+export default function Configuracoes() {
   const store = useStore();
   const router = useRouter();
   const [confirmText, setConfirmText] = useState("");
@@ -25,9 +27,14 @@ export default function MinhaConta() {
 
   const [name, setName] = useState(store.name);
   const [whatsapp, setWhatsapp] = useState(store.whatsapp ?? "");
+  const [cnpj, setCnpj] = useState(store.cnpj ?? "");
   const [brandColor, setBrandColor] = useState("#1e3a8a");
   const [savingStore, setSavingStore] = useState(false);
   const [storeSaved, setStoreSaved] = useState(false);
+
+  const [paperWidth, setPaperWidth] = useState(store.receipt_paper_mm ?? 55);
+  const [savingPaper, setSavingPaper] = useState(false);
+  const [paperSaved, setPaperSaved] = useState(false);
 
   const [hoursEnabled, setHoursEnabled] = useState(false);
   const [opensAt, setOpensAt] = useState("08:00");
@@ -36,6 +43,21 @@ export default function MinhaConta() {
   const [manuallyClosed, setManuallyClosed] = useState(false);
   const [savingHours, setSavingHours] = useState(false);
   const [hoursSaved, setHoursSaved] = useState(false);
+
+  const [cashbackPercent, setCashbackPercent] = useState("");
+  const [referralBonus, setReferralBonus] = useState("");
+  const [silverThreshold, setSilverThreshold] = useState("");
+  const [goldThreshold, setGoldThreshold] = useState("");
+  const [savingLoyalty, setSavingLoyalty] = useState(false);
+  const [loyaltySaved, setLoyaltySaved] = useState(false);
+
+  const [interestPercent, setInterestPercent] = useState("");
+  const [savingInterest, setSavingInterest] = useState(false);
+  const [interestSaved, setInterestSaved] = useState(false);
+
+  const [salesGoal, setSalesGoal] = useState("");
+  const [savingGoal, setSavingGoal] = useState(false);
+  const [goalSaved, setGoalSaved] = useState(false);
 
   const [accountantToken, setAccountantToken] = useState<string | null>(null);
   const [regeneratingToken, setRegeneratingToken] = useState(false);
@@ -46,7 +68,9 @@ export default function MinhaConta() {
   useEffect(() => {
     getSupabase()
       .from("stores")
-      .select("business_hours_enabled, opens_at, closes_at, open_days, manually_closed, accountant_token, brand_color")
+      .select(
+        "business_hours_enabled, opens_at, closes_at, open_days, manually_closed, accountant_token, brand_color, cashback_percent, referral_bonus, loyalty_silver_threshold, loyalty_gold_threshold, credit_interest_percent, sales_goal",
+      )
       .eq("id", store.id)
       .single()
       .then(({ data }) => {
@@ -58,6 +82,12 @@ export default function MinhaConta() {
         setManuallyClosed(data.manually_closed);
         setAccountantToken(data.accountant_token);
         if (data.brand_color) setBrandColor(data.brand_color);
+        setCashbackPercent(data.cashback_percent > 0 ? String(data.cashback_percent) : "");
+        setReferralBonus(data.referral_bonus > 0 ? String(data.referral_bonus) : "");
+        setSilverThreshold(data.loyalty_silver_threshold > 0 ? String(data.loyalty_silver_threshold) : "");
+        setGoldThreshold(data.loyalty_gold_threshold > 0 ? String(data.loyalty_gold_threshold) : "");
+        setInterestPercent(data.credit_interest_percent > 0 ? String(data.credit_interest_percent) : "");
+        setSalesGoal(data.sales_goal > 0 ? String(data.sales_goal) : "");
       });
   }, [store.id]);
 
@@ -93,11 +123,31 @@ export default function MinhaConta() {
     setStoreSaved(false);
     const { error: updateError } = await getSupabase()
       .from("stores")
-      .update({ name: name.trim(), whatsapp: whatsapp.trim() || null, brand_color: brandColor })
+      .update({
+        name: name.trim(),
+        whatsapp: whatsapp.trim() || null,
+        cnpj: cnpj.trim() || null,
+        brand_color: brandColor,
+      })
       .eq("id", store.id);
     setSavingStore(false);
     if (!updateError) {
       setStoreSaved(true);
+      setTimeout(() => window.location.reload(), 600);
+    }
+  }
+
+  async function handleSavePaper(e: FormEvent) {
+    e.preventDefault();
+    setSavingPaper(true);
+    setPaperSaved(false);
+    const { error: updateError } = await getSupabase()
+      .from("stores")
+      .update({ receipt_paper_mm: paperWidth })
+      .eq("id", store.id);
+    setSavingPaper(false);
+    if (!updateError) {
+      setPaperSaved(true);
       setTimeout(() => window.location.reload(), 600);
     }
   }
@@ -127,6 +177,50 @@ export default function MinhaConta() {
       setHoursSaved(true);
       setTimeout(() => setHoursSaved(false), 2500);
     }
+  }
+
+  async function handleSaveLoyalty(e: FormEvent) {
+    e.preventDefault();
+    const percent = Number(cashbackPercent.replace(",", ".")) || 0;
+    const bonus = Number(referralBonus.replace(",", ".")) || 0;
+    const silver = Number(silverThreshold.replace(",", ".")) || 0;
+    const gold = Number(goldThreshold.replace(",", ".")) || 0;
+    if (percent < 0 || percent > 100 || bonus < 0 || silver < 0 || gold < 0) return;
+    setSavingLoyalty(true);
+    await getSupabase()
+      .from("stores")
+      .update({
+        cashback_percent: percent,
+        referral_bonus: bonus,
+        loyalty_silver_threshold: silver,
+        loyalty_gold_threshold: gold,
+      })
+      .eq("id", store.id);
+    setSavingLoyalty(false);
+    setLoyaltySaved(true);
+    setTimeout(() => setLoyaltySaved(false), 2500);
+  }
+
+  async function handleSaveInterest(e: FormEvent) {
+    e.preventDefault();
+    const value = Number(interestPercent.replace(",", ".")) || 0;
+    if (value < 0) return;
+    setSavingInterest(true);
+    await getSupabase().from("stores").update({ credit_interest_percent: value }).eq("id", store.id);
+    setSavingInterest(false);
+    setInterestSaved(true);
+    setTimeout(() => setInterestSaved(false), 2500);
+  }
+
+  async function handleSaveGoal(e: FormEvent) {
+    e.preventDefault();
+    const value = Number(salesGoal.replace(",", ".")) || 0;
+    if (value < 0) return;
+    setSavingGoal(true);
+    await getSupabase().from("stores").update({ sales_goal: value }).eq("id", store.id);
+    setSavingGoal(false);
+    setGoalSaved(true);
+    setTimeout(() => setGoalSaved(false), 2500);
   }
 
   async function handleDelete() {
@@ -159,7 +253,10 @@ export default function MinhaConta() {
 
   return (
     <div className="max-w-lg">
-      <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-50">Minha conta</h1>
+      <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-50">⚙️ Configurações</h1>
+      <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
+        Tudo que você pode ajustar manualmente na sua loja, num lugar só.
+      </p>
 
       <form
         onSubmit={handleSaveStore}
@@ -186,6 +283,18 @@ export default function MinhaConta() {
               placeholder="(11) 91234-5678"
               className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
             />
+          </div>
+          <div>
+            <label className="block text-sm text-slate-600 dark:text-slate-400">CNPJ (opcional)</label>
+            <input
+              value={cnpj}
+              onChange={(e) => setCnpj(e.target.value)}
+              placeholder="00.000.000/0001-00"
+              className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+            />
+            <p className="mt-0.5 text-xs text-slate-400 dark:text-slate-500">
+              Aparece no cupom impresso do PDV, junto com nome e WhatsApp.
+            </p>
           </div>
           <div>
             <label className="block text-sm text-slate-600 dark:text-slate-400">
@@ -229,6 +338,45 @@ export default function MinhaConta() {
             {savingStore ? "Salvando…" : "Salvar"}
           </button>
           {storeSaved && <span className="text-sm text-green-600">Salvo!</span>}
+        </div>
+      </form>
+
+      <form
+        onSubmit={handleSavePaper}
+        className="mt-4 rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900"
+      >
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+          🖨️ Impressão do cupom (PDV)
+        </h2>
+        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+          Largura da bobina da sua impressora térmica. Errado aqui faz o cupom sair torto ou
+          desperdiçar papel.
+        </p>
+        <div className="mt-3 flex flex-wrap gap-2">
+          {PAPER_WIDTHS.map((w) => (
+            <button
+              key={w}
+              type="button"
+              onClick={() => setPaperWidth(w)}
+              className={`rounded-lg border px-4 py-2 text-sm font-medium ${
+                paperWidth === w
+                  ? "border-blue-900 bg-blue-900 text-amber-300 dark:border-blue-700 dark:bg-blue-800"
+                  : "border-slate-300 text-slate-700 dark:border-slate-700 dark:text-slate-300"
+              }`}
+            >
+              {w}mm
+            </button>
+          ))}
+        </div>
+        <div className="mt-3 flex items-center gap-2">
+          <button
+            type="submit"
+            disabled={savingPaper}
+            className="rounded-lg bg-blue-900 px-4 py-2 text-sm font-semibold text-amber-300 disabled:opacity-60 dark:bg-blue-800"
+          >
+            {savingPaper ? "Salvando…" : "Salvar"}
+          </button>
+          {paperSaved && <span className="text-sm text-green-600">Salvo!</span>}
         </div>
       </form>
 
@@ -309,6 +457,128 @@ export default function MinhaConta() {
             {savingHours ? "Salvando…" : "Salvar horário"}
           </button>
           {hoursSaved && <span className="text-sm text-green-600">Salvo!</span>}
+        </div>
+      </form>
+
+      <form
+        onSubmit={handleSaveLoyalty}
+        className="mt-4 rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900"
+      >
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+          Cashback, indicação e fidelidade
+        </h2>
+        <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div>
+            <label className="block text-sm text-slate-600 dark:text-slate-400">Cashback (%)</label>
+            <input
+              value={cashbackPercent}
+              onChange={(e) => setCashbackPercent(e.target.value)}
+              placeholder="0"
+              inputMode="decimal"
+              className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+            />
+          </div>
+          <div>
+            <label className="block text-sm text-slate-600 dark:text-slate-400">Bônus por indicação (R$)</label>
+            <input
+              value={referralBonus}
+              onChange={(e) => setReferralBonus(e.target.value)}
+              placeholder="0"
+              inputMode="decimal"
+              className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+            />
+          </div>
+          <div>
+            <label className="block text-sm text-slate-600 dark:text-slate-400">Nível Prata a partir de (R$)</label>
+            <input
+              value={silverThreshold}
+              onChange={(e) => setSilverThreshold(e.target.value)}
+              placeholder="0 = desativado"
+              inputMode="decimal"
+              className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+            />
+          </div>
+          <div>
+            <label className="block text-sm text-slate-600 dark:text-slate-400">Nível Ouro a partir de (R$)</label>
+            <input
+              value={goldThreshold}
+              onChange={(e) => setGoldThreshold(e.target.value)}
+              placeholder="0 = desativado"
+              inputMode="decimal"
+              className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+            />
+          </div>
+        </div>
+        <p className="mt-2 text-xs text-slate-400 dark:text-slate-500">
+          Extrato de saldo e clientes por nível continuam em Cashback.
+        </p>
+        <div className="mt-3 flex items-center gap-2">
+          <button
+            type="submit"
+            disabled={savingLoyalty}
+            className="rounded-lg bg-blue-900 px-4 py-2 text-sm font-semibold text-amber-300 disabled:opacity-60 dark:bg-blue-800"
+          >
+            {savingLoyalty ? "Salvando…" : "Salvar"}
+          </button>
+          {loyaltySaved && <span className="text-sm text-green-600">Salvo!</span>}
+        </div>
+      </form>
+
+      <form
+        onSubmit={handleSaveInterest}
+        className="mt-4 rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900"
+      >
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+          Juros do crediário (%)
+        </h2>
+        <input
+          value={interestPercent}
+          onChange={(e) => setInterestPercent(e.target.value)}
+          placeholder="0"
+          inputMode="decimal"
+          className="mt-2 w-32 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+        />
+        <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
+          Lista de clientes fiado continua em Fiado.
+        </p>
+        <div className="mt-3 flex items-center gap-2">
+          <button
+            type="submit"
+            disabled={savingInterest}
+            className="rounded-lg bg-blue-900 px-4 py-2 text-sm font-semibold text-amber-300 disabled:opacity-60 dark:bg-blue-800"
+          >
+            {savingInterest ? "Salvando…" : "Salvar"}
+          </button>
+          {interestSaved && <span className="text-sm text-green-600">Salvo!</span>}
+        </div>
+      </form>
+
+      <form
+        onSubmit={handleSaveGoal}
+        className="mt-4 rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900"
+      >
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+          Meta de vendas do mês (R$)
+        </h2>
+        <input
+          value={salesGoal}
+          onChange={(e) => setSalesGoal(e.target.value)}
+          placeholder="0 = desativado"
+          inputMode="decimal"
+          className="mt-2 w-40 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+        />
+        <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
+          A barra de progresso fica em Relatórios.
+        </p>
+        <div className="mt-3 flex items-center gap-2">
+          <button
+            type="submit"
+            disabled={savingGoal}
+            className="rounded-lg bg-blue-900 px-4 py-2 text-sm font-semibold text-amber-300 disabled:opacity-60 dark:bg-blue-800"
+          >
+            {savingGoal ? "Salvando…" : "Salvar"}
+          </button>
+          {goalSaved && <span className="text-sm text-green-600">Salvo!</span>}
         </div>
       </form>
 

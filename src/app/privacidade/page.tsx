@@ -65,7 +65,7 @@ export default function Privacidade() {
             Você pode pedir a exclusão dos seus dados de pedido diretamente ao dono da loja onde
             comprou (pelo WhatsApp informado na página da loja). Se você é dono de uma loja no
             Meu Mercado, pode apagar sua conta e todos os dados associados a qualquer momento
-            pelo painel, na seção &quot;Minha conta&quot;.
+            pelo painel, na seção &quot;Configurações&quot;.
           </p>
         </div>
 

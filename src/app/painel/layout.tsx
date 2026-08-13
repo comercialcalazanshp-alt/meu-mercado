@@ -72,7 +72,7 @@ const NAV_ITEMS = [
   { href: "/painel/catalogo", label: "Catálogo PDF" },
   { href: "/painel/ajuda", label: "Ajuda" },
   { href: "/painel/equipe", label: "Equipe" },
-  { href: "/painel/conta", label: "Minha conta" },
+  { href: "/painel/configuracoes", label: "⚙️ Configurações" },
 ];
 
 export default function PainelLayout({ children }: { children: ReactNode }) {

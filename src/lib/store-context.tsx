@@ -7,6 +7,8 @@ export type Store = {
   slug: string;
   name: string;
   whatsapp: string | null;
+  cnpj: string | null;
+  receipt_paper_mm: number;
   active: boolean;
   owner_id: string;
 };

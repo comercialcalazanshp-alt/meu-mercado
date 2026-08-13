@@ -45,7 +45,7 @@ const SECTIONS: Section[] = [
       {
         question: "Posso limitar o horário em que a loja recebe pedido?",
         answer:
-          "Sim, em Minha conta você liga o horário de funcionamento, define os dias e o horário, e ainda pode fechar a loja na hora (feriado, imprevisto). Fora do horário o cliente só consegue ver o catálogo, não fecha pedido.",
+          "Sim, em Configurações você liga o horário de funcionamento, define os dias e o horário, e ainda pode fechar a loja na hora (feriado, imprevisto). Fora do horário o cliente só consegue ver o catálogo, não fecha pedido.",
       },
     ],
   },
@@ -110,16 +110,21 @@ const SECTIONS: Section[] = [
     ],
   },
   {
-    title: "Minha conta",
+    title: "Configurações",
     items: [
       {
-        question: "Como troco o nome ou o WhatsApp da loja?",
-        answer: "Em Minha conta, no bloco \"Dados da loja\".",
+        question: "Como troco o nome, WhatsApp ou CNPJ da loja?",
+        answer: "Em Configurações, no bloco \"Dados da loja\".",
+      },
+      {
+        question: "Como ajusto a largura do papel da impressora do PDV?",
+        answer:
+          "Em Configurações, no bloco \"Impressão do cupom (PDV)\" — escolha 55mm, 58mm ou 80mm conforme a bobina da sua impressora térmica.",
       },
       {
         question: "Dá pra excluir minha loja?",
         answer:
-          "Sim, em Minha conta, na área vermelha no final da página. Isso apaga a loja, produtos, pedidos, cupons e todo o histórico de fiado — não tem como desfazer.",
+          "Sim, em Configurações, na área vermelha no final da página. Isso apaga a loja, produtos, pedidos, cupons e todo o histórico de fiado — não tem como desfazer.",
       },
     ],
   },
