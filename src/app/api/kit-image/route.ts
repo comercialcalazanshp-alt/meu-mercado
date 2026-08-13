@@ -1,11 +1,15 @@
 import "server-only";
 import { createClient } from "@supabase/supabase-js";
 
-// Gera uma foto de produto pro kit via IA (OpenAI) a partir do nome do kit e
-// dos produtos que tem dentro, e já salva no mesmo bucket de fotos de
-// produto. Fica no servidor porque a chave da OpenAI não pode vazar pro
-// navegador, e porque precisamos confirmar que quem pediu é dono da loja
-// antes de gastar crédito da API gerando imagem.
+// Gera uma foto pro kit via IA (OpenAI). O dono escreve/edita o texto que
+// descreve a imagem, e pode escolher fotos de produtos do kit pra servirem
+// de referência — nesse caso usamos o endpoint de edição (gpt-image-1
+// aceita várias imagens de entrada), que reaproveita/recompõe as fotos de
+// verdade em vez de só descrever os produtos em texto. Sem referência, cai
+// pro endpoint de geração normal a partir só do texto. Fica no servidor
+// porque a chave da OpenAI não pode vazar pro navegador, e porque
+// precisamos confirmar que quem pediu é dono da loja antes de gastar
+// crédito da API.
 export async function POST(request: Request) {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) {
@@ -17,14 +21,14 @@ export async function POST(request: Request) {
     return Response.json({ error: "Não autenticado" }, { status: 401 });
   }
 
-  const { store_id, kit_name, product_names } = (await request.json()) as {
+  const { store_id, prompt, reference_image_urls } = (await request.json()) as {
     store_id: string;
-    kit_name: string;
-    product_names: string[];
+    prompt: string;
+    reference_image_urls?: string[];
   };
 
-  if (!store_id || !kit_name?.trim()) {
-    return Response.json({ error: "Faltou o nome do kit" }, { status: 400 });
+  if (!store_id || !prompt?.trim()) {
+    return Response.json({ error: "Faltou o texto descrevendo a imagem" }, { status: 400 });
   }
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
@@ -38,29 +42,46 @@ export async function POST(request: Request) {
     return Response.json({ error: "Essa loja não é sua" }, { status: 403 });
   }
 
-  const itemsList = product_names.filter((n) => n.trim()).join(", ");
-  const prompt = [
-    `Foto de produto realista, estilo comercial de supermercado, mostrando um kit/cesta chamado "${kit_name.trim()}".`,
-    itemsList ? `Contém: ${itemsList}.` : "",
-    "Itens organizados de forma atraente, fundo neutro claro, iluminação de estúdio, sem texto, sem logotipos, sem marcas d'água.",
-  ]
-    .filter(Boolean)
-    .join(" ");
+  const refUrls = (reference_image_urls ?? []).slice(0, 6);
 
-  const genRes = await fetch("https://api.openai.com/v1/images/generations", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: "gpt-image-1",
-      prompt,
-      size: "1024x1024",
-      quality: "medium",
-      n: 1,
-    }),
-  });
+  let genRes: Response;
+  if (refUrls.length > 0) {
+    const form = new FormData();
+    form.append("model", "gpt-image-1");
+    form.append("prompt", prompt.trim());
+    form.append("size", "1024x1024");
+    form.append("quality", "medium");
+    for (const url of refUrls) {
+      try {
+        const imgRes = await fetch(url);
+        if (!imgRes.ok) continue;
+        const blob = await imgRes.blob();
+        form.append("image[]", blob, "referencia.jpg");
+      } catch {
+        // ignora essa referência e segue com as outras
+      }
+    }
+    genRes = await fetch("https://api.openai.com/v1/images/edits", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${apiKey}` },
+      body: form,
+    });
+  } else {
+    genRes = await fetch("https://api.openai.com/v1/images/generations", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "gpt-image-1",
+        prompt: prompt.trim(),
+        size: "1024x1024",
+        quality: "medium",
+        n: 1,
+      }),
+    });
+  }
 
   const genData = await genRes.json();
   if (!genRes.ok) {

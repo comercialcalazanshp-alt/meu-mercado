@@ -11,6 +11,7 @@ type Product = {
   cost_price: number | null;
   stock: number;
   sold_by_weight: boolean;
+  image_url: string | null;
 };
 
 type KitItem = {
@@ -231,13 +232,13 @@ export default function Kits() {
       supabase
         .from("kits")
         .select(
-          "id, name, image_url, price, active, category, starts_at, ends_at, created_at, kit_items(id, product_id, quantity, products(id, name, price, cost_price, stock, sold_by_weight))",
+          "id, name, image_url, price, active, category, starts_at, ends_at, created_at, kit_items(id, product_id, quantity, products(id, name, price, cost_price, stock, sold_by_weight, image_url))",
         )
         .eq("store_id", store.id)
         .order("created_at", { ascending: false }),
       supabase
         .from("products")
-        .select("id, name, price, cost_price, stock, sold_by_weight")
+        .select("id, name, price, cost_price, stock, sold_by_weight, image_url")
         .eq("store_id", store.id)
         .order("name", { ascending: true }),
       supabase.rpc("kit_sales_stats", { p_store_id: store.id }),
@@ -269,7 +270,7 @@ export default function Kits() {
     return kits.filter((k) => k.name.toLowerCase().includes(q) || (k.category && k.category.toLowerCase().includes(q)));
   }, [kits, search]);
 
-  async function generateKitImage(kitName: string, productNames: string[]): Promise<string | null> {
+  async function generateKitImage(prompt: string, referenceImageUrls: string[]): Promise<string | null> {
     const { data: sessionData } = await getSupabase().auth.getSession();
     const token = sessionData.session?.access_token;
     if (!token) {
@@ -279,7 +280,7 @@ export default function Kits() {
     const res = await fetch("/api/kit-image", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ store_id: store.id, kit_name: kitName, product_names: productNames }),
+      body: JSON.stringify({ store_id: store.id, prompt, reference_image_urls: referenceImageUrls }),
     });
     const data = await res.json();
     if (!res.ok) {
@@ -287,6 +288,55 @@ export default function Kits() {
       return null;
     }
     return data.image_url as string;
+  }
+
+  function buildDefaultPrompt(kitName: string, productNames: string[]) {
+    const itemsList = productNames.filter((n) => n.trim()).join(", ");
+    return [
+      `Foto de produto realista, estilo comercial de supermercado, mostrando um kit/cesta chamado "${kitName.trim() || "kit"}".`,
+      itemsList ? `Contém: ${itemsList}.` : "",
+      "Itens organizados de forma atraente, fundo neutro claro, iluminação de estúdio, sem texto, sem logotipos, sem marcas d'água.",
+    ]
+      .filter(Boolean)
+      .join(" ");
+  }
+
+  const [aiPanel, setAiPanel] = useState<{ target: "new" | string; prompt: string; refs: Set<string> } | null>(null);
+
+  function openAiPanelForNew() {
+    if (!name.trim()) {
+      setError("Digite o nome do kit primeiro pra gerar a imagem.");
+      return;
+    }
+    setError(null);
+    setAiPanel({ target: "new", prompt: buildDefaultPrompt(name, []), refs: new Set() });
+  }
+
+  function openAiPanelForKit(kit: Kit) {
+    setError(null);
+    setAiPanel({
+      target: kit.id,
+      prompt: buildDefaultPrompt(kit.name, kit.kit_items.map((i) => i.products?.name ?? "")),
+      refs: new Set(),
+    });
+  }
+
+  async function submitAiPanel() {
+    if (!aiPanel || !aiPanel.prompt.trim()) return;
+    const kit = aiPanel.target === "new" ? null : kits.find((k) => k.id === aiPanel.target);
+    const refUrls = kit
+      ? kit.kit_items
+          .filter((i) => aiPanel.refs.has(i.product_id) && i.products?.image_url)
+          .map((i) => i.products!.image_url as string)
+      : [];
+    setGeneratingImage(true);
+    setError(null);
+    const url = await generateKitImage(aiPanel.prompt, refUrls);
+    setGeneratingImage(false);
+    if (!url) return;
+    if (aiPanel.target === "new") setImageUrl(url);
+    else updateKit(aiPanel.target, { image_url: url });
+    setAiPanel(null);
   }
 
   async function uploadKitPhoto(file: File): Promise<string | null> {
@@ -308,18 +358,6 @@ export default function Kits() {
     setUploadingPhoto(true);
     const url = await uploadKitPhoto(file);
     setUploadingPhoto(false);
-    if (url) setImageUrl(url);
-  }
-
-  async function handleGenerateForNewKit() {
-    if (!name.trim()) {
-      setError("Digite o nome do kit primeiro pra gerar a imagem.");
-      return;
-    }
-    setGeneratingImage(true);
-    setError(null);
-    const url = await generateKitImage(name, []);
-    setGeneratingImage(false);
     if (url) setImageUrl(url);
   }
 
@@ -728,11 +766,10 @@ export default function Kits() {
             <input ref={photoInputRef} type="file" accept="image/*" capture="environment" onChange={handleNewKitPhoto} className="hidden" />
             <button
               type="button"
-              onClick={handleGenerateForNewKit}
-              disabled={generatingImage}
-              className="rounded-lg border border-purple-300 px-3 py-2 text-sm font-medium text-purple-700 disabled:opacity-60 dark:border-purple-800 dark:text-purple-300"
+              onClick={openAiPanelForNew}
+              className="rounded-lg border border-purple-300 px-3 py-2 text-sm font-medium text-purple-700 dark:border-purple-800 dark:text-purple-300"
             >
-              {generatingImage ? "Gerando…" : "✨ Gerar imagem com IA"}
+              ✨ Gerar imagem com IA
             </button>
             {imageUrl && (
               // eslint-disable-next-line @next/next/no-img-element
@@ -987,16 +1024,11 @@ export default function Kits() {
                       <KitPhotoButtons
                         kit={kit}
                         onUploaded={(url) => updateKit(kit.id, { image_url: url })}
-                        onGenerate={async () => {
-                          const url = await generateKitImage(
-                            kit.name,
-                            kit.kit_items.map((i) => i.products?.name ?? "").filter(Boolean),
-                          );
-                          if (url) updateKit(kit.id, { image_url: url });
-                        }}
+                        onOpenAiPanel={() => openAiPanelForKit(kit)}
                       />
                     </div>
                     <input
+                      key={`kit-image-url-${kit.id}-${kit.image_url}`}
                       defaultValue={kit.image_url ?? ""}
                       placeholder="Ou cole o link de uma imagem"
                       onBlur={(e) => updateKit(kit.id, { image_url: e.target.value.trim() || null })}
@@ -1035,6 +1067,77 @@ export default function Kits() {
           );
         })}
       </div>
+
+      {aiPanel && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-lg rounded-xl bg-white p-4 dark:bg-slate-900">
+            <p className="text-sm font-semibold text-slate-900 dark:text-slate-50">✨ Gerar imagem com IA</p>
+            <label className="mt-3 block text-xs font-medium text-slate-500 dark:text-slate-400">
+              Descreva a imagem — pode escrever do seu jeito
+            </label>
+            <textarea
+              value={aiPanel.prompt}
+              onChange={(e) => setAiPanel({ ...aiPanel, prompt: e.target.value })}
+              rows={5}
+              className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+            />
+            {(() => {
+              const kit = aiPanel.target === "new" ? null : kits.find((k) => k.id === aiPanel.target);
+              const withPhoto = kit?.kit_items.filter((i) => i.products?.image_url) ?? [];
+              if (withPhoto.length === 0) return null;
+              return (
+                <div className="mt-3">
+                  <p className="text-xs font-medium text-slate-500 dark:text-slate-400">
+                    Usar fotos dos produtos como referência (opcional) — a IA edita/combina essas fotos de verdade
+                  </p>
+                  <div className="mt-1 flex flex-wrap gap-2">
+                    {withPhoto.map((item) => {
+                      const checked = aiPanel.refs.has(item.product_id);
+                      return (
+                        <label
+                          key={item.product_id}
+                          className={`flex items-center gap-1.5 rounded-lg border px-2 py-1 text-xs ${
+                            checked ? "border-purple-400 bg-purple-50 dark:bg-purple-900/20" : "border-slate-300 dark:border-slate-700"
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={(e) => {
+                              const next = new Set(aiPanel.refs);
+                              if (e.target.checked) next.add(item.product_id);
+                              else next.delete(item.product_id);
+                              setAiPanel({ ...aiPanel, refs: next });
+                            }}
+                          />
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src={item.products!.image_url as string} alt="" className="h-6 w-6 rounded object-cover" />
+                          {item.products?.name}
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })()}
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                onClick={() => setAiPanel(null)}
+                className="rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 dark:border-slate-700 dark:text-slate-300"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={submitAiPanel}
+                disabled={generatingImage}
+                className="rounded-lg bg-purple-700 px-3 py-2 text-sm font-semibold text-white disabled:opacity-60"
+              >
+                {generatingImage ? "Gerando…" : "Gerar imagem"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1042,15 +1145,14 @@ export default function Kits() {
 function KitPhotoButtons({
   kit,
   onUploaded,
-  onGenerate,
+  onOpenAiPanel,
 }: {
   kit: Kit;
   onUploaded: (url: string) => void;
-  onGenerate: () => Promise<void>;
+  onOpenAiPanel: () => void;
 }) {
   const store = useStore();
   const [uploading, setUploading] = useState(false);
-  const [generating, setGenerating] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
@@ -1084,15 +1186,10 @@ function KitPhotoButtons({
       <input ref={inputRef} type="file" accept="image/*" capture="environment" onChange={handleFile} className="hidden" />
       <button
         type="button"
-        onClick={async () => {
-          setGenerating(true);
-          await onGenerate();
-          setGenerating(false);
-        }}
-        disabled={generating}
-        className="rounded-lg border border-purple-300 px-3 py-2 text-sm font-medium text-purple-700 disabled:opacity-60 dark:border-purple-800 dark:text-purple-300"
+        onClick={onOpenAiPanel}
+        className="rounded-lg border border-purple-300 px-3 py-2 text-sm font-medium text-purple-700 dark:border-purple-800 dark:text-purple-300"
       >
-        {generating ? "Gerando…" : "✨ Gerar imagem com IA"}
+        ✨ Gerar imagem com IA
       </button>
       {kit.image_url && (
         // eslint-disable-next-line @next/next/no-img-element
