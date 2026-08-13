@@ -901,7 +901,7 @@ export default function Produtos() {
         @page { size: 58mm auto; margin: 1.5mm; }
         * { box-sizing: border-box; }
         body{font-family:sans-serif;margin:0;padding:0;}
-        .label{width:55mm;text-align:center;padding:2mm 0;page-break-after:always;break-after:page;}
+        .label{width:55mm;text-align:center;padding:2mm 3mm;page-break-after:always;break-after:page;}
         .label:last-child{page-break-after:auto;break-after:auto;}
         .name{font-size:14px;font-weight:600;margin:0 0 1.5mm;}
         .price{font-size:24px;font-weight:bold;margin:1mm 0;}
