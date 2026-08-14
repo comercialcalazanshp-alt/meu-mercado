@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useSearchParams } from "next/navigation";
 import { getSupabase } from "@/lib/supabase";
+import { getCustomerSupabase } from "@/lib/supabase-customer";
 
 type BeforeInstallPromptEvent = Event & {
   prompt: () => Promise<void>;
@@ -285,6 +286,12 @@ export default function StorefrontClient({
   const [scratchLoading, setScratchLoading] = useState(false);
   const [scratchError, setScratchError] = useState<string | null>(null);
   const [confirmedScratchDiscount, setConfirmedScratchDiscount] = useState(0);
+  const [customerLoggedIn, setCustomerLoggedIn] = useState(false);
+  const [customerAccountName, setCustomerAccountName] = useState<string | null>(null);
+  const [customerRecord, setCustomerRecord] = useState<{
+    cashback_balance: number;
+    referral_code: string;
+  } | null>(null);
   const [subscribingKitId, setSubscribingKitId] = useState<string | null>(null);
   const [subName, setSubName] = useState("");
   const [subPhone, setSubPhone] = useState("");
@@ -298,6 +305,52 @@ export default function StorefrontClient({
   const [storeComment, setStoreComment] = useState("");
   const [submittingStoreReview, setSubmittingStoreReview] = useState(false);
   const [storeReviewSubmitted, setStoreReviewSubmitted] = useState(false);
+
+  useEffect(() => {
+    const customerSupabase = getCustomerSupabase();
+
+    async function loadCustomerAccount(userId: string | undefined) {
+      if (!userId) {
+        setCustomerLoggedIn(false);
+        setCustomerAccountName(null);
+        setCustomerRecord(null);
+        return;
+      }
+      setCustomerLoggedIn(true);
+      const [{ data: profile }, { data: record }] = await Promise.all([
+        customerSupabase.from("customer_profiles").select("full_name").eq("id", userId).maybeSingle(),
+        customerSupabase
+          .from("customers")
+          .select("cashback_balance, referral_code")
+          .eq("store_id", store.id)
+          .eq("profile_id", userId)
+          .maybeSingle(),
+      ]);
+      setCustomerAccountName(profile?.full_name ?? null);
+      setCustomerRecord(record ?? null);
+    }
+
+    customerSupabase.auth.getSession().then(({ data: { session } }) => {
+      loadCustomerAccount(session?.user.id);
+    });
+
+    const {
+      data: { subscription },
+    } = customerSupabase.auth.onAuthStateChange((_event, session) => {
+      loadCustomerAccount(session?.user.id);
+    });
+
+    return () => subscription.unsubscribe();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [store.id]);
+
+  async function handleCustomerSignOut() {
+    await getCustomerSupabase().auth.signOut();
+    setCustomerLoggedIn(false);
+    setCustomerAccountName(null);
+    setCustomerRecord(null);
+    setUseCashback(false);
+  }
 
   const brandStyle = {
     "--brand-bg": store.brand_color,
@@ -405,7 +458,7 @@ export default function StorefrontClient({
       return;
     }
     setScratchLoading(true);
-    const { data, error: scratchRpcError } = await getSupabase().rpc("get_or_create_scratch_card", {
+    const { data, error: scratchRpcError } = await getCustomerSupabase().rpc("get_or_create_scratch_card", {
       p_store_id: store.id,
       p_customer_phone: phone,
     });
@@ -690,7 +743,7 @@ export default function StorefrontClient({
     // O preço e a baixa de estoque são recalculados no banco (função
     // "checkout") — o navegador só manda produto e quantidade, nunca preço,
     // pra ninguém conseguir adulterar o valor do pedido pelo devtools.
-    const { data, error: rpcError } = await getSupabase().rpc("checkout", {
+    const { data, error: rpcError } = await getCustomerSupabase().rpc("checkout", {
       p_store_id: store.id,
       p_customer_name: customerName.trim(),
       p_customer_phone: customerPhone.trim(),
@@ -1206,45 +1259,89 @@ export default function StorefrontClient({
               />
             </div>
 
-            <details className="rounded-lg border border-slate-200 px-3 py-2 text-sm dark:border-slate-800">
-              <summary className="cursor-pointer font-medium text-slate-700 dark:text-slate-300">
-                Cashback e indicação (opcional)
-              </summary>
-              <div className="mt-2 space-y-2">
-                {store.cashback_percent > 0 && (
-                  <label className="flex items-center gap-2 text-slate-600 dark:text-slate-400">
+            {customerLoggedIn ? (
+              <details
+                open
+                className="rounded-lg border border-slate-200 px-3 py-2 text-sm dark:border-slate-800"
+              >
+                <summary className="cursor-pointer font-medium text-slate-700 dark:text-slate-300">
+                  🔓 Logado como {customerAccountName ?? "cliente"}
+                </summary>
+                <div className="mt-2 space-y-2">
+                  {customerRecord && customerRecord.cashback_balance > 0 && (
+                    <p className="text-green-700 dark:text-green-400">
+                      Saldo de cashback: {formatCurrency(customerRecord.cashback_balance)}
+                    </p>
+                  )}
+                  {store.cashback_percent > 0 && (
+                    <label className="flex items-center gap-2 text-slate-600 dark:text-slate-400">
+                      <input
+                        type="checkbox"
+                        checked={useCashback}
+                        onChange={(e) => setUseCashback(e.target.checked)}
+                      />
+                      Usar meu saldo de cashback nesse pedido (se eu tiver)
+                    </label>
+                  )}
+                  {customerRecord?.referral_code && (
+                    <p className="text-slate-600 dark:text-slate-400">
+                      Seu código de indicação: <strong>{customerRecord.referral_code}</strong>
+                    </p>
+                  )}
+                  <div>
+                    <label className="block text-slate-600 dark:text-slate-400">
+                      Código de quem te indicou
+                    </label>
                     <input
-                      type="checkbox"
-                      checked={useCashback}
-                      onChange={(e) => setUseCashback(e.target.checked)}
+                      value={referralCode}
+                      onChange={(e) => setReferralCode(e.target.value.toUpperCase())}
+                      placeholder="Ex: ABC123"
+                      className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-1.5 uppercase text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
                     />
-                    Usar meu saldo de cashback nesse pedido (se eu tiver)
-                  </label>
-                )}
-                <div>
-                  <label className="block text-slate-600 dark:text-slate-400">
-                    Código de quem te indicou
-                  </label>
-                  <input
-                    value={referralCode}
-                    onChange={(e) => setReferralCode(e.target.value.toUpperCase())}
-                    placeholder="Ex: ABC123"
-                    className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-1.5 uppercase text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
-                  />
+                  </div>
+                  <div>
+                    <label className="block text-slate-600 dark:text-slate-400">
+                      Sua data de aniversário
+                    </label>
+                    <input
+                      type="date"
+                      value={birthday}
+                      onChange={(e) => setBirthday(e.target.value)}
+                      className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleCustomerSignOut}
+                    className="text-xs text-slate-500 underline dark:text-slate-400"
+                  >
+                    Sair da conta
+                  </button>
                 </div>
-                <div>
-                  <label className="block text-slate-600 dark:text-slate-400">
-                    Sua data de aniversário
-                  </label>
-                  <input
-                    type="date"
-                    value={birthday}
-                    onChange={(e) => setBirthday(e.target.value)}
-                    className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
-                  />
+              </details>
+            ) : (
+              <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 px-3 py-3 text-sm dark:border-slate-700 dark:bg-slate-900/50">
+                <p className="text-slate-600 dark:text-slate-400">
+                  🔒 Crie uma conta grátis (ou entre) pra ganhar cashback, usar a raspadinha e o programa
+                  de indicação nesse pedido. Sem conta, seu pedido continua funcionando normalmente, só
+                  sem esses benefícios.
+                </p>
+                <div className="mt-2 flex gap-2">
+                  <a
+                    href={`/cliente/entrar?loja=${store.slug}`}
+                    className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 dark:border-slate-700 dark:text-slate-300"
+                  >
+                    Entrar
+                  </a>
+                  <a
+                    href={`/cliente/cadastro?loja=${store.slug}`}
+                    className="rounded-lg bg-[var(--brand-bg)] px-3 py-1.5 text-xs font-medium text-[var(--brand-text)]"
+                  >
+                    Criar conta grátis
+                  </a>
                 </div>
               </div>
-            </details>
+            )}
 
             <div>
               <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
@@ -1425,7 +1522,28 @@ export default function StorefrontClient({
             <p className="text-xs font-bold uppercase tracking-wide text-purple-700 dark:text-purple-400">
               🎟️ Raspadinha semanal
             </p>
-            {!scratchResult ? (
+            {!customerLoggedIn ? (
+              <>
+                <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
+                  Entre na sua conta (grátis) pra raspar e tentar ganhar um desconto na sua compra dessa
+                  semana.
+                </p>
+                <div className="mt-2 flex gap-2">
+                  <a
+                    href={`/cliente/entrar?loja=${store.slug}`}
+                    className="rounded-lg border border-purple-300 px-3 py-1.5 text-xs font-medium text-purple-800 dark:border-purple-800 dark:text-purple-300"
+                  >
+                    Entrar
+                  </a>
+                  <a
+                    href={`/cliente/cadastro?loja=${store.slug}`}
+                    className="rounded-lg bg-purple-700 px-3 py-1.5 text-xs font-medium text-white"
+                  >
+                    Criar conta grátis
+                  </a>
+                </div>
+              </>
+            ) : !scratchResult ? (
               <>
                 <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
                   Digite seu WhatsApp e raspe pra tentar ganhar um desconto na sua compra dessa semana.
