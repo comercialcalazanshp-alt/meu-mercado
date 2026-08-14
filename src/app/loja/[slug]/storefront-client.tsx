@@ -426,6 +426,12 @@ export default function StorefrontClient({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [store.id]);
 
+  async function refreshScratchStatus() {
+    if (!store.scratch_enabled) return;
+    const { data } = await getCustomerSupabase().rpc("get_my_scratch_card", { p_store_id: store.id });
+    setScratchResult(data && data.length > 0 ? data[0] : null);
+  }
+
   useEffect(() => {
     if (!customerLoggedIn || !store.scratch_enabled) return;
     let cancelled = false;
@@ -994,11 +1000,16 @@ export default function StorefrontClient({
     setConfirmedDeliveryFee(data?.[0]?.delivery_fee ?? 0);
     // "Minha conta" mostra saldo/pedidos em cache (ver openAccountPanel) — sem
     // isso, um pedido feito aqui não apareceria lá até recarregar a página.
+    // customerRecord pode ainda ser null aqui (1º pedido do cliente nessa
+    // loja, a linha em "customers" só passou a existir agora, dentro desse
+    // checkout) — por isso monta o objeto inteiro em vez de só editar um
+    // que já existia, senão o saldo nunca aparece na primeira compra.
     if (customerLoggedIn) {
       setOrdersLoaded(false);
-      setCustomerRecord((prev) =>
-        prev ? { ...prev, cashback_balance: prev.cashback_balance - cashbackUsed + cashbackEarned } : prev,
-      );
+      setCustomerRecord((prev) => ({
+        cashback_balance: (prev?.cashback_balance ?? 0) - cashbackUsed + cashbackEarned,
+        referral_code: data?.[0]?.referral_code ?? prev?.referral_code ?? "",
+      }));
     }
     setConfirmedScratchDiscount(data?.[0]?.scratch_discount ?? 0);
     const newOrderId = data?.[0]?.order_id ?? null;
@@ -1099,6 +1110,36 @@ export default function StorefrontClient({
           if (error) console.error("Erro ao registrar conversão:", error.message);
         });
     }
+  }
+
+  function handleNewOrder() {
+    setCart({});
+    setCouponCode("");
+    setCouponPreview(null);
+    setUseCashback(false);
+    setNeighborhoodId("retirada");
+    setDeliveryAddress("");
+    setPaymentMethod("combinar");
+    setPixQrCodeText(null);
+    setPixQrCodeImage(null);
+    setPixLoading(false);
+    setPixError(null);
+    setPixPaid(false);
+    setCardNumber("");
+    setCardHolder("");
+    setCardExpiry("");
+    setCardCvv("");
+    setCardCpf("");
+    setCardLoading(false);
+    setCardError(null);
+    setCardPaid(false);
+    setConfirmedOrderId(null);
+    // A raspadinha usada nesse pedido já foi marcada como resgatada no banco
+    // (checkout() faz isso) — sem isso o widget continuaria mostrando o
+    // desconto como disponível pro próximo pedido, quando na real já foi
+    // gasto.
+    refreshScratchStatus();
+    setView("catalogo");
   }
 
   async function handleSubmitStoreReview() {
@@ -1213,6 +1254,13 @@ export default function StorefrontClient({
             Ver recibo digital
           </a>
         )}
+        <button
+          type="button"
+          onClick={handleNewOrder}
+          className="text-sm font-medium text-white/70 underline hover:text-white"
+        >
+          ← Fazer novo pedido
+        </button>
 
         {paymentMethod === "pix" && (
           <div className="mt-2 w-full max-w-xs rounded-2xl border border-slate-200 bg-white p-4 text-center shadow-sm dark:border-slate-800 dark:bg-slate-900">
