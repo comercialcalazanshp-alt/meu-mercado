@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { getSupabase } from "@/lib/supabase";
 import { useStore } from "@/lib/store-context";
-import { resetCustomerAccess } from "./actions";
 
 type Customer = {
   id: string;
@@ -57,10 +56,6 @@ export default function Cashback() {
   const [savingLoyalty, setSavingLoyalty] = useState(false);
   const [loyaltySaved, setLoyaltySaved] = useState(false);
   const [spentByCustomer, setSpentByCustomer] = useState<Record<string, number>>({});
-
-  const [resetPhone, setResetPhone] = useState("");
-  const [resettingAccess, setResettingAccess] = useState(false);
-  const [resetMessage, setResetMessage] = useState<{ ok: boolean; text: string } | null>(null);
 
   async function loadCustomers() {
     setLoading(true);
@@ -176,42 +171,6 @@ export default function Cashback() {
     if (!error) {
       setGeneratedCoupon((prev) => ({ ...prev, [customer.id]: code }));
     }
-  }
-
-  async function handleResetCustomerAccess(e: FormEvent) {
-    e.preventDefault();
-    if (resettingAccess || !resetPhone.trim()) return;
-    setResettingAccess(true);
-    setResetMessage(null);
-
-    const {
-      data: { session },
-    } = await getSupabase().auth.getSession();
-
-    if (!session) {
-      setResetMessage({ ok: false, text: "Sua sessão expirou. Recarregue a página e tente de novo." });
-      setResettingAccess(false);
-      return;
-    }
-
-    const result = await resetCustomerAccess(
-      session.access_token,
-      store.id,
-      resetPhone.trim(),
-      window.location.origin,
-    );
-    setResettingAccess(false);
-
-    if (result.error) {
-      setResetMessage({ ok: false, text: result.error });
-      return;
-    }
-
-    setResetMessage({
-      ok: true,
-      text: "Pronto! Mandamos um e-mail de redefinição de senha pro cliente e liberamos qualquer bloqueio.",
-    });
-    setResetPhone("");
   }
 
   function whatsappBirthdayUrl(customer: Customer, code: string) {
@@ -401,46 +360,13 @@ export default function Cashback() {
             </li>
           ))}
         </ul>
+        <a
+          href="/painel/clientes"
+          className="mt-3 inline-block text-sm font-medium text-blue-900 underline dark:text-blue-400"
+        >
+          Ver todos os clientes, conta e histórico →
+        </a>
       </div>
-
-      <form
-        onSubmit={handleResetCustomerAccess}
-        className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900"
-      >
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-          🔓 Cliente sem acesso à conta?
-        </h2>
-        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-          Se um cliente te chamar no WhatsApp dizendo que não consegue mais entrar na conta dele (esqueceu
-          a senha ou errou 3 vezes e foi bloqueado), digite o WhatsApp que ele usou nos pedidos aqui — a
-          gente manda um e-mail de redefinição de senha pra ele e libera o bloqueio.
-        </p>
-        <div className="mt-3 flex flex-wrap items-end gap-3">
-          <div>
-            <label className="block text-sm text-slate-600 dark:text-slate-400">WhatsApp do cliente</label>
-            <input
-              value={resetPhone}
-              onChange={(e) => setResetPhone(e.target.value)}
-              placeholder="(11) 91234-5678"
-              className="mt-1 w-52 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
-            />
-          </div>
-          <button
-            type="submit"
-            disabled={resettingAccess}
-            className="rounded-lg bg-blue-900 px-4 py-2 text-sm font-semibold text-amber-300 disabled:opacity-60 dark:bg-blue-800"
-          >
-            {resettingAccess ? "Enviando…" : "Resetar acesso"}
-          </button>
-        </div>
-        {resetMessage && (
-          <p
-            className={`mt-2 text-sm ${resetMessage.ok ? "text-green-600" : "text-red-600"}`}
-          >
-            {resetMessage.text}
-          </p>
-        )}
-      </form>
     </div>
   );
 }
