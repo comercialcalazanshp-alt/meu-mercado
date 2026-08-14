@@ -82,6 +82,28 @@ export async function POST(request: Request) {
     );
   }
 
+  // A senha bateu, mas isso sozinho não prova que é uma conta de CLIENTE —
+  // login no Supabase Auth não sabe nada sobre account_type (isso só existe
+  // nos metadados do cadastro). Uma conta de dono de loja, por exemplo, tem
+  // e-mail/senha válidos no mesmo projeto, mas nunca tem linha em
+  // customer_profiles. Sem essa checagem, o dono "conseguiria entrar" aqui
+  // mesmo sem nunca ter criado conta de cliente — e o checkout quebraria
+  // depois tentando linkar um profile_id que não existe.
+  const { data: profile } = await admin
+    .from("customer_profiles")
+    .select("id")
+    .eq("id", data.session.user.id)
+    .maybeSingle();
+
+  if (!profile) {
+    return NextResponse.json(
+      {
+        error: "Essa conta não é uma conta de cliente. Crie uma conta de cliente pra continuar.",
+      },
+      { status: 403 },
+    );
+  }
+
   if (attemptRow && (attemptRow.failed_count > 0 || attemptRow.locked)) {
     await admin
       .from("customer_login_attempts")

@@ -321,7 +321,6 @@ export default function StorefrontClient({
         setCustomerRecord(null);
         return;
       }
-      setCustomerLoggedIn(true);
       const [{ data: profile }, { data: record }] = await Promise.all([
         customerSupabase.from("customer_profiles").select("full_name").eq("id", userId).maybeSingle(),
         customerSupabase
@@ -331,7 +330,19 @@ export default function StorefrontClient({
           .eq("profile_id", userId)
           .maybeSingle(),
       ]);
-      setCustomerAccountName(profile?.full_name ?? null);
+      if (!profile) {
+        // Sessão válida, mas não é uma conta de cliente de verdade (ex: uma
+        // conta de dono de loja com a mesma senha) — nunca trata como
+        // "logado" nesse caso, senão o checkout quebra tentando linkar um
+        // profile_id que não existe em customer_profiles.
+        await customerSupabase.auth.signOut();
+        setCustomerLoggedIn(false);
+        setCustomerAccountName(null);
+        setCustomerRecord(null);
+        return;
+      }
+      setCustomerLoggedIn(true);
+      setCustomerAccountName(profile.full_name);
       setCustomerRecord(record ?? null);
     }
 
