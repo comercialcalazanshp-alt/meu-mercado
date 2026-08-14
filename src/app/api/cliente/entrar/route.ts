@@ -44,6 +44,18 @@ export async function POST(request: Request) {
 
   const { data, error } = await authClient.auth.signInWithPassword({ email, password });
 
+  if (error?.message === "Email not confirmed") {
+    // Não é senha errada — não faz sentido contar isso pra bloqueio de 3
+    // tentativas. A pessoa só ainda não clicou no link do e-mail.
+    return NextResponse.json(
+      {
+        error:
+          "Você ainda não confirmou seu e-mail. Confira sua caixa de entrada (e o spam) ou peça pra reenviar na tela de cadastro.",
+      },
+      { status: 403 },
+    );
+  }
+
   if (error || !data.session) {
     const nextCount = (attemptRow?.failed_count ?? 0) + 1;
     const lockingNow = nextCount >= MAX_ATTEMPTS;

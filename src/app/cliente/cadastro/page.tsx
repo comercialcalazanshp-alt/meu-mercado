@@ -18,6 +18,8 @@ function CadastroClienteForm() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [sent, setSent] = useState(false);
+  const [resending, setResending] = useState(false);
+  const [resent, setResent] = useState(false);
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -79,6 +81,25 @@ function CadastroClienteForm() {
     setSent(true);
   }
 
+  async function handleResend() {
+    if (resending) return;
+    setResending(true);
+    setResent(false);
+    setError(null);
+    const redirectTo = `${window.location.origin}/cliente/confirmado${loja ? `?loja=${loja}` : ""}`;
+    const { error: resendError } = await getCustomerSupabase().auth.resend({
+      type: "signup",
+      email,
+      options: { emailRedirectTo: redirectTo },
+    });
+    setResending(false);
+    if (resendError) {
+      setError("Não deu pra reenviar: " + resendError.message);
+      return;
+    }
+    setResent(true);
+  }
+
   if (sent) {
     return (
       <div className="flex flex-1 flex-col items-center justify-center gap-3 bg-slate-50 px-6 py-24 text-center dark:bg-slate-950">
@@ -89,6 +110,18 @@ function CadastroClienteForm() {
         <p className="max-w-sm text-sm text-slate-600 dark:text-slate-400">
           Mandamos um link de confirmação pro seu e-mail ({email}). Clique nele pra ativar sua conta.
         </p>
+        <p className="max-w-sm text-sm text-amber-700 dark:text-amber-400">
+          Não achou o e-mail? Dá uma olhada na caixa de spam/lixo eletrônico — às vezes cai lá.
+        </p>
+        <button
+          onClick={handleResend}
+          disabled={resending}
+          className="mt-1 text-sm font-medium text-blue-900 underline disabled:opacity-60 dark:text-blue-400"
+        >
+          {resending ? "Reenviando…" : "Reenviar e-mail de confirmação"}
+        </button>
+        {resent && <p className="text-sm text-green-600">Reenviado! Confira de novo em alguns minutos.</p>}
+        {error && <p className="text-sm text-red-600">{error}</p>}
       </div>
     );
   }
