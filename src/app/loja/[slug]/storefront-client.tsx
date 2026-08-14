@@ -375,6 +375,7 @@ export default function StorefrontClient({
   >([]);
   const [loadingOrders, setLoadingOrders] = useState(false);
   const [ordersLoaded, setOrdersLoaded] = useState(false);
+  const [ordersError, setOrdersError] = useState(false);
 
   useEffect(() => {
     const customerSupabase = getCustomerSupabase();
@@ -448,15 +449,21 @@ export default function StorefrontClient({
     setShowAccountPanel(false);
     setCustomerOrders([]);
     setOrdersLoaded(false);
+    setOrdersError(false);
   }
 
   async function openAccountPanel() {
     setShowAccountPanel(true);
     if (ordersLoaded || loadingOrders) return;
     setLoadingOrders(true);
-    const { data } = await getCustomerSupabase().rpc("get_customer_orders", { p_store_id: store.id });
-    setCustomerOrders(data ?? []);
+    const { data, error } = await getCustomerSupabase().rpc("get_customer_orders", { p_store_id: store.id });
     setLoadingOrders(false);
+    if (error) {
+      setOrdersError(true);
+      return;
+    }
+    setCustomerOrders(data ?? []);
+    setOrdersError(false);
     setOrdersLoaded(true);
   }
 
@@ -976,13 +983,23 @@ export default function StorefrontClient({
     }
 
     setSaving(false);
+    const cashbackEarned = data?.[0]?.cashback_earned ?? 0;
+    const cashbackUsed = data?.[0]?.cashback_used ?? 0;
     setConfirmedTotal(data?.[0]?.total ?? total);
     setConfirmedDiscount(data?.[0]?.discount ?? 0);
-    setConfirmedCashbackEarned(data?.[0]?.cashback_earned ?? 0);
-    setConfirmedCashbackUsed(data?.[0]?.cashback_used ?? 0);
+    setConfirmedCashbackEarned(cashbackEarned);
+    setConfirmedCashbackUsed(cashbackUsed);
     setConfirmedReferralCode(data?.[0]?.referral_code ?? null);
     setConfirmedReferralBonus(data?.[0]?.referral_bonus_earned ?? 0);
     setConfirmedDeliveryFee(data?.[0]?.delivery_fee ?? 0);
+    // "Minha conta" mostra saldo/pedidos em cache (ver openAccountPanel) — sem
+    // isso, um pedido feito aqui não apareceria lá até recarregar a página.
+    if (customerLoggedIn) {
+      setOrdersLoaded(false);
+      setCustomerRecord((prev) =>
+        prev ? { ...prev, cashback_balance: prev.cashback_balance - cashbackUsed + cashbackEarned } : prev,
+      );
+    }
     setConfirmedScratchDiscount(data?.[0]?.scratch_discount ?? 0);
     const newOrderId = data?.[0]?.order_id ?? null;
     setConfirmedOrderId(newOrderId);
@@ -2232,7 +2249,17 @@ export default function StorefrontClient({
 
                         <button
                           type="button"
-                          onClick={() => setExpandedProductId(isExpanded ? null : product.id)}
+                          onClick={() =>
+                            setExpandedProductId((prev) => {
+                              const next = isExpanded ? null : product.id;
+                              if (next !== prev) {
+                                setReviewerName("");
+                                setReviewerRating(5);
+                                setReviewerComment("");
+                              }
+                              return next;
+                            })
+                          }
                           className="mt-1 self-start text-xs text-slate-500 underline decoration-slate-300 hover:text-[var(--brand-bg)] dark:text-slate-400"
                         >
                           {rating
@@ -2511,6 +2538,13 @@ export default function StorefrontClient({
               </p>
               {loadingOrders ? (
                 <p className="text-sm text-slate-400 dark:text-slate-500">Carregando…</p>
+              ) : ordersError ? (
+                <p className="text-sm text-red-600 dark:text-red-400">
+                  Não deu pra carregar seus pedidos agora.{" "}
+                  <button type="button" onClick={openAccountPanel} className="underline">
+                    Tentar de novo
+                  </button>
+                </p>
               ) : customerOrders.length === 0 ? (
                 <p className="text-sm text-slate-400 dark:text-slate-500">
                   Você ainda não fez nenhum pedido nessa loja.

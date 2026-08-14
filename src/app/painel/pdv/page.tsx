@@ -12,6 +12,13 @@ type Product = {
   stock: number;
   barcode: string | null;
   sold_by_weight: boolean;
+  promo_buy_qty: number | null;
+  promo_pay_qty: number | null;
+  price_wholesale: number | null;
+  wholesale_min_qty: number | null;
+  price_fiado: number | null;
+  on_offer: boolean;
+  offer_price: number | null;
 };
 
 type KitOption = {
@@ -29,6 +36,13 @@ type CartLine = {
   stock: number;
   soldByWeight: boolean;
   isKit?: boolean;
+  promoBuyQty?: number | null;
+  promoPayQty?: number | null;
+  priceWholesale?: number | null;
+  wholesaleMinQty?: number | null;
+  priceFiado?: number | null;
+  onOffer?: boolean;
+  offerPrice?: number | null;
 };
 
 type RecentSale = {
@@ -80,6 +94,34 @@ function round3(value: number) {
 
 function formatQty(line: { quantity: number; soldByWeight: boolean }) {
   return line.soldByWeight ? `${line.quantity.toFixed(3)} kg` : String(line.quantity);
+}
+
+// Espelha a ordem de prioridade de preço da função pdv_sale() no banco
+// (schema-v45.sql) — sem isso a tela mostra o preço de tabela mesmo quando a
+// venda vai ser cobrada por um preço diferente (oferta, atacado, fiado,
+// combo), e o troco/soma do pagamento dividido calculado na hora fica errado.
+function pdvLineTotal(
+  line: CartLine,
+  quantity: number,
+  paymentMethod: PaymentMethod | null,
+  isSplit: boolean,
+): number {
+  if (line.isKit) return line.price * quantity;
+  if (!isSplit && paymentMethod === "fiado" && line.priceFiado != null) {
+    return line.priceFiado * quantity;
+  }
+  if (line.onOffer && line.offerPrice != null) {
+    return line.offerPrice * quantity;
+  }
+  if (line.priceWholesale != null && line.wholesaleMinQty != null && quantity >= line.wholesaleMinQty) {
+    return line.priceWholesale * quantity;
+  }
+  if (!line.soldByWeight && line.promoBuyQty && line.promoPayQty && quantity >= line.promoBuyQty) {
+    const fullSets = Math.floor(quantity / line.promoBuyQty);
+    const remainder = quantity - fullSets * line.promoBuyQty;
+    return (fullSets * line.promoPayQty + remainder) * line.price;
+  }
+  return line.price * quantity;
 }
 
 // "500," = 500 gramas (produto por peso) · "5*" = 5 unidades — digitado antes de escolher o produto.
@@ -289,7 +331,9 @@ export default function Pdv() {
     setLoadingProducts(true);
     const { data } = await getSupabase()
       .from("products")
-      .select("id, name, price, stock, barcode, sold_by_weight")
+      .select(
+        "id, name, price, stock, barcode, sold_by_weight, promo_buy_qty, promo_pay_qty, price_wholesale, wholesale_min_qty, price_fiado, on_offer, offer_price",
+      )
       .eq("store_id", store.id)
       .order("name", { ascending: true });
     setProducts(data ?? []);
@@ -390,7 +434,10 @@ export default function Pdv() {
     return kits.filter((k) => k.name.toLowerCase().includes(q)).slice(0, 4);
   }, [search, qtyPrefix, kits]);
 
-  const subtotal = cart.reduce((sum, line) => sum + line.price * line.quantity, 0);
+  const subtotal = cart.reduce(
+    (sum, line) => sum + pdvLineTotal(line, line.quantity, paymentMethod, splitMode),
+    0,
+  );
   const discountRaw = Number(discountValue.replace(",", ".")) || 0;
   const discountAmount = Math.min(
     subtotal,
@@ -426,6 +473,13 @@ export default function Pdv() {
           quantity: qty,
           stock: product.stock,
           soldByWeight: product.sold_by_weight,
+          promoBuyQty: product.promo_buy_qty,
+          promoPayQty: product.promo_pay_qty,
+          priceWholesale: product.price_wholesale,
+          wholesaleMinQty: product.wholesale_min_qty,
+          priceFiado: product.price_fiado,
+          onOffer: product.on_offer,
+          offerPrice: product.offer_price,
         },
       ];
     });
@@ -531,7 +585,19 @@ export default function Pdv() {
         }
         const current = products.find((p) => p.id === line.productId);
         return current
-          ? { ...line, price: current.price, stock: current.stock, soldByWeight: current.sold_by_weight }
+          ? {
+              ...line,
+              price: current.price,
+              stock: current.stock,
+              soldByWeight: current.sold_by_weight,
+              promoBuyQty: current.promo_buy_qty,
+              promoPayQty: current.promo_pay_qty,
+              priceWholesale: current.price_wholesale,
+              wholesaleMinQty: current.wholesale_min_qty,
+              priceFiado: current.price_fiado,
+              onOffer: current.on_offer,
+              offerPrice: current.offer_price,
+            }
           : line;
       }),
     );
@@ -556,7 +622,7 @@ export default function Pdv() {
       items: items.map((line) => ({
         name: line.name,
         qtyLabel: formatQty(line),
-        lineTotal: line.price * line.quantity,
+        lineTotal: pdvLineTotal(line, line.quantity, split ? null : (method as PaymentMethod), split !== null),
       })),
       subtotal: saleSubtotal,
       discount: saleDiscount,
@@ -586,7 +652,9 @@ export default function Pdv() {
         barcode: quickAddBarcode.trim() || null,
         sold_by_weight: quickAddSoldByWeight,
       })
-      .select("id, name, price, stock, barcode, sold_by_weight")
+      .select(
+        "id, name, price, stock, barcode, sold_by_weight, promo_buy_qty, promo_pay_qty, price_wholesale, wholesale_min_qty, price_fiado, on_offer, offer_price",
+      )
       .single();
     setQuickAddSaving(false);
 
@@ -796,7 +864,7 @@ export default function Pdv() {
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cart, paymentMethod, cashReceivedValue, customerPhone, saving, total, creditCustomerId, splitMode]);
+  }, [cart, paymentMethod, cashReceivedValue, customerPhone, saving, total, creditCustomerId, splitMode, splitPayments, customerName]);
 
   const PAYMENT_OPTIONS: [PaymentMethod, string, (p: { className?: string }) => React.JSX.Element][] = [
     ["dinheiro", "Dinheiro", IconBanknote],
@@ -892,7 +960,7 @@ export default function Pdv() {
                         {p.sold_by_weight && <IconScale className="h-3.5 w-3.5 text-slate-400" />}
                       </span>
                       <span className="shrink-0 text-slate-500 dark:text-slate-400">
-                        {formatCurrency(p.price)}
+                        {formatCurrency(p.on_offer && p.offer_price != null ? p.offer_price : p.price)}
                         {p.sold_by_weight ? "/kg" : ""} · estoque{" "}
                         {Number.isInteger(p.stock) ? p.stock : p.stock.toFixed(3)}
                       </span>
@@ -1067,7 +1135,7 @@ export default function Pdv() {
                   </button>
                 </div>
                 <p className="w-20 shrink-0 text-right font-semibold tabular-nums text-slate-900 dark:text-slate-50">
-                  {formatCurrency(line.price * line.quantity)}
+                  {formatCurrency(pdvLineTotal(line, line.quantity, paymentMethod, splitMode))}
                 </p>
                 <button
                   onClick={() => removeLine(line.productId)}
