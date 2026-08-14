@@ -425,6 +425,20 @@ export default function StorefrontClient({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [store.id]);
 
+  useEffect(() => {
+    if (!customerLoggedIn || !store.scratch_enabled) return;
+    let cancelled = false;
+    getCustomerSupabase()
+      .rpc("get_my_scratch_card", { p_store_id: store.id })
+      .then(({ data }) => {
+        if (!cancelled && data && data.length > 0) setScratchResult(data[0]);
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [customerLoggedIn, store.id, store.scratch_enabled]);
+
   async function handleCustomerSignOut() {
     await getCustomerSupabase().auth.signOut();
     setCustomerLoggedIn(false);
