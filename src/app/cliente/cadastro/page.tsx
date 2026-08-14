@@ -38,7 +38,7 @@ function CadastroClienteForm() {
 
     setLoading(true);
     const redirectTo = `${window.location.origin}/cliente/confirmado${loja ? `?loja=${loja}` : ""}`;
-    const { error: authError } = await getCustomerSupabase().auth.signUp({
+    const { data: authData, error: authError } = await getCustomerSupabase().auth.signUp({
       email,
       password,
       options: {
@@ -60,6 +60,18 @@ function CadastroClienteForm() {
           authError.message.includes("Database error saving new user")
           ? "Já existe uma conta com esse e-mail ou CPF."
           : authError.message,
+      );
+      return;
+    }
+
+    // O Supabase não devolve erro nenhum quando o e-mail já tem conta —
+    // por segurança, ele finge que criou pra não revelar se aquele e-mail
+    // já existe. O único jeito de perceber é "identities" vir vazio (não
+    // criou identidade nova nenhuma). Sem essa checagem, a tela mostraria
+    // "e-mail enviado" e nenhum e-mail chegaria de verdade.
+    if (authData.user && authData.user.identities?.length === 0) {
+      setError(
+        "Já existe uma conta com esse e-mail (pode ser sua conta de dono de loja, por exemplo). Use um e-mail diferente pra criar a conta de cliente.",
       );
       return;
     }
