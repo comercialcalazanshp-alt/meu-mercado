@@ -36,6 +36,7 @@ type Product = {
   on_offer: boolean;
   offer_price: number | null;
   created_at: string;
+  barcode: string | null;
 };
 
 function isNewProduct(createdAt: string) {
@@ -213,6 +214,16 @@ function kitSavings(kit: Kit) {
   return separateTotal - kit.price;
 }
 
+// BarcodeDetector é nativo do navegador (Chrome/Android), sem tipos no TS
+// ainda. Não funciona no Safari/iPhone — por isso sempre existe a opção de
+// digitar o código na mão como alternativa.
+type BarcodeDetectorLike = { detect(source: HTMLVideoElement): Promise<{ rawValue: string }[]> };
+type BarcodeDetectorCtor = new (options: { formats: string[] }) => BarcodeDetectorLike;
+function getBarcodeDetectorCtor(): BarcodeDetectorCtor | null {
+  if (typeof window === "undefined" || !("BarcodeDetector" in window)) return null;
+  return (window as unknown as { BarcodeDetector: BarcodeDetectorCtor }).BarcodeDetector;
+}
+
 export default function StorefrontClient({
   store,
   products,
@@ -310,6 +321,14 @@ export default function StorefrontClient({
   const [storeComment, setStoreComment] = useState("");
   const [submittingStoreReview, setSubmittingStoreReview] = useState(false);
   const [storeReviewSubmitted, setStoreReviewSubmitted] = useState(false);
+  const [scanningBarcode, setScanningBarcode] = useState(false);
+  const [scanCameraError, setScanCameraError] = useState<string | null>(null);
+  const [scanUnsupported, setScanUnsupported] = useState(false);
+  const [scanNotFoundCode, setScanNotFoundCode] = useState<string | null>(null);
+  const [manualBarcode, setManualBarcode] = useState("");
+  const [highlightedProductId, setHighlightedProductId] = useState<string | null>(null);
+  const scanVideoRef = useRef<HTMLVideoElement>(null);
+  const scanStreamRef = useRef<MediaStream | null>(null);
 
   useEffect(() => {
     const customerSupabase = getCustomerSupabase();
@@ -464,6 +483,100 @@ export default function StorefrontClient({
 
   function setQuantity(key: string, quantity: number) {
     setCart((prev) => ({ ...prev, [key]: Math.max(0, quantity) }));
+  }
+
+  function handleBarcodeFound(code: string) {
+    const trimmed = code.trim();
+    const found = products.find((p) => p.barcode === trimmed);
+    if (!found) {
+      setScanNotFoundCode(trimmed);
+      return;
+    }
+    setScanNotFoundCode(null);
+    setScanUnsupported(false);
+    setManualBarcode("");
+    const el = document.getElementById(`product-${found.id}`);
+    el?.scrollIntoView({ behavior: "smooth", block: "center" });
+    setHighlightedProductId(found.id);
+    window.setTimeout(() => setHighlightedProductId((cur) => (cur === found.id ? null : cur)), 2600);
+  }
+
+  function openBarcodeScanner() {
+    setScanCameraError(null);
+    setScanNotFoundCode(null);
+    setManualBarcode("");
+    if (!getBarcodeDetectorCtor()) {
+      setScanUnsupported(true);
+      return;
+    }
+    setScanUnsupported(false);
+    setScanningBarcode(true);
+  }
+
+  function closeBarcodeScanner() {
+    setScanningBarcode(false);
+    scanStreamRef.current?.getTracks().forEach((t) => t.stop());
+    scanStreamRef.current = null;
+  }
+
+  useEffect(() => {
+    if (!scanningBarcode) return;
+    const Detector = getBarcodeDetectorCtor();
+    if (!Detector) return;
+
+    let cancelled = false;
+    let rafId = 0;
+
+    async function start() {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+        if (cancelled) {
+          stream.getTracks().forEach((t) => t.stop());
+          return;
+        }
+        scanStreamRef.current = stream;
+        if (scanVideoRef.current) {
+          scanVideoRef.current.srcObject = stream;
+          await scanVideoRef.current.play();
+        }
+        const detector = new Detector!({
+          formats: ["ean_13", "ean_8", "upc_a", "upc_e", "code_128", "code_39"],
+        });
+        const tick = async () => {
+          if (cancelled || !scanVideoRef.current) return;
+          try {
+            const codes = await detector.detect(scanVideoRef.current);
+            if (codes.length > 0) {
+              const code = codes[0].rawValue;
+              closeBarcodeScanner();
+              handleBarcodeFound(code);
+              return;
+            }
+          } catch {
+            // não deu pra ler esse quadro, tenta o próximo
+          }
+          rafId = requestAnimationFrame(tick);
+        };
+        rafId = requestAnimationFrame(tick);
+      } catch {
+        setScanCameraError("Não deu pra acessar a câmera. Verifique se você liberou a permissão pro navegador.");
+      }
+    }
+    start();
+
+    return () => {
+      cancelled = true;
+      if (rafId) cancelAnimationFrame(rafId);
+      scanStreamRef.current?.getTracks().forEach((t) => t.stop());
+      scanStreamRef.current = null;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scanningBarcode]);
+
+  function handleManualBarcodeSubmit(e: FormEvent) {
+    e.preventDefault();
+    if (!manualBarcode.trim()) return;
+    handleBarcodeFound(manualBarcode);
   }
 
   async function handleScratch() {
@@ -1549,6 +1662,18 @@ export default function StorefrontClient({
         </div>
       )}
 
+      {products.some((p) => p.barcode) && (
+        <div className="mx-auto w-full max-w-5xl px-4 pt-5 sm:px-6">
+          <button
+            type="button"
+            onClick={openBarcodeScanner}
+            className="flex w-full items-center justify-center gap-2 rounded-2xl border border-dashed border-slate-300 bg-white px-4 py-3 text-sm font-medium text-slate-700 shadow-sm transition hover:border-[var(--brand-bg)] hover:text-[var(--brand-bg)] active:scale-[0.99] dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300"
+          >
+            📷 Ler código de barras do produto
+          </button>
+        </div>
+      )}
+
       {store.scratch_enabled && (
         <div className="mx-auto w-full max-w-5xl px-4 pt-5 sm:px-6">
           <div className="rounded-2xl border border-purple-200 bg-purple-50 p-4 shadow-sm dark:border-purple-900 dark:bg-purple-950/40">
@@ -1852,10 +1977,12 @@ export default function StorefrontClient({
                 const rating = ratingsByProduct.get(product.id);
                 const productReviews = reviews.filter((r) => r.product_id === product.id);
                 const isExpanded = expandedProductId === product.id;
+                const isHighlighted = highlightedProductId === product.id;
                 return (
                   <div
                     key={product.id}
-                    className={`group flex flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md dark:border-slate-800 dark:bg-slate-900 ${isExpanded ? "col-span-2 sm:col-span-3 lg:col-span-4" : ""}`}
+                    id={`product-${product.id}`}
+                    className={`group flex scroll-mt-24 flex-col overflow-hidden rounded-2xl border bg-white shadow-sm transition hover:-translate-y-0.5 hover:shadow-md dark:bg-slate-900 ${isExpanded ? "col-span-2 sm:col-span-3 lg:col-span-4" : ""} ${isHighlighted ? "border-[var(--brand-bg)] ring-2 ring-[var(--brand-bg)]" : "border-slate-200 dark:border-slate-800"}`}
                   >
                     <div className={isExpanded ? "flex flex-col sm:flex-row" : ""}>
                       <div className={isExpanded ? "sm:w-56 sm:shrink-0" : ""}>
@@ -2079,6 +2206,88 @@ export default function StorefrontClient({
             </span>
             <span>{formatCurrency(total)}</span>
           </button>
+        </div>
+      )}
+
+      {scanningBarcode && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+          <div className="w-full max-w-sm rounded-2xl bg-white p-4 dark:bg-slate-900">
+            <p className="text-sm font-medium text-slate-900 dark:text-slate-50">
+              Aponte a câmera pro código de barras
+            </p>
+            {scanCameraError ? (
+              <p className="mt-2 text-sm text-red-600 dark:text-red-400">{scanCameraError}</p>
+            ) : (
+              <video
+                ref={scanVideoRef}
+                muted
+                playsInline
+                className="mt-2 aspect-square w-full rounded-lg bg-slate-950 object-cover"
+              />
+            )}
+            <button
+              type="button"
+              onClick={closeBarcodeScanner}
+              className="mt-3 w-full rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 dark:border-slate-700 dark:text-slate-300"
+            >
+              Cancelar
+            </button>
+          </div>
+        </div>
+      )}
+
+      {(scanUnsupported || scanNotFoundCode !== null || manualBarcode) && !scanningBarcode && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+          <div className="w-full max-w-sm rounded-2xl bg-white p-4 dark:bg-slate-900">
+            {scanUnsupported && !scanNotFoundCode && (
+              <p className="text-sm text-slate-600 dark:text-slate-400">
+                Esse navegador não sabe ler código de barras pela câmera (funciona no Chrome do Android).
+                Digite o código abaixo.
+              </p>
+            )}
+            {scanNotFoundCode && (
+              <p className="text-sm text-amber-700 dark:text-amber-400">
+                Não achei nenhum produto com o código <strong>{scanNotFoundCode}</strong>. Pode digitar de
+                novo ou tentar ler outro código.
+              </p>
+            )}
+            <form onSubmit={handleManualBarcodeSubmit} className="mt-3 flex gap-2">
+              <input
+                autoFocus
+                inputMode="numeric"
+                value={manualBarcode}
+                onChange={(e) => setManualBarcode(e.target.value)}
+                placeholder="Digite o código de barras"
+                className="min-w-0 flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+              />
+              <button
+                type="submit"
+                className="shrink-0 rounded-lg bg-[var(--accent-bg)] px-3 py-2 text-sm font-semibold text-[var(--accent-text)]"
+              >
+                Buscar
+              </button>
+            </form>
+            <div className="mt-3 flex gap-2">
+              <button
+                type="button"
+                onClick={openBarcodeScanner}
+                className="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 dark:border-slate-700 dark:text-slate-300"
+              >
+                📷 Ler com a câmera
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setScanNotFoundCode(null);
+                  setScanUnsupported(false);
+                  setManualBarcode("");
+                }}
+                className="rounded-lg px-3 py-2 text-sm font-medium text-slate-500 dark:text-slate-400"
+              >
+                Fechar
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

@@ -70,7 +70,7 @@ export default async function Loja({ params }: { params: Promise<{ slug: string 
     supabase
       .from("products")
       .select(
-        "id, name, category, price, image_url, stock, promo_buy_qty, promo_pay_qty, price_wholesale, wholesale_min_qty, on_offer, offer_price, created_at",
+        "id, name, category, price, image_url, stock, promo_buy_qty, promo_pay_qty, price_wholesale, wholesale_min_qty, on_offer, offer_price, created_at, barcode",
       )
       .eq("store_id", store.id)
       .eq("active", true)
