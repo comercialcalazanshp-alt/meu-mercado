@@ -97,6 +97,55 @@ body {
   animation: mm-check-pop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
+@keyframes mm-scratch-spin {
+  0%,
+  100% {
+    transform: rotate(-12deg) scale(1);
+  }
+  50% {
+    transform: rotate(12deg) scale(1.12);
+  }
+}
+@keyframes mm-sparkle {
+  0% {
+    opacity: 0;
+    transform: scale(0.4) rotate(0deg);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.15) rotate(20deg);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(0.6) rotate(40deg);
+  }
+}
+@keyframes mm-prize-pop {
+  0% {
+    opacity: 0;
+    transform: scale(0.5) rotate(-4deg);
+  }
+  60% {
+    opacity: 1;
+    transform: scale(1.06) rotate(2deg);
+  }
+  100% {
+    transform: scale(1) rotate(0deg);
+  }
+}
+
+.animate-mm-scratch-spin {
+  display: inline-block;
+  animation: mm-scratch-spin 0.5s ease-in-out infinite;
+}
+.animate-mm-sparkle {
+  display: inline-block;
+  animation: mm-sparkle 1.4s ease-in-out infinite;
+}
+.animate-mm-prize-pop {
+  animation: mm-prize-pop 0.55s cubic-bezier(0.34, 1.56, 0.64, 1) backwards;
+}
+
 @media (prefers-reduced-motion: reduce) {
   html {
     scroll-behavior: auto;
@@ -105,7 +154,10 @@ body {
   .animate-mm-fade-in,
   .animate-mm-scale-in,
   .animate-mm-slide-up,
-  .animate-mm-check-pop {
+  .animate-mm-check-pop,
+  .animate-mm-scratch-spin,
+  .animate-mm-sparkle,
+  .animate-mm-prize-pop {
     animation: none;
   }
 }

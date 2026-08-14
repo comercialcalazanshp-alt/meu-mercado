@@ -233,6 +233,14 @@ function kitSavings(kit: Kit) {
   return separateTotal - kit.price;
 }
 
+const ORDER_STATUS_LABELS: Record<string, string> = {
+  pendente: "Pendente",
+  confirmado: "Confirmado",
+  entregando: "A caminho",
+  entregue: "Entregue",
+  cancelado: "Cancelado",
+};
+
 // BarcodeDetector é nativo do navegador (Chrome/Android), sem tipos no TS
 // ainda. Não funciona no Safari/iPhone — por isso sempre existe a opção de
 // digitar o código na mão como alternativa.
@@ -319,6 +327,7 @@ export default function StorefrontClient({
     already_existed: boolean;
   } | null>(null);
   const [scratchLoading, setScratchLoading] = useState(false);
+  const [scratchRevealing, setScratchRevealing] = useState(false);
   const [scratchError, setScratchError] = useState<string | null>(null);
   const [confirmedScratchDiscount, setConfirmedScratchDiscount] = useState(0);
   const [customerLoggedIn, setCustomerLoggedIn] = useState(false);
@@ -349,6 +358,23 @@ export default function StorefrontClient({
   const [highlightedProductId, setHighlightedProductId] = useState<string | null>(null);
   const scanVideoRef = useRef<HTMLVideoElement>(null);
   const scanStreamRef = useRef<MediaStream | null>(null);
+  const [showAccountPanel, setShowAccountPanel] = useState(false);
+  const [customerOrders, setCustomerOrders] = useState<
+    {
+      id: string;
+      items: { name: string; quantity: number }[];
+      total: number;
+      status: string;
+      created_at: string;
+      cashback_earned: number;
+      cashback_used: number;
+      payment_method: string | null;
+      neighborhood_name: string | null;
+      delivery_address: string | null;
+    }[]
+  >([]);
+  const [loadingOrders, setLoadingOrders] = useState(false);
+  const [ordersLoaded, setOrdersLoaded] = useState(false);
 
   useEffect(() => {
     const customerSupabase = getCustomerSupabase();
@@ -405,6 +431,19 @@ export default function StorefrontClient({
     setCustomerAccountName(null);
     setCustomerRecord(null);
     setUseCashback(false);
+    setShowAccountPanel(false);
+    setCustomerOrders([]);
+    setOrdersLoaded(false);
+  }
+
+  async function openAccountPanel() {
+    setShowAccountPanel(true);
+    if (ordersLoaded || loadingOrders) return;
+    setLoadingOrders(true);
+    const { data } = await getCustomerSupabase().rpc("get_customer_orders", { p_store_id: store.id });
+    setCustomerOrders(data ?? []);
+    setLoadingOrders(false);
+    setOrdersLoaded(true);
   }
 
   const brandStyle = {
@@ -624,8 +663,14 @@ export default function StorefrontClient({
       setScratchError(scratchRpcError.message);
       return;
     }
-    setScratchResult(data?.[0] ?? null);
     if (!customerPhone.trim()) setCustomerPhone(phone);
+    // Um suspense curtinho antes de revelar — em vez do resultado aparecer
+    // instantâneo, dá aquele momento de "vai que eu ganhei" antes do pop.
+    setScratchRevealing(true);
+    window.setTimeout(() => {
+      setScratchRevealing(false);
+      setScratchResult(data?.[0] ?? null);
+    }, 900);
   }
 
   async function handleSubscribe(kit: Kit) {
@@ -1620,12 +1665,23 @@ export default function StorefrontClient({
         />
         <div className="absolute right-3 top-3 z-10 animate-mm-fade-in sm:right-4 sm:top-4">
           {customerLoggedIn ? (
-            <button
-              onClick={handleCustomerSignOut}
-              className="rounded-full bg-[var(--brand-text)]/15 px-3 py-1.5 text-xs font-medium text-[var(--brand-text)] backdrop-blur-sm transition-transform hover:scale-105 active:scale-95"
-            >
-              👤 {customerAccountName ?? "Cliente"} · Sair
-            </button>
+            <div className="flex items-center gap-1 rounded-full bg-[var(--brand-text)]/15 pl-3 pr-1.5 py-1.5 text-xs font-medium text-[var(--brand-text)] backdrop-blur-sm">
+              <button
+                onClick={openAccountPanel}
+                className="transition-transform hover:scale-105 active:scale-95"
+              >
+                👤 {customerAccountName ?? "Cliente"}
+              </button>
+              <span aria-hidden className="opacity-50">
+                ·
+              </span>
+              <button
+                onClick={handleCustomerSignOut}
+                className="rounded-full px-1.5 opacity-80 transition hover:opacity-100 active:scale-95"
+              >
+                Sair
+              </button>
+            </div>
           ) : (
             <a
               href={`/cliente/entrar?loja=${store.slug}`}
@@ -1770,6 +1826,13 @@ export default function StorefrontClient({
                   </a>
                 </div>
               </>
+            ) : scratchRevealing ? (
+              <div className="mt-2 flex items-center gap-3 py-1.5">
+                <span className="animate-mm-scratch-spin text-2xl">🎟️</span>
+                <p className="text-sm font-medium text-purple-700 dark:text-purple-300">
+                  Raspando… vamos ver o que você ganhou!
+                </p>
+              </div>
             ) : !scratchResult ? (
               <>
                 <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
@@ -1786,7 +1849,7 @@ export default function StorefrontClient({
                   <button
                     onClick={handleScratch}
                     disabled={scratchLoading}
-                    className="shrink-0 rounded-lg bg-purple-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
+                    className="shrink-0 rounded-lg bg-purple-700 px-4 py-2 text-sm font-semibold text-white transition active:scale-95 disabled:opacity-60"
                   >
                     {scratchLoading ? "Raspando…" : "Raspar"}
                   </button>
@@ -1794,16 +1857,28 @@ export default function StorefrontClient({
                 {scratchError && <p className="mt-1 text-sm text-red-600 dark:text-red-400">{scratchError}</p>}
               </>
             ) : scratchResult.redeemed ? (
-              <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
+              <p className="mt-1 animate-mm-fade-up text-sm text-slate-600 dark:text-slate-400">
                 Você já usou a raspadinha dessa semana ({scratchResult.discount_percent}% de desconto).
                 Volta semana que vem!
               </p>
             ) : (
-              <p className="mt-1 text-sm text-purple-800 dark:text-purple-300">
-                🎉 Você ganhou <strong>{scratchResult.discount_percent}% de desconto</strong>! Ele é
-                aplicado automaticamente quando você finalizar o pedido com esse mesmo WhatsApp, até o
-                fim da semana.
-              </p>
+              <div className="relative mt-2 overflow-hidden rounded-xl bg-gradient-to-br from-purple-100 to-purple-50 p-3 dark:from-purple-900/40 dark:to-purple-950/40">
+                <span className="animate-mm-sparkle absolute left-3 top-2 text-sm" style={{ animationDelay: "0.1s" }}>
+                  ✨
+                </span>
+                <span className="animate-mm-sparkle absolute right-4 top-3 text-xs" style={{ animationDelay: "0.35s" }}>
+                  ✨
+                </span>
+                <span className="animate-mm-sparkle absolute bottom-2 left-10 text-xs" style={{ animationDelay: "0.55s" }}>
+                  ✨
+                </span>
+                <p className="animate-mm-prize-pop text-sm text-purple-900 dark:text-purple-200">
+                  🎉 Você ganhou{" "}
+                  <strong className="text-base">{scratchResult.discount_percent}% de desconto</strong>! Ele
+                  é aplicado automaticamente quando você finalizar o pedido com esse mesmo WhatsApp, até o
+                  fim da semana.
+                </p>
+              </div>
             )}
           </div>
         </div>
@@ -2367,6 +2442,133 @@ export default function StorefrontClient({
                 className="rounded-lg px-3 py-2 text-sm font-medium text-slate-500 dark:text-slate-400"
               >
                 Fechar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showAccountPanel && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 p-0 sm:items-center sm:p-4">
+          <div className="flex max-h-[85vh] w-full max-w-md flex-col rounded-t-2xl bg-white shadow-xl sm:rounded-2xl dark:bg-slate-900">
+            <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3 dark:border-slate-800">
+              <p className="text-sm font-semibold text-slate-900 dark:text-slate-50">
+                👤 {customerAccountName ?? "Minha conta"}
+              </p>
+              <button
+                type="button"
+                onClick={() => setShowAccountPanel(false)}
+                aria-label="Fechar"
+                className="text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto px-4 py-4">
+              <div className="grid grid-cols-2 gap-2">
+                <div className="rounded-xl bg-green-50 p-3 dark:bg-green-950/30">
+                  <p className="text-[11px] font-medium uppercase tracking-wide text-green-700 dark:text-green-400">
+                    Saldo de cashback
+                  </p>
+                  <p className="mt-0.5 text-lg font-bold text-green-800 dark:text-green-300">
+                    {formatCurrency(customerRecord?.cashback_balance ?? 0)}
+                  </p>
+                </div>
+                <div className="rounded-xl bg-slate-50 p-3 dark:bg-slate-800">
+                  <p className="text-[11px] font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                    Código de indicação
+                  </p>
+                  <div className="mt-0.5 flex items-center gap-1.5">
+                    <p className="truncate text-lg font-bold text-slate-900 dark:text-slate-50">
+                      {customerRecord?.referral_code ?? "—"}
+                    </p>
+                    {customerRecord?.referral_code && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          navigator.clipboard.writeText(
+                            `${window.location.origin}/loja/${store.slug}?ref=${customerRecord.referral_code}`,
+                          )
+                        }
+                        title="Copiar link de indicação"
+                        className="shrink-0 text-xs text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
+                      >
+                        📋
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <p className="mb-2 mt-5 text-sm font-semibold text-slate-900 dark:text-slate-50">
+                Histórico de pedidos
+              </p>
+              {loadingOrders ? (
+                <p className="text-sm text-slate-400 dark:text-slate-500">Carregando…</p>
+              ) : customerOrders.length === 0 ? (
+                <p className="text-sm text-slate-400 dark:text-slate-500">
+                  Você ainda não fez nenhum pedido nessa loja.
+                </p>
+              ) : (
+                <ul className="space-y-2">
+                  {customerOrders.map((order) => (
+                    <li
+                      key={order.id}
+                      className="rounded-xl border border-slate-200 p-3 text-sm dark:border-slate-800"
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="font-medium text-slate-900 dark:text-slate-50">
+                            {new Date(order.created_at).toLocaleDateString("pt-BR", {
+                              day: "2-digit",
+                              month: "2-digit",
+                              year: "numeric",
+                            })}
+                          </p>
+                          <p className="truncate text-xs text-slate-500 dark:text-slate-400">
+                            {order.items.map((item) => `${item.quantity}x ${item.name}`).join(", ")}
+                          </p>
+                        </div>
+                        <div className="shrink-0 text-right">
+                          <p className="font-semibold text-slate-900 dark:text-slate-50">
+                            {formatCurrency(order.total)}
+                          </p>
+                          <span
+                            className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                              order.status === "cancelado"
+                                ? "bg-red-100 text-red-700 dark:bg-red-950/40 dark:text-red-400"
+                                : order.status === "entregue"
+                                  ? "bg-green-100 text-green-700 dark:bg-green-950/40 dark:text-green-400"
+                                  : "bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400"
+                            }`}
+                          >
+                            {ORDER_STATUS_LABELS[order.status] ?? order.status}
+                          </span>
+                        </div>
+                      </div>
+                      {order.cashback_earned > 0 && (
+                        <p className="mt-1 text-xs text-green-700 dark:text-green-400">
+                          + {formatCurrency(order.cashback_earned)} de cashback
+                        </p>
+                      )}
+                      <a
+                        href={`/loja/${store.slug}/pedido/${order.id}`}
+                        className="mt-1 inline-block text-xs font-medium text-[var(--brand-bg)] underline"
+                      >
+                        Ver recibo
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              )}
+
+              <button
+                type="button"
+                onClick={handleCustomerSignOut}
+                className="mt-5 w-full rounded-lg border border-slate-200 py-2 text-sm font-medium text-slate-500 dark:border-slate-800 dark:text-slate-400"
+              >
+                Sair da conta
               </button>
             </div>
           </div>

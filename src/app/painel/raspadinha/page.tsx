@@ -69,6 +69,27 @@ export default function Raspadinha() {
     setOdds((prev) => prev.filter((_, idx) => idx !== i));
   }
 
+  async function handleToggleEnabled(checked: boolean) {
+    setEnabled(checked);
+    setError("");
+    // O liga/desliga salva na hora, sem depender das chances de desconto
+    // estarem configuradas — assim o dono não fica preso achando que
+    // "ativei" já é suficiente, quando na real o save de baixo também exigia
+    // as chances somarem 100% (e falhava calado se ele não tivesse mexido
+    // nelas ainda).
+    const { error: toggleError } = await getSupabase()
+      .from("stores")
+      .update({ scratch_enabled: checked })
+      .eq("id", store.id);
+    if (toggleError) {
+      setError("Não deu pra salvar: " + toggleError.message);
+      setEnabled(!checked);
+      return;
+    }
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2500);
+  }
+
   async function handleSave() {
     setError("");
     if (odds.length === 0) {
@@ -110,11 +131,16 @@ export default function Raspadinha() {
             <input
               type="checkbox"
               checked={enabled}
-              onChange={(e) => setEnabled(e.target.checked)}
+              onChange={(e) => handleToggleEnabled(e.target.checked)}
               className="h-4 w-4"
             />
             Raspadinha ativada no site
+            {saved && <span className="text-xs font-normal text-green-700 dark:text-green-400">Salvo!</span>}
           </label>
+          <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
+            Isso liga/desliga o quadradinho no site na hora. Mas pra o cliente conseguir raspar de
+            verdade, configure as chances de desconto abaixo e clique em &quot;Salvar configuração&quot;.
+          </p>
 
           <p className="mb-1 mt-4 text-xs font-medium text-slate-600 dark:text-slate-400">
             Chances de desconto (precisam somar 100%)
