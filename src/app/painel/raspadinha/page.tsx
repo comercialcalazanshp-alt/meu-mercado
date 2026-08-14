@@ -8,7 +8,7 @@ type Odd = { chance: number; discount: number };
 
 type ScratchCard = {
   id: string;
-  customer_phone: string;
+  customer_phone: string | null;
   discount_percent: number;
   redeemed: boolean;
   created_at: string;
@@ -118,9 +118,9 @@ export default function Raspadinha() {
     <div>
       <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-50">Raspadinha</h1>
       <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
-        Brincadeira semanal no site: o cliente digita o WhatsApp e raspa pra tentar ganhar um desconto,
-        que é aplicado automaticamente na próxima compra dele com esse número, até o fim da semana. Cada
-        WhatsApp só raspa uma vez por semana.
+        Brincadeira semanal no site: o cliente logado raspa pra tentar ganhar um desconto, que é aplicado
+        automaticamente se ele finalizar uma compra nas 48 horas seguintes. Cada cliente só raspa uma vez
+        por semana.
       </p>
 
       {loading ? (
@@ -204,23 +204,30 @@ export default function Raspadinha() {
         <p className="mt-2 text-sm text-slate-500">Ninguém raspou essa semana ainda.</p>
       )}
       <div className="mt-2 flex flex-col gap-2">
-        {cards.map((c) => (
-          <div
-            key={c.id}
-            className="flex items-center justify-between rounded-xl border border-slate-200 bg-white p-3 text-sm dark:border-slate-800 dark:bg-slate-900"
-          >
-            <span className="text-slate-700 dark:text-slate-300">{c.customer_phone}</span>
-            <span
-              className={`rounded-full px-2.5 py-1 text-xs font-medium ${
-                c.redeemed
-                  ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"
-                  : "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300"
-              }`}
+        {cards.map((c) => {
+          const expired = !c.redeemed && Date.now() - new Date(c.created_at).getTime() > 48 * 60 * 60 * 1000;
+          return (
+            <div
+              key={c.id}
+              className="flex items-center justify-between rounded-xl border border-slate-200 bg-white p-3 text-sm dark:border-slate-800 dark:bg-slate-900"
             >
-              {c.discount_percent}% {c.redeemed ? "(usado)" : "(não usado)"}
-            </span>
-          </div>
-        ))}
+              <span className="text-slate-700 dark:text-slate-300">
+                {c.customer_phone || "Cliente logado (sem compra nessa loja ainda)"}
+              </span>
+              <span
+                className={`rounded-full px-2.5 py-1 text-xs font-medium ${
+                  c.redeemed
+                    ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"
+                    : expired
+                      ? "bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400"
+                      : "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300"
+                }`}
+              >
+                {c.discount_percent}% {c.redeemed ? "(usado)" : expired ? "(expirado)" : "(não usado, 48h)"}
+              </span>
+            </div>
+          );
+        })}
       </div>
     </div>
   );

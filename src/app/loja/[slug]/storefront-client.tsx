@@ -320,11 +320,11 @@ export default function StorefrontClient({
   const [cardLoading, setCardLoading] = useState(false);
   const [cardError, setCardError] = useState<string | null>(null);
   const [cardPaid, setCardPaid] = useState(false);
-  const [scratchPhone, setScratchPhone] = useState("");
   const [scratchResult, setScratchResult] = useState<{
     discount_percent: number;
     redeemed: boolean;
     already_existed: boolean;
+    expired: boolean;
   } | null>(null);
   const [scratchLoading, setScratchLoading] = useState(false);
   const [scratchRevealing, setScratchRevealing] = useState(false);
@@ -521,7 +521,7 @@ export default function StorefrontClient({
       ? 0
       : (neighborhoods.find((n) => n.id === neighborhoodId)?.fee ?? 0);
   const scratchDiscountPreview =
-    scratchResult && !scratchResult.redeemed
+    scratchResult && !scratchResult.redeemed && !scratchResult.expired
       ? Math.round(total * (scratchResult.discount_percent / 100) * 100) / 100
       : 0;
   const totalWithDelivery =
@@ -648,22 +648,15 @@ export default function StorefrontClient({
 
   async function handleScratch() {
     setScratchError(null);
-    const phone = scratchPhone.trim();
-    if (phone.length < 10) {
-      setScratchError("Digite um WhatsApp válido pra raspar.");
-      return;
-    }
     setScratchLoading(true);
     const { data, error: scratchRpcError } = await getCustomerSupabase().rpc("get_or_create_scratch_card", {
       p_store_id: store.id,
-      p_customer_phone: phone,
     });
     setScratchLoading(false);
     if (scratchRpcError) {
       setScratchError(scratchRpcError.message);
       return;
     }
-    if (!customerPhone.trim()) setCustomerPhone(phone);
     // Um suspense curtinho antes de revelar — em vez do resultado aparecer
     // instantâneo, dá aquele momento de "vai que eu ganhei" antes do pop.
     setScratchRevealing(true);
@@ -1836,22 +1829,16 @@ export default function StorefrontClient({
             ) : !scratchResult ? (
               <>
                 <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
-                  Digite seu WhatsApp e raspe pra tentar ganhar um desconto na sua compra dessa semana.
+                  Toque pra raspar e tentar ganhar um desconto válido por 48 horas. Uma raspadinha por
+                  semana.
                 </p>
-                <div className="mt-2 flex gap-2">
-                  <input
-                    type="tel"
-                    value={scratchPhone}
-                    onChange={(e) => setScratchPhone(e.target.value)}
-                    placeholder="Seu WhatsApp"
-                    className="min-w-0 flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800"
-                  />
+                <div className="mt-2">
                   <button
                     onClick={handleScratch}
                     disabled={scratchLoading}
-                    className="shrink-0 rounded-lg bg-purple-700 px-4 py-2 text-sm font-semibold text-white transition active:scale-95 disabled:opacity-60"
+                    className="rounded-lg bg-purple-700 px-4 py-2 text-sm font-semibold text-white transition active:scale-95 disabled:opacity-60"
                   >
-                    {scratchLoading ? "Raspando…" : "Raspar"}
+                    {scratchLoading ? "Raspando…" : "🎟️ Raspar agora"}
                   </button>
                 </div>
                 {scratchError && <p className="mt-1 text-sm text-red-600 dark:text-red-400">{scratchError}</p>}
@@ -1860,6 +1847,11 @@ export default function StorefrontClient({
               <p className="mt-1 animate-mm-fade-up text-sm text-slate-600 dark:text-slate-400">
                 Você já usou a raspadinha dessa semana ({scratchResult.discount_percent}% de desconto).
                 Volta semana que vem!
+              </p>
+            ) : scratchResult.expired ? (
+              <p className="mt-1 animate-mm-fade-up text-sm text-slate-600 dark:text-slate-400">
+                Você ganhou {scratchResult.discount_percent}% de desconto, mas as 48 horas pra usar já
+                passaram. Volta semana que vem pra raspar de novo!
               </p>
             ) : (
               <div className="relative mt-2 overflow-hidden rounded-xl bg-gradient-to-br from-purple-100 to-purple-50 p-3 dark:from-purple-900/40 dark:to-purple-950/40">
@@ -1875,8 +1867,7 @@ export default function StorefrontClient({
                 <p className="animate-mm-prize-pop text-sm text-purple-900 dark:text-purple-200">
                   🎉 Você ganhou{" "}
                   <strong className="text-base">{scratchResult.discount_percent}% de desconto</strong>! Ele
-                  é aplicado automaticamente quando você finalizar o pedido com esse mesmo WhatsApp, até o
-                  fim da semana.
+                  é aplicado automaticamente se você finalizar o pedido nas próximas 48 horas.
                 </p>
               </div>
             )}
