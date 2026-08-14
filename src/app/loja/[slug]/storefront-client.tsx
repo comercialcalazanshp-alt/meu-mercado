@@ -321,6 +321,7 @@ export default function StorefrontClient({
   const [storeComment, setStoreComment] = useState("");
   const [submittingStoreReview, setSubmittingStoreReview] = useState(false);
   const [storeReviewSubmitted, setStoreReviewSubmitted] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
   const [scanningBarcode, setScanningBarcode] = useState(false);
   const [scanCameraError, setScanCameraError] = useState<string | null>(null);
   const [scanUnsupported, setScanUnsupported] = useState(false);
@@ -471,15 +472,21 @@ export default function StorefrontClient({
       ? storeReviews.reduce((sum, r) => sum + r.rating, 0) / storeReviews.length
       : 0;
 
+  const visibleProducts = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return products;
+    return products.filter((p) => p.name.toLowerCase().includes(q));
+  }, [products, searchQuery]);
+
   const categories = useMemo(() => {
     const groups = new Map<string, Product[]>();
-    for (const product of products) {
+    for (const product of visibleProducts) {
       const key = product.category || "Outros";
       if (!groups.has(key)) groups.set(key, []);
       groups.get(key)!.push(product);
     }
     return Array.from(groups.entries());
-  }, [products]);
+  }, [visibleProducts]);
 
   function setQuantity(key: string, quantity: number) {
     setCart((prev) => ({ ...prev, [key]: Math.max(0, quantity) }));
@@ -1662,17 +1669,48 @@ export default function StorefrontClient({
         </div>
       )}
 
-      {products.some((p) => p.barcode) && (
-        <div className="mx-auto w-full max-w-5xl px-4 pt-5 sm:px-6">
+      <div className="mx-auto w-full max-w-5xl px-4 pt-5 sm:px-6">
+        <form onSubmit={(e) => e.preventDefault()} className="flex gap-2">
+          <div className="flex min-w-0 flex-1 items-center gap-2 rounded-2xl border border-slate-300 bg-white px-4 py-3 shadow-sm dark:border-slate-700 dark:bg-slate-900">
+            <span aria-hidden className="text-slate-400 dark:text-slate-500">
+              🔍
+            </span>
+            <input
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Buscar produto pelo nome…"
+              className="min-w-0 flex-1 bg-transparent text-sm text-slate-900 outline-none placeholder:text-slate-400 dark:text-slate-50 dark:placeholder:text-slate-500"
+            />
+          </div>
           <button
-            type="button"
-            onClick={openBarcodeScanner}
-            className="flex w-full items-center justify-center gap-2 rounded-2xl border border-dashed border-slate-300 bg-white px-4 py-3 text-sm font-medium text-slate-700 shadow-sm transition hover:border-[var(--brand-bg)] hover:text-[var(--brand-bg)] active:scale-[0.99] dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300"
+            type="submit"
+            className="shrink-0 rounded-2xl bg-[var(--accent-bg)] px-4 py-3 text-sm font-semibold text-[var(--accent-text)] shadow-sm transition hover:brightness-110"
           >
-            📷 Ler código de barras do produto
+            Buscar
           </button>
-        </div>
-      )}
+          {products.some((p) => p.barcode) && (
+            <button
+              type="button"
+              onClick={openBarcodeScanner}
+              aria-label="Ler código de barras"
+              title="Ler código de barras"
+              className="shrink-0 rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm shadow-sm transition hover:border-[var(--brand-bg)] dark:border-slate-700 dark:bg-slate-900"
+            >
+              📷
+            </button>
+          )}
+        </form>
+        {searchQuery.trim() && (
+          <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+            {visibleProducts.length === 0
+              ? `Nenhum produto encontrado pra "${searchQuery.trim()}".`
+              : `${visibleProducts.length} produto(s) encontrado(s) pra "${searchQuery.trim()}".`}{" "}
+            <button type="button" onClick={() => setSearchQuery("")} className="underline">
+              Limpar busca
+            </button>
+          </p>
+        )}
+      </div>
 
       {store.scratch_enabled && (
         <div className="mx-auto w-full max-w-5xl px-4 pt-5 sm:px-6">
