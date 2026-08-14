@@ -78,7 +78,7 @@ export default async function Loja({ params }: { params: Promise<{ slug: string 
       .order("name", { ascending: true }),
     supabase
       .from("banners")
-      .select("id, title, image_url, link_url")
+      .select("id, title, image_url, link_url, focal_x, focal_y, text_style, overlay_text")
       .eq("store_id", store.id)
       .order("created_at", { ascending: false }),
     supabase

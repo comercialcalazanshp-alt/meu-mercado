@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useSearchParams } from "next/navigation";
 import { getSupabase } from "@/lib/supabase";
 import { getCustomerSupabase } from "@/lib/supabase-customer";
+import { BannerOverlay, type BannerTextStyle } from "@/components/BannerOverlay";
 
 type BeforeInstallPromptEvent = Event & {
   prompt: () => Promise<void>;
@@ -109,6 +110,10 @@ type Banner = {
   title: string;
   image_url: string;
   link_url: string | null;
+  focal_x: number;
+  focal_y: number;
+  text_style: BannerTextStyle | null;
+  overlay_text: string | null;
 };
 
 type Neighborhood = {
@@ -1613,12 +1618,16 @@ export default function StorefrontClient({
           <div className="flex snap-x gap-4 overflow-x-auto pb-1">
             {banners.map((banner) => {
               const content = (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={banner.image_url}
-                  alt={banner.title}
-                  className="h-40 w-full shrink-0 snap-start rounded-2xl object-cover shadow-sm sm:h-52 sm:w-[26rem]"
-                />
+                <div className="relative h-40 w-full shrink-0 snap-start overflow-hidden rounded-2xl shadow-sm sm:h-52 sm:w-[26rem]">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={banner.image_url}
+                    alt={banner.title}
+                    className="h-full w-full object-cover"
+                    style={{ objectPosition: `${banner.focal_x * 100}% ${banner.focal_y * 100}%` }}
+                  />
+                  <BannerOverlay style={banner.text_style} text={banner.overlay_text} />
+                </div>
               );
               return banner.link_url ? (
                 <a

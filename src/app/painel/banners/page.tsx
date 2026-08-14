@@ -4,6 +4,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { getSupabase } from "@/lib/supabase";
 import { useStore } from "@/lib/store-context";
 import PhotoField from "@/components/PhotoField";
+import { BannerOverlay, BANNER_TEXT_STYLES, type BannerTextStyle } from "@/components/BannerOverlay";
 
 type Banner = {
   id: string;
@@ -13,14 +14,19 @@ type Banner = {
   start_at: string | null;
   end_at: string | null;
   active: boolean;
+  focal_x: number;
+  focal_y: number;
+  text_style: BannerTextStyle | null;
+  overlay_text: string | null;
 };
 
 type ProductOption = { id: string; name: string; image_url: string | null };
 
 function buildBannerPrompt(title: string) {
   return [
-    `Banner promocional pra loja de supermercado, estilo comercial e chamativo, com o tema "${title.trim() || "promoção"}".`,
-    "Cores vivas, boa legibilidade se tiver texto, sem marcas d'água, formato retangular horizontal.",
+    `Foto de fundo pra banner promocional de loja de supermercado, tema "${title.trim() || "promoção"}".`,
+    "Formato retangular horizontal (bem mais largo que alto), cores vivas, estilo comercial.",
+    "Não desenhe nenhum texto, letra, número ou palavra na imagem — só a foto/ilustração de fundo, sem nada escrito. O texto é adicionado depois por fora.",
   ].join(" ");
 }
 
@@ -41,6 +47,11 @@ function statusLabel(banner: Banner) {
   return { text: "No ar", style: "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-400" };
 }
 
+// Mesma caixa (tamanho + corte) usada na vitrine — a prévia aqui precisa
+// bater exatamente com o que o cliente vê, senão o ajuste de ponto focal e
+// o estilo de texto viram achismo.
+const BANNER_BOX_CLASS = "relative h-40 w-full overflow-hidden rounded-2xl shadow-sm sm:h-52 sm:w-[26rem]";
+
 export default function Banners() {
   const store = useStore();
   const [banners, setBanners] = useState<Banner[]>([]);
@@ -53,6 +64,10 @@ export default function Banners() {
   const [linkUrl, setLinkUrl] = useState("");
   const [startAt, setStartAt] = useState("");
   const [endAt, setEndAt] = useState("");
+  const [focalX, setFocalX] = useState(0.5);
+  const [focalY, setFocalY] = useState(0.5);
+  const [textStyle, setTextStyle] = useState<BannerTextStyle | null>(null);
+  const [overlayText, setOverlayText] = useState("");
   const [saving, setSaving] = useState(false);
   const [sharingId, setSharingId] = useState<string | null>(null);
   const [fallbackFor, setFallbackFor] = useState<string | null>(null);
@@ -62,7 +77,7 @@ export default function Banners() {
     const [{ data }, { data: productsData }] = await Promise.all([
       getSupabase()
         .from("banners")
-        .select("id, title, image_url, link_url, start_at, end_at, active")
+        .select("id, title, image_url, link_url, start_at, end_at, active, focal_x, focal_y, text_style, overlay_text")
         .eq("store_id", store.id)
         .order("created_at", { ascending: false }),
       getSupabase()
@@ -82,12 +97,24 @@ export default function Banners() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [store.id]);
 
+  function resetForm() {
+    setTitle("");
+    setImageUrl("");
+    setLinkUrl("");
+    setStartAt("");
+    setEndAt("");
+    setFocalX(0.5);
+    setFocalY(0.5);
+    setTextStyle(null);
+    setOverlayText("");
+  }
+
   async function handleAdd(e: FormEvent) {
     e.preventDefault();
     setError(null);
 
     if (!title.trim() || !imageUrl.trim()) {
-      setError("Preencha o título e o link da imagem.");
+      setError("Preencha o título e a imagem.");
       return;
     }
 
@@ -99,6 +126,10 @@ export default function Banners() {
       link_url: linkUrl.trim() || null,
       start_at: startAt ? new Date(startAt).toISOString() : null,
       end_at: endAt ? new Date(endAt + "T23:59:59").toISOString() : null,
+      focal_x: focalX,
+      focal_y: focalY,
+      text_style: textStyle,
+      overlay_text: textStyle ? overlayText.trim() || null : null,
     });
     setSaving(false);
 
@@ -107,12 +138,16 @@ export default function Banners() {
       return;
     }
 
-    setTitle("");
-    setImageUrl("");
-    setLinkUrl("");
-    setStartAt("");
-    setEndAt("");
+    resetForm();
     loadBanners();
+  }
+
+  function handleFocalClick(e: React.MouseEvent<HTMLDivElement>) {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = (e.clientX - rect.left) / rect.width;
+    const y = (e.clientY - rect.top) / rect.height;
+    setFocalX(Math.min(1, Math.max(0, x)));
+    setFocalY(Math.min(1, Math.max(0, y)));
   }
 
   async function toggleActive(id: string, active: boolean) {
@@ -172,19 +207,90 @@ export default function Banners() {
         <input
           value={title}
           onChange={(e) => setTitle(e.target.value)}
-          placeholder="Título (ex: Promoção de fim de semana)"
+          placeholder="Título interno (ex: Promoção de fim de semana)"
           className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50 sm:col-span-2"
         />
         <div className="sm:col-span-2">
           <PhotoField
             storeId={store.id}
             value={imageUrl}
-            onChange={setImageUrl}
+            onChange={(url) => {
+              setImageUrl(url);
+              setFocalX(0.5);
+              setFocalY(0.5);
+            }}
             uploadPrefix="banner"
             promptSeed={buildBannerPrompt(title)}
             catalogProducts={products}
+            imageSize="1536x1024"
           />
         </div>
+
+        {imageUrl && (
+          <div className="sm:col-span-2">
+            <p className="text-xs font-medium text-slate-500 dark:text-slate-400">
+              Clique na imagem no ponto que não pode sumir (ex: o produto, o rosto) — o site sempre
+              mantém esse ponto visível, mesmo cortando o resto pra caber na tela.
+            </p>
+            <div className={`${BANNER_BOX_CLASS} mt-2 cursor-crosshair`} onClick={handleFocalClick}>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={imageUrl}
+                alt=""
+                className="h-full w-full object-cover"
+                style={{ objectPosition: `${focalX * 100}% ${focalY * 100}%` }}
+              />
+              <div
+                className="pointer-events-none absolute h-5 w-5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white bg-red-500/90 shadow"
+                style={{ left: `${focalX * 100}%`, top: `${focalY * 100}%` }}
+              />
+              <BannerOverlay style={textStyle} text={overlayText} />
+            </div>
+
+            <div className="mt-3">
+              <p className="text-xs font-medium text-slate-500 dark:text-slate-400">
+                Texto sobre a imagem (opcional)
+              </p>
+              <div className="mt-1 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => setTextStyle(null)}
+                  className={`rounded-lg border px-3 py-1.5 text-xs font-medium ${
+                    textStyle === null
+                      ? "border-blue-900 bg-blue-900 text-amber-300 dark:border-blue-700 dark:bg-blue-800"
+                      : "border-slate-300 text-slate-700 dark:border-slate-700 dark:text-slate-300"
+                  }`}
+                >
+                  Sem texto
+                </button>
+                {BANNER_TEXT_STYLES.map((opt) => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => setTextStyle(opt.value)}
+                    className={`rounded-lg border px-3 py-1.5 text-xs font-medium ${
+                      textStyle === opt.value
+                        ? "border-blue-900 bg-blue-900 text-amber-300 dark:border-blue-700 dark:bg-blue-800"
+                        : "border-slate-300 text-slate-700 dark:border-slate-700 dark:text-slate-300"
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+              {textStyle && (
+                <input
+                  value={overlayText}
+                  onChange={(e) => setOverlayText(e.target.value)}
+                  placeholder="Ex: 10% OFF hoje"
+                  maxLength={40}
+                  className="mt-2 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                />
+              )}
+            </div>
+          </div>
+        )}
+
         <input
           value={linkUrl}
           onChange={(e) => setLinkUrl(e.target.value)}
@@ -236,12 +342,16 @@ export default function Banners() {
               className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900"
             >
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={banner.image_url}
-                  alt={banner.title}
-                  className="h-20 w-full shrink-0 rounded-lg object-cover sm:w-32"
-                />
+                <div className="relative h-20 w-full shrink-0 overflow-hidden rounded-lg sm:w-32">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={banner.image_url}
+                    alt={banner.title}
+                    className="h-full w-full object-cover"
+                    style={{ objectPosition: `${banner.focal_x * 100}% ${banner.focal_y * 100}%` }}
+                  />
+                  <BannerOverlay style={banner.text_style} text={banner.overlay_text} />
+                </div>
                 <div className="min-w-0 flex-1">
                   <p className="font-medium text-slate-900 dark:text-slate-50">{banner.title}</p>
                   <p className="text-xs text-slate-500 dark:text-slate-400">

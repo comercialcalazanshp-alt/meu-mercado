@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { getSupabase } from "@/lib/supabase";
 
 export function resizeImage(file: File, maxSize = 800): Promise<Blob> {
@@ -44,6 +44,8 @@ type CatalogProduct = { id: string; name: string; image_url: string | null };
 // Campo de foto reutilizável: tirar foto / escolher da galeria, colar link,
 // ou gerar com IA (texto editável + fotos de referência, do catálogo ou
 // tiradas na hora). Usado em Kits, Receitas e Banners.
+type RecentImage = { url: string; name: string };
+
 export default function PhotoField({
   storeId,
   value,
@@ -51,6 +53,7 @@ export default function PhotoField({
   uploadPrefix,
   promptSeed,
   catalogProducts = [],
+  imageSize = "1024x1024",
 }: {
   storeId: string;
   value: string;
@@ -58,6 +61,7 @@ export default function PhotoField({
   uploadPrefix: string;
   promptSeed: string;
   catalogProducts?: CatalogProduct[];
+  imageSize?: "1024x1024" | "1536x1024" | "1024x1536";
 }) {
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -71,6 +75,28 @@ export default function PhotoField({
   const [generating, setGenerating] = useState(false);
   const extraRefInputRef = useRef<HTMLInputElement>(null);
 
+  const [recentOpen, setRecentOpen] = useState(false);
+  const [recentImages, setRecentImages] = useState<RecentImage[] | null>(null);
+  const [loadingRecent, setLoadingRecent] = useState(false);
+
+  useEffect(() => {
+    if (!recentOpen || recentImages !== null) return;
+    setLoadingRecent(true);
+    getSupabase()
+      .storage.from("product-images")
+      .list(storeId, { limit: 30, sortBy: { column: "created_at", order: "desc" } })
+      .then(({ data }) => {
+        const files = (data ?? []).filter((f) => f.id);
+        setRecentImages(
+          files.map((f) => ({
+            name: f.name,
+            url: getSupabase().storage.from("product-images").getPublicUrl(`${storeId}/${f.name}`).data.publicUrl,
+          })),
+        );
+        setLoadingRecent(false);
+      });
+  }, [recentOpen, recentImages, storeId]);
+
   async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     e.target.value = "";
@@ -80,6 +106,7 @@ export default function PhotoField({
     try {
       const url = await uploadStoreImage(file, storeId, uploadPrefix);
       onChange(url);
+      setRecentImages(null);
     } catch (err) {
       setError("Não deu pra enviar a foto: " + (err instanceof Error ? err.message : ""));
     } finally {
@@ -132,7 +159,13 @@ export default function PhotoField({
     const res = await fetch("/api/ai-image", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ store_id: storeId, prompt, reference_image_urls: refUrls, prefix: uploadPrefix }),
+      body: JSON.stringify({
+        store_id: storeId,
+        prompt,
+        reference_image_urls: refUrls,
+        prefix: uploadPrefix,
+        size: imageSize,
+      }),
     });
     const data = await res.json();
     setGenerating(false);
@@ -142,6 +175,7 @@ export default function PhotoField({
     }
     onChange(data.image_url as string);
     setAiOpen(false);
+    setRecentImages(null);
   }
 
   const withPhoto = catalogProducts.filter((p) => p.image_url);
@@ -178,6 +212,37 @@ export default function PhotoField({
         className="mt-2 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
       />
       {error && <p className="mt-1 text-xs text-red-600">{error}</p>}
+
+      <button
+        type="button"
+        onClick={() => setRecentOpen((v) => !v)}
+        className="mt-2 text-xs font-medium text-slate-500 underline dark:text-slate-400"
+      >
+        {recentOpen ? "Esconder imagens recentes" : "🖼️ Reaproveitar imagem que já usei"}
+      </button>
+      {recentOpen && (
+        <div className="mt-2 rounded-lg border border-slate-200 p-2 dark:border-slate-800">
+          {loadingRecent && <p className="text-xs text-slate-500">Carregando…</p>}
+          {!loadingRecent && recentImages?.length === 0 && (
+            <p className="text-xs text-slate-500">Nenhuma imagem salva ainda.</p>
+          )}
+          <div className="flex max-h-32 flex-wrap gap-2 overflow-y-auto">
+            {recentImages?.map((img) => (
+              <button
+                key={img.url}
+                type="button"
+                onClick={() => onChange(img.url)}
+                className={`overflow-hidden rounded-lg border-2 ${
+                  value === img.url ? "border-purple-500" : "border-transparent"
+                }`}
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={img.url} alt="" className="h-14 w-14 object-cover" />
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {aiOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">

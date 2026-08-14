@@ -27,16 +27,20 @@ export async function POST(request: Request) {
     prompt,
     reference_image_urls,
     prefix,
+    size,
   } = (await request.json()) as {
     store_id: string;
     prompt: string;
     reference_image_urls?: string[];
     prefix?: string;
+    size?: "1024x1024" | "1536x1024" | "1024x1536";
   };
 
   if (!store_id || !prompt?.trim()) {
     return Response.json({ error: "Faltou o texto descrevendo a imagem" }, { status: 400 });
   }
+
+  const imageSize = size === "1536x1024" || size === "1024x1536" ? size : "1024x1024";
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
@@ -56,7 +60,7 @@ export async function POST(request: Request) {
     const form = new FormData();
     form.append("model", "gpt-image-1");
     form.append("prompt", prompt.trim());
-    form.append("size", "1024x1024");
+    form.append("size", imageSize);
     form.append("quality", "medium");
     for (const url of refUrls) {
       try {
@@ -83,7 +87,7 @@ export async function POST(request: Request) {
       body: JSON.stringify({
         model: "gpt-image-1",
         prompt: prompt.trim(),
-        size: "1024x1024",
+        size: imageSize,
         quality: "medium",
         n: 1,
       }),
