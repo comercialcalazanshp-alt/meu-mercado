@@ -111,6 +111,130 @@ function playBeep() {
   }
 }
 
+// Ícones pequenos e consistentes (sem lib nova) pra substituir emoji solto em
+// botão/estado — mesma linguagem visual em toda a tela.
+function IconSearch({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
+      <circle cx="11" cy="11" r="7" stroke="currentColor" strokeWidth="2" />
+      <path d="M21 21l-4.3-4.3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+    </svg>
+  );
+}
+function IconKeyboard({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
+      <rect x="2.5" y="6" width="19" height="12" rx="2" stroke="currentColor" strokeWidth="1.8" />
+      <path d="M6 10h.01M9.5 10h.01M13 10h.01M16.5 10h.01M6 14h9" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+    </svg>
+  );
+}
+function IconRepeat({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
+      <path d="M4 12a8 8 0 0 1 14-5.2M20 4v4h-4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M20 12a8 8 0 0 1-14 5.2M4 20v-4h4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+function IconSplit({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
+      <path d="M4 6h5l6 12h5M4 18h5l2.2-4.4M15.5 6H20M17.5 4l2.5 2-2.5 2M17.5 20l2.5-2-2.5-2" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+function IconPrinter({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
+      <path d="M6 9V3h12v6" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
+      <rect x="4" y="9" width="16" height="8" rx="1.5" stroke="currentColor" strokeWidth="1.8" />
+      <path d="M6 14h12v7H6z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
+    </svg>
+  );
+}
+function IconWarning({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
+      <path d="M12 3.5 2.5 20h19L12 3.5Z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
+      <path d="M12 10v4.5M12 17.2v.05" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+    </svg>
+  );
+}
+function IconCheck({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
+      <circle cx="12" cy="12" r="9.25" stroke="currentColor" strokeWidth="1.8" />
+      <path d="M8 12.3l2.6 2.6L16.3 9" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+function IconX({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
+      <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+    </svg>
+  );
+}
+function IconCart({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
+      <path d="M3 4h2l2.2 11.2a2 2 0 0 0 2 1.6h7.7a2 2 0 0 0 2-1.6L20.5 8H6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx="10" cy="20.5" r="1.4" fill="currentColor" />
+      <circle cx="17" cy="20.5" r="1.4" fill="currentColor" />
+    </svg>
+  );
+}
+function IconBanknote({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
+      <rect x="2.5" y="6" width="19" height="12" rx="2" stroke="currentColor" strokeWidth="1.8" />
+      <circle cx="12" cy="12" r="2.6" stroke="currentColor" strokeWidth="1.8" />
+      <path d="M6 9v.01M18 15v.01" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
+    </svg>
+  );
+}
+function IconPix({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
+      <path d="M8.5 4.5 4.5 8.5a2.8 2.8 0 0 0 0 4l4 4a2.8 2.8 0 0 0 4 0l4-4a2.8 2.8 0 0 0 0-4l-4-4a2.8 2.8 0 0 0-4 0Z" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
+      <path d="M9 9.2 12 12l3-2.8M9 14.8 12 12l3 2.8" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+function IconCard({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
+      <rect x="2.5" y="5.5" width="19" height="13" rx="2" stroke="currentColor" strokeWidth="1.8" />
+      <path d="M2.5 9.5h19" stroke="currentColor" strokeWidth="1.8" />
+      <path d="M6 14h4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+    </svg>
+  );
+}
+function IconBook({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
+      <path d="M4 5.2c0-.7.6-1.2 1.3-1.1 2 .2 4.3.9 6.7 2.4 2.4-1.5 4.7-2.2 6.7-2.4.7-.1 1.3.4 1.3 1.1v13c0 .7-.6 1.2-1.3 1.1-2-.2-4.3-.8-6.7-2.3-2.4 1.5-4.7 2.1-6.7 2.3-.7.1-1.3-.4-1.3-1.1v-13Z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" />
+      <path d="M12 6.5v13" stroke="currentColor" strokeWidth="1.7" />
+    </svg>
+  );
+}
+function IconScale({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
+      <path d="M12 3v3M6 6h12M6 6 3.5 11a2.5 2.5 0 0 0 5 0L6 6ZM18 6l-2.5 5a2.5 2.5 0 0 0 5 0L18 6Z" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M8 21h8M12 15v6" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+    </svg>
+  );
+}
+function IconTrash({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
+      <path d="M4 7h16M9 7V4.8c0-.4.4-.8.9-.8h4.2c.5 0 .9.4.9.8V7M6.5 7l.7 12.3c0 .9.8 1.7 1.7 1.7h6.2c.9 0 1.7-.8 1.7-1.7L17.5 7" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 export default function Pdv() {
   const store = useStore();
   const [products, setProducts] = useState<Product[]>([]);
@@ -674,42 +798,54 @@ export default function Pdv() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cart, paymentMethod, cashReceivedValue, customerPhone, saving, total, creditCustomerId, splitMode]);
 
+  const PAYMENT_OPTIONS: [PaymentMethod, string, (p: { className?: string }) => React.JSX.Element][] = [
+    ["dinheiro", "Dinheiro", IconBanknote],
+    ["pix", "Pix", IconPix],
+    ["cartao", "Cartão", IconCard],
+    ["fiado", "Crediário", IconBook],
+  ];
+
   return (
-    <div className="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_380px]">
+    <div className="grid grid-cols-1 gap-5 lg:grid-cols-[1fr_400px]">
       <div>
-        <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-50">PDV — venda no balcão</h1>
+            <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-50">
+              PDV <span className="font-normal text-slate-400 dark:text-slate-500">— venda no balcão</span>
+            </h1>
             {sellerEmail && (
-              <p className="text-xs text-slate-400 dark:text-slate-500">Vendendo como: {sellerEmail}</p>
+              <p className="mt-0.5 text-xs text-slate-400 dark:text-slate-500">Vendendo como {sellerEmail}</p>
             )}
           </div>
           <div className="flex gap-2">
             <button
               onClick={() => setShowShortcuts((prev) => !prev)}
-              className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-600 dark:border-slate-700 dark:text-slate-300"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-600 shadow-sm transition hover:border-slate-400 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300"
             >
-              ⌨️ Atalhos (F1)
+              <IconKeyboard className="h-4 w-4" />
+              Atalhos
+              <kbd className="ml-0.5 rounded bg-slate-100 px-1 py-0.5 font-mono text-[10px] text-slate-500 dark:bg-slate-800 dark:text-slate-400">F1</kbd>
             </button>
             {lastSale && lastSale.length > 0 && (
               <button
                 onClick={repeatLastSale}
-                className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-600 dark:border-slate-700 dark:text-slate-300"
+                className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-600 shadow-sm transition hover:border-slate-400 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300"
               >
-                🔁 Repetir última venda
+                <IconRepeat className="h-4 w-4" />
+                Repetir última venda
               </button>
             )}
           </div>
         </div>
 
         {showShortcuts && (
-          <div className="mt-2 rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
-            <div className="grid grid-cols-1 gap-1 text-sm sm:grid-cols-2">
+          <div className="mt-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+            <div className="grid grid-cols-1 gap-2 text-sm sm:grid-cols-2">
               {SHORTCUTS.map(([key, label]) => (
-                <p key={key} className="text-slate-600 dark:text-slate-400">
-                  <span className="mr-2 rounded bg-slate-100 px-1.5 py-0.5 font-mono text-xs text-slate-700 dark:bg-slate-800 dark:text-slate-300">
+                <p key={key} className="flex items-center gap-2 text-slate-600 dark:text-slate-400">
+                  <kbd className="w-9 shrink-0 rounded-md bg-slate-100 py-1 text-center font-mono text-xs font-semibold text-slate-700 dark:bg-slate-800 dark:text-slate-300">
                     {key}
-                  </span>
+                  </kbd>
                   {label}
                 </p>
               ))}
@@ -718,15 +854,17 @@ export default function Pdv() {
         )}
 
         {caixaAberto === false && (
-          <p className="mt-2 rounded-lg bg-amber-100 px-3 py-2 text-sm text-amber-800 dark:bg-amber-900/40 dark:text-amber-400">
-            ⚠️ O caixa de hoje ainda não foi aberto.{" "}
-            <a href="/painel/caixa" className="underline">
+          <p className="mt-3 flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-800 dark:border-amber-900/50 dark:bg-amber-900/20 dark:text-amber-400">
+            <IconWarning className="h-4 w-4 shrink-0" />
+            O caixa de hoje ainda não foi aberto.{" "}
+            <a href="/painel/caixa" className="font-semibold underline underline-offset-2">
               Abrir caixa
             </a>
           </p>
         )}
 
         <div className="relative mt-4">
+          <IconSearch className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
           <input
             ref={searchInputRef}
             value={search}
@@ -734,11 +872,11 @@ export default function Pdv() {
             onKeyDown={handleSearchKeyDown}
             placeholder="Buscar por nome ou passar código de barras…"
             autoComplete="off"
-            className="w-full rounded-lg border border-slate-300 bg-white px-4 py-3 text-base text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+            className="w-full rounded-xl border border-slate-300 bg-white py-3.5 pl-11 pr-4 text-base text-slate-900 shadow-sm transition focus:border-blue-900 focus:outline-none focus:ring-2 focus:ring-blue-900/15 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50 dark:focus:border-blue-600"
           />
 
           {search.trim() && (
-            <div className="absolute z-10 mt-1 w-full rounded-lg border border-slate-200 bg-white shadow-lg dark:border-slate-800 dark:bg-slate-900">
+            <div className="absolute z-10 mt-1.5 w-full overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg dark:border-slate-800 dark:bg-slate-900">
               {loadingProducts ? (
                 <p className="px-4 py-3 text-sm text-slate-500">Carregando…</p>
               ) : filtered.length > 0 || filteredKits.length > 0 ? (
@@ -747,15 +885,13 @@ export default function Pdv() {
                     <button
                       key={p.id}
                       onClick={() => addToCart(p, qtyPrefix?.qty)}
-                      className="flex w-full items-center justify-between px-4 py-2 text-left text-sm hover:bg-slate-50 dark:hover:bg-slate-800"
+                      className="flex w-full items-center justify-between px-4 py-2.5 text-left text-sm transition hover:bg-slate-50 dark:hover:bg-slate-800"
                     >
-                      <span className="text-slate-900 dark:text-slate-50">
+                      <span className="flex items-center gap-1.5 text-slate-900 dark:text-slate-50">
                         {p.name}
-                        {p.sold_by_weight && (
-                          <span className="ml-1 text-xs text-slate-400 dark:text-slate-500">⚖️ kg</span>
-                        )}
+                        {p.sold_by_weight && <IconScale className="h-3.5 w-3.5 text-slate-400" />}
                       </span>
-                      <span className="text-slate-500 dark:text-slate-400">
+                      <span className="shrink-0 text-slate-500 dark:text-slate-400">
                         {formatCurrency(p.price)}
                         {p.sold_by_weight ? "/kg" : ""} · estoque{" "}
                         {Number.isInteger(p.stock) ? p.stock : p.stock.toFixed(3)}
@@ -767,19 +903,26 @@ export default function Pdv() {
                       key={k.id}
                       onClick={() => addKitToCart(k, qtyPrefix?.qty)}
                       disabled={k.buildable <= 0}
-                      className="flex w-full items-center justify-between px-4 py-2 text-left text-sm hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-slate-800"
+                      className="flex w-full items-center justify-between border-t border-slate-100 px-4 py-2.5 text-left text-sm transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-800 dark:hover:bg-slate-800"
                     >
-                      <span className="text-slate-900 dark:text-slate-50">🎁 Kit: {k.name}</span>
-                      <span className="text-slate-500 dark:text-slate-400">
+                      <span className="inline-flex items-center gap-1.5 rounded-full bg-purple-50 px-2 py-0.5 text-xs font-semibold text-purple-700 dark:bg-purple-900/30 dark:text-purple-300">
+                        Kit
+                      </span>
+                      <span className="min-w-0 flex-1 truncate px-2 text-slate-900 dark:text-slate-50">{k.name}</span>
+                      <span className="shrink-0 text-slate-500 dark:text-slate-400">
                         {formatCurrency(k.price)} · {k.buildable > 0 ? `dá pra montar ${k.buildable}` : "sem estoque"}
                       </span>
                     </button>
                   ))}
                   {qtyPrefix && (
-                    <p className="border-t border-slate-100 px-4 py-1.5 text-xs text-slate-400 dark:border-slate-800 dark:text-slate-500">
-                      {qtyPrefix.mode === "peso"
-                        ? `⚖️ Vai adicionar ${qtyPrefix.qty.toFixed(3)} kg do produto escolhido`
-                        : `🔢 Vai adicionar ${qtyPrefix.qty} unidades do produto escolhido`}
+                    <p className="flex items-center gap-1.5 border-t border-slate-100 bg-slate-50 px-4 py-1.5 text-xs text-slate-500 dark:border-slate-800 dark:bg-slate-800/60 dark:text-slate-400">
+                      {qtyPrefix.mode === "peso" ? (
+                        <>
+                          <IconScale className="h-3.5 w-3.5" /> Vai adicionar {qtyPrefix.qty.toFixed(3)} kg do produto escolhido
+                        </>
+                      ) : (
+                        `Vai adicionar ${qtyPrefix.qty} unidades do produto escolhido`
+                      )}
                     </p>
                   )}
                 </>
@@ -797,7 +940,7 @@ export default function Pdv() {
                         setQuickAddBarcode(looksLikeBarcode ? q : "");
                         setQuickAddOpen(true);
                       }}
-                      className="mt-2 text-sm font-medium text-blue-900 hover:underline dark:text-blue-400"
+                      className="mt-2 text-sm font-semibold text-blue-900 hover:underline dark:text-blue-400"
                     >
                       Cadastrar rápido
                     </button>
@@ -808,42 +951,42 @@ export default function Pdv() {
                         onChange={(e) => setQuickAddName(e.target.value)}
                         placeholder="Nome do produto"
                         autoFocus
-                        className="w-full rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                        className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
                       />
                       <div className="flex flex-wrap items-center gap-2">
                         <input
                           value={quickAddBarcode}
                           onChange={(e) => setQuickAddBarcode(e.target.value)}
                           placeholder="Código de barras (opcional)"
-                          className="w-40 rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                          className="w-40 rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
                         />
                         <input
                           value={quickAddPrice}
                           onChange={(e) => setQuickAddPrice(e.target.value)}
                           placeholder="Preço (R$)"
                           inputMode="decimal"
-                          className="w-28 rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                          className="w-28 rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
                         />
                         <input
                           value={quickAddStock}
                           onChange={(e) => setQuickAddStock(e.target.value)}
                           placeholder={quickAddSoldByWeight ? "Estoque (kg)" : "Estoque"}
                           inputMode="decimal"
-                          className="w-24 rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                          className="w-24 rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
                         />
-                        <label className="flex items-center gap-1 text-xs text-slate-600 dark:text-slate-400">
+                        <label className="flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-400">
                           <input
                             type="checkbox"
                             checked={quickAddSoldByWeight}
                             onChange={(e) => setQuickAddSoldByWeight(e.target.checked)}
                             className="h-4 w-4 rounded border-slate-300"
                           />
-                          ⚖️ por kg
+                          <IconScale className="h-3.5 w-3.5" /> por kg
                         </label>
                         <button
                           type="submit"
                           disabled={quickAddSaving}
-                          className="rounded-lg bg-blue-900 px-3 py-1 text-sm font-semibold text-amber-300 disabled:opacity-60 dark:bg-blue-800"
+                          className="rounded-lg bg-blue-900 px-3 py-1.5 text-sm font-semibold text-amber-300 disabled:opacity-60 dark:bg-blue-800"
                         >
                           {quickAddSaving ? "Salvando…" : "Salvar e adicionar"}
                         </button>
@@ -857,79 +1000,93 @@ export default function Pdv() {
         </div>
 
         {cart.length > 0 && (
-          <div className="mt-3 flex justify-end">
+          <div className="mt-3 flex items-center justify-between">
+            <p className="text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">
+              {cart.length} {cart.length === 1 ? "item" : "itens"} no carrinho
+            </p>
             <button
               onClick={cancelSale}
-              className="text-sm text-red-600 hover:underline dark:text-red-400"
+              className="inline-flex items-center gap-1 text-sm font-medium text-red-600 hover:underline dark:text-red-400"
             >
-              Cancelar venda / limpar carrinho
+              <IconTrash className="h-3.5 w-3.5" />
+              Cancelar venda
             </button>
           </div>
         )}
 
         <div className="mt-2 space-y-2">
           {cart.length === 0 && (
-            <p className="rounded-xl border border-dashed border-slate-300 px-4 py-8 text-center text-sm text-slate-500 dark:border-slate-700 dark:text-slate-400">
-              Carrinho vazio — busque um produto acima pra começar a venda.
-            </p>
+            <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-slate-300 px-4 py-10 text-center dark:border-slate-700">
+              <IconCart className="h-8 w-8 text-slate-300 dark:text-slate-600" />
+              <p className="text-sm text-slate-500 dark:text-slate-400">
+                Carrinho vazio — busque um produto acima pra começar a venda.
+              </p>
+            </div>
           )}
           {cart.map((line) => (
             <div
               key={line.productId}
-              className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900"
+              className="flex flex-col gap-2.5 rounded-xl border border-slate-200 bg-white p-3.5 shadow-sm sm:flex-row sm:items-center sm:justify-between dark:border-slate-800 dark:bg-slate-900"
             >
               <div className="min-w-0 flex-1">
-                <p className="truncate font-medium text-slate-900 dark:text-slate-50">{line.name}</p>
+                <p className="break-words font-medium text-slate-900 dark:text-slate-50">{line.name}</p>
                 <p className="text-sm text-slate-500 dark:text-slate-400">
                   {formatCurrency(line.price)} {line.soldByWeight ? "/kg" : "un."}
                 </p>
                 {line.quantity > line.stock && (
-                  <p className="text-xs font-medium text-red-600">
+                  <p className="mt-1 inline-flex items-center gap-1 rounded-full bg-red-50 px-2 py-0.5 text-xs font-medium text-red-700 dark:bg-red-900/30 dark:text-red-400">
+                    <IconWarning className="h-3 w-3" />
                     Só tem {line.soldByWeight ? line.stock.toFixed(3) : line.stock} em estoque
                   </p>
                 )}
                 {line.quantity <= line.stock && line.quantity === line.stock && (
-                  <p className="text-xs font-medium text-amber-600 dark:text-amber-400">
-                    ⚠️ Vai zerar o estoque
+                  <p className="mt-1 inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
+                    <IconWarning className="h-3 w-3" />
+                    Vai zerar o estoque
                   </p>
                 )}
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex shrink-0 items-center justify-between gap-3 sm:justify-end">
+                <div className="flex items-center gap-1.5 rounded-lg border border-slate-200 p-1 dark:border-slate-700">
+                  <button
+                    onClick={() => changeQuantity(line.productId, line.soldByWeight ? -0.1 : -1)}
+                    className="flex h-7 w-7 items-center justify-center rounded-md text-lg leading-none text-slate-600 transition hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
+                    aria-label="Diminuir quantidade"
+                  >
+                    −
+                  </button>
+                  <span className="w-16 text-center text-sm font-semibold tabular-nums text-slate-900 dark:text-slate-50">
+                    {formatQty(line)}
+                  </span>
+                  <button
+                    onClick={() => changeQuantity(line.productId, line.soldByWeight ? 0.1 : 1)}
+                    className="flex h-7 w-7 items-center justify-center rounded-md text-lg leading-none text-slate-600 transition hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
+                    aria-label="Aumentar quantidade"
+                  >
+                    +
+                  </button>
+                </div>
+                <p className="w-20 shrink-0 text-right font-semibold tabular-nums text-slate-900 dark:text-slate-50">
+                  {formatCurrency(line.price * line.quantity)}
+                </p>
                 <button
-                  onClick={() => changeQuantity(line.productId, line.soldByWeight ? -0.1 : -1)}
-                  className="h-8 w-8 rounded-lg border border-slate-300 text-lg leading-none text-slate-700 dark:border-slate-700 dark:text-slate-300"
+                  onClick={() => removeLine(line.productId)}
+                  aria-label="Remover item"
+                  className="shrink-0 rounded-lg p-1.5 text-slate-400 transition hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20"
                 >
-                  −
-                </button>
-                <span className="w-16 text-center font-semibold text-slate-900 dark:text-slate-50">
-                  {formatQty(line)}
-                </span>
-                <button
-                  onClick={() => changeQuantity(line.productId, line.soldByWeight ? 0.1 : 1)}
-                  className="h-8 w-8 rounded-lg border border-slate-300 text-lg leading-none text-slate-700 dark:border-slate-700 dark:text-slate-300"
-                >
-                  +
+                  <IconTrash className="h-4 w-4" />
                 </button>
               </div>
-              <p className="w-24 text-right font-semibold text-slate-900 dark:text-slate-50">
-                {formatCurrency(line.price * line.quantity)}
-              </p>
-              <button
-                onClick={() => removeLine(line.productId)}
-                className="text-sm text-red-600 hover:underline"
-              >
-                Remover
-              </button>
             </div>
           ))}
         </div>
 
         {recentSales.length > 0 && (
-          <details className="mt-6 rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
-            <summary className="cursor-pointer text-sm font-medium text-slate-700 dark:text-slate-300">
-              Vendas de hoje no balcão ({recentSales.length})
+          <details className="mt-6 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
+            <summary className="cursor-pointer px-4 py-3 text-sm font-medium text-slate-700 dark:text-slate-300">
+              Vendas de hoje no balcão <span className="text-slate-400 dark:text-slate-500">({recentSales.length})</span>
             </summary>
-            <div className="mt-2 space-y-1 text-sm">
+            <div className="space-y-1 border-t border-slate-100 px-4 py-3 text-sm dark:border-slate-800">
               {recentSales.map((sale) => (
                 <div key={sale.id} className="flex justify-between text-slate-600 dark:text-slate-400">
                   <span>
@@ -943,7 +1100,7 @@ export default function Pdv() {
                         ? PAYMENT_LABELS[sale.payment_method] ?? sale.payment_method
                         : "—"}
                   </span>
-                  <span className="font-medium text-slate-900 dark:text-slate-50">
+                  <span className="font-medium tabular-nums text-slate-900 dark:text-slate-50">
                     {formatCurrency(sale.total)}
                   </span>
                 </div>
@@ -953,12 +1110,15 @@ export default function Pdv() {
         )}
       </div>
 
-      <div className="h-fit rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
+      <div className="h-fit rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
         {success && (
-          <div className="mb-4 rounded-lg bg-green-50 p-3 text-sm text-green-800 dark:bg-green-900/30 dark:text-green-300">
-            <p className="font-semibold">Venda registrada! {formatCurrency(success.total)}</p>
+          <div className="mb-4 rounded-xl border border-green-200 bg-green-50 p-3.5 text-sm text-green-800 dark:border-green-900/50 dark:bg-green-900/20 dark:text-green-300">
+            <p className="flex items-center gap-1.5 font-semibold">
+              <IconCheck className="h-4 w-4" />
+              Venda registrada! {formatCurrency(success.total)}
+            </p>
             {success.troco !== null && (
-              <p>Troco: {formatCurrency(Math.max(0, success.troco))}</p>
+              <p className="mt-0.5 pl-6">Troco: {formatCurrency(Math.max(0, success.troco))}</p>
             )}
             <button
               onClick={() =>
@@ -972,20 +1132,21 @@ export default function Pdv() {
                   success.discountAmount,
                 )
               }
-              className="mt-2 text-sm font-medium underline"
+              className="mt-2 inline-flex items-center gap-1.5 text-sm font-medium underline underline-offset-2"
             >
-              🖨️ Imprimir cupom
+              <IconPrinter className="h-3.5 w-3.5" />
+              Imprimir cupom
             </button>
           </div>
         )}
 
         <div className="mb-3 flex items-center justify-between gap-2">
           <p className="text-sm font-medium text-slate-700 dark:text-slate-300">Desconto</p>
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1.5">
             <select
               value={discountType}
               onChange={(e) => setDiscountType(e.target.value as "valor" | "percentual")}
-              className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+              className="rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
             >
               <option value="valor">R$</option>
               <option value="percentual">%</option>
@@ -995,57 +1156,66 @@ export default function Pdv() {
               onChange={(e) => setDiscountValue(e.target.value)}
               placeholder="0"
               inputMode="decimal"
-              className="w-20 rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+              className="w-20 rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
             />
           </div>
         </div>
 
-        {discountAmount > 0 && (
-          <p className="text-sm text-slate-400 line-through dark:text-slate-500">{formatCurrency(subtotal)}</p>
-        )}
-        <p className="text-sm text-slate-500 dark:text-slate-400">
-          Total{discountAmount > 0 ? ` (desconto de ${formatCurrency(discountAmount)})` : ""}
-        </p>
-        <p className="text-3xl font-bold text-slate-900 dark:text-slate-50">{formatCurrency(total)}</p>
+        <div className="rounded-xl bg-slate-50 p-4 dark:bg-slate-800/50">
+          {discountAmount > 0 && (
+            <p className="text-sm text-slate-400 line-through dark:text-slate-500">{formatCurrency(subtotal)}</p>
+          )}
+          <p className="text-sm text-slate-500 dark:text-slate-400">
+            Total{discountAmount > 0 ? ` (desconto de ${formatCurrency(discountAmount)})` : ""}
+          </p>
+          <p className="text-4xl font-bold tabular-nums tracking-tight text-slate-900 dark:text-slate-50">
+            {formatCurrency(total)}
+          </p>
+        </div>
 
         <div className="mt-4">
           <div className="mb-2 flex items-center justify-between">
             <p className="text-sm font-medium text-slate-700 dark:text-slate-300">Forma de pagamento</p>
             <button
               onClick={toggleSplitMode}
-              className={`text-xs font-medium underline ${
+              className={`inline-flex items-center gap-1 text-xs font-medium underline underline-offset-2 ${
                 splitMode ? "text-blue-900 dark:text-blue-400" : "text-slate-500 dark:text-slate-400"
               }`}
             >
-              {splitMode ? "✕ Cancelar divisão" : "➗ Dividir pagamento (F10)"}
+              {splitMode ? (
+                <>
+                  <IconX className="h-3 w-3" /> Cancelar divisão
+                </>
+              ) : (
+                <>
+                  <IconSplit className="h-3.5 w-3.5" /> Dividir pagamento <kbd className="font-mono text-[10px]">F10</kbd>
+                </>
+              )}
             </button>
           </div>
 
           {!splitMode ? (
             <div className="grid grid-cols-2 gap-2">
-              {(
-                [
-                  ["dinheiro", "Dinheiro"],
-                  ["pix", "Pix"],
-                  ["cartao", "Cartão"],
-                  ["fiado", "Crediário"],
-                ] as [PaymentMethod, string][]
-              ).map(([value, label]) => (
-                <button
-                  key={value}
-                  onClick={() => selectPayment(value)}
-                  className={`rounded-lg border px-3 py-2 text-sm font-medium ${
-                    paymentMethod === value
-                      ? "border-blue-900 bg-blue-900 text-amber-300 dark:border-blue-700 dark:bg-blue-800"
-                      : "border-slate-300 text-slate-700 dark:border-slate-700 dark:text-slate-300"
-                  }`}
-                >
-                  {label}
-                </button>
-              ))}
+              {PAYMENT_OPTIONS.map(([value, label, Icon]) => {
+                const selected = paymentMethod === value;
+                return (
+                  <button
+                    key={value}
+                    onClick={() => selectPayment(value)}
+                    className={`flex items-center gap-2 rounded-xl border px-3 py-2.5 text-sm font-medium transition ${
+                      selected
+                        ? "border-blue-900 bg-blue-900 text-amber-300 shadow-sm dark:border-blue-700 dark:bg-blue-800"
+                        : "border-slate-200 text-slate-700 hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+                    }`}
+                  >
+                    <Icon className={`h-4 w-4 shrink-0 ${selected ? "text-amber-300" : "text-slate-400"}`} />
+                    {label}
+                  </button>
+                );
+              })}
             </div>
           ) : (
-            <div className="space-y-2">
+            <div className="space-y-2 rounded-xl border border-slate-200 p-3 dark:border-slate-700">
               {splitPayments.map((row, i) => (
                 <div key={i} className="flex items-center gap-2">
                   <select
@@ -1068,9 +1238,10 @@ export default function Pdv() {
                   {splitPayments.length > 2 && (
                     <button
                       onClick={() => removeSplitRow(i)}
-                      className="text-sm text-red-600 dark:text-red-400"
+                      aria-label="Remover forma de pagamento"
+                      className="rounded-lg p-1.5 text-slate-400 transition hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20"
                     >
-                      ✕
+                      <IconX className="h-4 w-4" />
                     </button>
                   )}
                 </div>
@@ -1078,13 +1249,13 @@ export default function Pdv() {
               {splitPayments.length < 4 && (
                 <button
                   onClick={addSplitRow}
-                  className="text-xs font-medium text-blue-900 underline dark:text-blue-400"
+                  className="text-xs font-medium text-blue-900 underline underline-offset-2 dark:text-blue-400"
                 >
                   + Adicionar forma
                 </button>
               )}
               <p
-                className={`text-sm font-semibold ${
+                className={`flex items-center gap-1.5 text-sm font-semibold ${
                   Math.abs(splitDiff) < 0.005
                     ? "text-green-600"
                     : splitDiff > 0
@@ -1092,33 +1263,37 @@ export default function Pdv() {
                       : "text-red-600"
                 }`}
               >
-                {Math.abs(splitDiff) < 0.005
-                  ? "✓ Bate certinho com o total"
-                  : splitDiff > 0
-                    ? `Falta ${formatCurrency(splitDiff)}`
-                    : `Passou ${formatCurrency(-splitDiff)}`}
+                {Math.abs(splitDiff) < 0.005 ? (
+                  <>
+                    <IconCheck className="h-3.5 w-3.5" /> Bate certinho com o total
+                  </>
+                ) : splitDiff > 0 ? (
+                  `Falta ${formatCurrency(splitDiff)}`
+                ) : (
+                  `Passou ${formatCurrency(-splitDiff)}`
+                )}
               </p>
             </div>
           )}
         </div>
 
         {paymentMethod === "dinheiro" && (
-          <div className="mt-4 space-y-2">
-            <div className="flex flex-wrap gap-2">
+          <div className="mt-4 space-y-2.5 rounded-xl border border-slate-200 p-3.5 dark:border-slate-700">
+            <div className="flex flex-wrap gap-1.5">
               {CASH_BUTTONS.map((value) => (
                 <button
                   key={value}
                   onClick={() =>
                     setCashReceived((prev) => String((Number(prev.replace(",", ".")) || 0) + value))
                   }
-                  className="rounded-lg border border-slate-300 px-3 py-1 text-sm font-medium text-slate-700 dark:border-slate-700 dark:text-slate-300"
+                  className="rounded-lg border border-slate-300 bg-white px-3 py-1 text-sm font-medium text-slate-700 transition hover:border-blue-900 hover:text-blue-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-blue-500 dark:hover:text-blue-400"
                 >
                   +{formatCurrency(value)}
                 </button>
               ))}
               <button
                 onClick={() => setCashReceived(String(total))}
-                className="rounded-lg border border-slate-300 px-3 py-1 text-sm font-medium text-slate-700 dark:border-slate-700 dark:text-slate-300"
+                className="rounded-lg border border-slate-300 bg-white px-3 py-1 text-sm font-medium text-slate-700 transition hover:border-blue-900 hover:text-blue-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-blue-500 dark:hover:text-blue-400"
               >
                 Valor exato
               </button>
@@ -1130,7 +1305,7 @@ export default function Pdv() {
               inputMode="decimal"
               className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
             />
-            <p className={`text-sm font-semibold ${troco < 0 ? "text-red-600" : "text-green-600"}`}>
+            <p className={`text-sm font-semibold tabular-nums ${troco < 0 ? "text-red-600" : "text-green-600"}`}>
               Troco: {formatCurrency(Math.max(0, troco))}
               {troco < 0 && " (falta " + formatCurrency(-troco) + ")"}
             </p>
@@ -1138,7 +1313,7 @@ export default function Pdv() {
         )}
 
         {(paymentMethod === "fiado" || (splitMode && splitHasFiado)) && (
-          <div className="mt-4 space-y-2">
+          <div className="mt-4 space-y-2.5 rounded-xl border border-slate-200 p-3.5 dark:border-slate-700">
             <div className="relative">
               <input
                 ref={creditSearchRef}
@@ -1151,12 +1326,12 @@ export default function Pdv() {
                     setCustomerPhone("");
                   }
                 }}
-                placeholder="Buscar cliente já cadastrado no crediário (F9)"
+                placeholder="Buscar cliente já cadastrado no crediário"
                 autoComplete="off"
                 className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
               />
               {creditMatches.length > 0 && (
-                <div className="absolute z-10 mt-1 w-full rounded-lg border border-slate-200 bg-white shadow-lg dark:border-slate-800 dark:bg-slate-900">
+                <div className="absolute z-10 mt-1 w-full overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg dark:border-slate-800 dark:bg-slate-900">
                   {creditMatches.map((c) => (
                     <button
                       key={c.id}
@@ -1173,8 +1348,9 @@ export default function Pdv() {
             </div>
 
             {creditCustomerId ? (
-              <p className="rounded-lg bg-green-50 px-3 py-2 text-sm text-green-800 dark:bg-green-900/30 dark:text-green-300">
-                ✓ Cliente encontrado: {customerName} · {customerPhone}
+              <p className="flex items-center gap-1.5 rounded-lg bg-green-50 px-3 py-2 text-sm text-green-800 dark:bg-green-900/30 dark:text-green-300">
+                <IconCheck className="h-4 w-4 shrink-0" />
+                Cliente encontrado: {customerName} · {customerPhone}
               </p>
             ) : (
               <>
@@ -1198,12 +1374,17 @@ export default function Pdv() {
           </div>
         )}
 
-        {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
+        {error && (
+          <p className="mt-3 flex items-center gap-1.5 text-sm text-red-600 dark:text-red-400">
+            <IconWarning className="h-4 w-4 shrink-0" />
+            {error}
+          </p>
+        )}
 
         <button
           onClick={handleFinalize}
           disabled={!canFinalize}
-          className="mt-4 w-full rounded-lg bg-blue-900 px-4 py-3 text-base font-semibold text-amber-300 disabled:opacity-40 dark:bg-blue-800"
+          className="mt-4 w-full rounded-xl bg-blue-900 px-4 py-3.5 text-base font-semibold text-amber-300 shadow-sm transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:brightness-100 dark:bg-blue-800"
         >
           {saving ? "Registrando…" : "Finalizar venda"}
         </button>
