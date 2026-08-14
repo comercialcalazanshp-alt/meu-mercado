@@ -1464,6 +1464,23 @@ export default function StorefrontClient({
             backgroundSize: "48px 48px",
           }}
         />
+        <div className="absolute right-3 top-3 z-10 sm:right-4 sm:top-4">
+          {customerLoggedIn ? (
+            <button
+              onClick={handleCustomerSignOut}
+              className="rounded-full bg-[var(--brand-text)]/15 px-3 py-1.5 text-xs font-medium text-[var(--brand-text)] backdrop-blur-sm"
+            >
+              👤 {customerAccountName ?? "Cliente"} · Sair
+            </button>
+          ) : (
+            <a
+              href={`/cliente/entrar?loja=${store.slug}`}
+              className="rounded-full bg-[var(--brand-text)]/15 px-3 py-1.5 text-xs font-medium text-[var(--brand-text)] backdrop-blur-sm"
+            >
+              👤 Entrar / Criar conta
+            </a>
+          )}
+        </div>
         <div className="relative mx-auto flex max-w-3xl flex-col items-center">
           <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-[var(--brand-text)]/15 text-2xl font-bold ring-1 ring-inset ring-[var(--brand-text)]/25 backdrop-blur-sm sm:h-20 sm:w-20 sm:text-3xl">
             {store.name.slice(0, 2).toUpperCase()}
