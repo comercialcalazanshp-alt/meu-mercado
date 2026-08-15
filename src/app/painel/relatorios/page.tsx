@@ -46,8 +46,14 @@ function dayKey(iso: string) {
 }
 
 function toCsvValue(value: string) {
-  if (/[",\n]/.test(value)) return '"' + value.replace(/"/g, '""') + '"';
-  return value;
+  // Nome/telefone do cliente vêm de texto livre digitado no checkout público
+  // — sem essa barreira, um pedido com nome tipo '=HYPERLINK("http://…")'
+  // vira uma fórmula ativa quando o dono (ou o contador) abre o CSV no
+  // Excel/Sheets. Um apóstrofo na frente força a célula a ser lida como
+  // texto puro, nunca como fórmula.
+  const safe = /^[=+\-@\t\r]/.test(value) ? "'" + value : value;
+  if (/[",\n]/.test(safe)) return '"' + safe.replace(/"/g, '""') + '"';
+  return safe;
 }
 
 function currentMonthValue() {

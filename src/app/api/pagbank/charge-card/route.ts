@@ -40,12 +40,20 @@ export async function POST(request: Request) {
   const supabase = getSupabaseAdmin();
   const { data: order } = await supabase
     .from("orders")
-    .select("id, customer_name, customer_phone, total")
+    .select("id, customer_name, customer_phone, total, card_paid_at")
     .eq("id", order_id)
     .maybeSingle();
 
   if (!order) {
     return Response.json({ error: "Pedido não encontrado" }, { status: 404 });
+  }
+
+  // Sem isso, esse endpoint público aceitaria tentativas de cobrança
+  // repetidas pro mesmo pedido — um jeito clássico de testar cartão roubado
+  // em massa (o pedido já pago vira um alvo reutilizável pra validar
+  // números). Um pedido só pode ser cobrado uma vez.
+  if (order.card_paid_at) {
+    return Response.json({ error: "Esse pedido já foi pago." }, { status: 409 });
   }
 
   const amountCents = Math.round(Number(order.total) * 100);

@@ -315,7 +315,14 @@ export default function Pedidos() {
         pay,
         CHANNEL_LABELS[o.channel] ?? o.channel,
       ]
-        .map((v) => `"${String(v).replace(/"/g, '""')}"`)
+        .map((v) => {
+          // Nome/telefone vêm do checkout público (texto livre do cliente) —
+          // sem essa barreira, um pedido com nome tipo '=HYPERLINK(...)' vira
+          // fórmula ativa quando o CSV é aberto no Excel/Sheets.
+          const str = String(v);
+          const safe = /^[=+\-@\t\r]/.test(str) ? "'" + str : str;
+          return `"${safe.replace(/"/g, '""')}"`;
+        })
         .join(",");
     });
     const csv = [header.join(","), ...lines].join("\n");

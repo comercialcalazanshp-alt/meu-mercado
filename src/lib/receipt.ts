@@ -8,6 +8,20 @@ function formatCurrency(value: number) {
   return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
+// O recibo é montado como string de HTML crua (pra imprimir num iframe), não
+// via JSX — então, ao contrário do resto do app, nada aqui escapa sozinho.
+// Sem isso, um nome de produto com "&"/"<"/">" (ex: importado de uma
+// planilha de fornecedor) quebra o HTML do cupom, e um nome malicioso
+// rodaria script na sessão de quem imprime.
+function escapeHtml(value: string) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 export function buildReceiptHtml(params: {
   storeName: string;
   whatsapp?: string | null;
@@ -25,7 +39,7 @@ export function buildReceiptHtml(params: {
   const itemsHtml = items
     .map(
       (item) =>
-        `<tr><td>${item.qtyLabel} ${item.name}</td><td class="r">${formatCurrency(item.lineTotal)}</td></tr>`,
+        `<tr><td>${escapeHtml(item.qtyLabel)} ${escapeHtml(item.name)}</td><td class="r">${formatCurrency(item.lineTotal)}</td></tr>`,
     )
     .join("");
 
@@ -35,12 +49,14 @@ export function buildReceiptHtml(params: {
          <p class="row"><span>Desconto</span><span>-${formatCurrency(discount)}</span></p>`
       : "";
 
-  const paymentHtml = paymentLines.map((line) => `<p class="row"><span>${line}</span></p>`).join("");
+  const paymentHtml = paymentLines
+    .map((line) => `<p class="row"><span>${escapeHtml(line)}</span></p>`)
+    .join("");
 
   const headerHtml = [
-    `<h2>${storeName}</h2>`,
-    whatsapp ? `<p class="center">${whatsapp}</p>` : "",
-    cnpj ? `<p class="center">CNPJ ${cnpj}</p>` : "",
+    `<h2>${escapeHtml(storeName)}</h2>`,
+    whatsapp ? `<p class="center">${escapeHtml(whatsapp)}</p>` : "",
+    cnpj ? `<p class="center">CNPJ ${escapeHtml(cnpj)}</p>` : "",
   ]
     .filter(Boolean)
     .join("");

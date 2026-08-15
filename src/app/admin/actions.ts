@@ -25,7 +25,10 @@ export async function isAdminAuthenticated(): Promise<boolean> {
 
 export async function adminLogin(password: string): Promise<{ error?: string }> {
   const expected = process.env.ADMIN_PASSWORD;
-  if (!expected || password !== expected) {
+  const a = Buffer.from(password);
+  const b = Buffer.from(expected ?? "");
+  const matches = !!expected && a.length === b.length && timingSafeEqual(a, b);
+  if (!matches) {
     return { error: "Senha incorreta." };
   }
 

@@ -1,5 +1,5 @@
 import "server-only";
-import { createHash } from "crypto";
+import { createHash, timingSafeEqual } from "crypto";
 import { getSupabaseAdmin } from "@/lib/supabase-admin";
 
 // O PagBank chama essa rota sozinho quando o status de um pagamento muda
@@ -14,10 +14,13 @@ export async function POST(request: Request) {
   }
 
   const rawBody = await request.text();
-  const receivedSignature = request.headers.get("x-authenticity-token");
+  const receivedSignature = request.headers.get("x-authenticity-token") ?? "";
   const expectedSignature = createHash("sha256").update(`${token}-${rawBody}`).digest("hex");
 
-  if (!receivedSignature || receivedSignature !== expectedSignature) {
+  const a = Buffer.from(receivedSignature);
+  const b = Buffer.from(expectedSignature);
+  const validSignature = a.length === b.length && timingSafeEqual(a, b);
+  if (!validSignature) {
     return new Response("Assinatura inválida", { status: 401 });
   }
 

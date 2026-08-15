@@ -172,8 +172,12 @@ function parseCsv(text: string): string[][] {
 }
 
 function toCsvValue(value: string) {
-  if (/[",\n]/.test(value)) return '"' + value.replace(/"/g, '""') + '"';
-  return value;
+  // Prefixo pra evitar que um valor tipo "=algo" vire fórmula ativa quando o
+  // CSV é aberto no Excel/Sheets (protege qualquer usuário do painel que
+  // abra o arquivo, não só o dono).
+  const safe = /^[=+\-@\t\r]/.test(value) ? "'" + value : value;
+  if (/[",\n]/.test(safe)) return '"' + safe.replace(/"/g, '""') + '"';
+  return safe;
 }
 
 function formatCurrency(value: number) {

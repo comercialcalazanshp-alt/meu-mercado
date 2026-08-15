@@ -108,8 +108,11 @@ function parseCsv(text: string): string[][] {
 }
 
 function toCsvValue(value: string) {
-  if (/[",\n]/.test(value)) return '"' + value.replace(/"/g, '""') + '"';
-  return value;
+  // Mesmo cuidado do CSV de produtos/pedidos: evita que um valor tipo
+  // "=algo" vire fórmula ativa ao abrir o arquivo no Excel/Sheets.
+  const safe = /^[=+\-@\t\r]/.test(value) ? "'" + value : value;
+  if (/[",\n]/.test(safe)) return '"' + safe.replace(/"/g, '""') + '"';
+  return safe;
 }
 
 function KitPriceHistoryChart({ kitId }: { kitId: string }) {
