@@ -46,6 +46,8 @@ function playNewOrderChime() {
   }
 }
 
+const CAIXA_ALLOWED_PATHS = new Set(["/painel/pdv", "/painel/caixa"]);
+
 const NAV_ITEMS = [
   { href: "/painel", label: "Início" },
   { href: "/painel/pdv", label: "PDV" },
@@ -81,6 +83,7 @@ export default function PainelLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const [store, setStore] = useState<Store | null>(null);
   const [status, setStatus] = useState<"loading" | "ready" | "sem-loja">("loading");
+  const [role, setRole] = useState<"completo" | "caixa">("completo");
   const [notifications, setNotifications] = useState<OrderNotification[]>([]);
   const [soundMuted, setSoundMuted] = useState(false);
   const [pushStatus, setPushStatus] = useState<"unsupported" | "off" | "on" | "denied">("off");
@@ -113,6 +116,9 @@ export default function PainelLayout({ children }: { children: ReactNode }) {
 
       setStore(storeRow);
       setStatus("ready");
+
+      const { data: roleData } = await supabase.rpc("get_my_role", { p_store_id: storeRow.id });
+      if (active && roleData === "caixa") setRole("caixa");
     }
 
     load();
@@ -135,6 +141,13 @@ export default function PainelLayout({ children }: { children: ReactNode }) {
   useEffect(() => {
     setSoundMuted(localStorage.getItem(SOUND_MUTED_KEY) === "1");
   }, []);
+
+  useEffect(() => {
+    if (status !== "ready" || role !== "caixa") return;
+    if (!CAIXA_ALLOWED_PATHS.has(pathname)) {
+      router.replace("/painel/pdv");
+    }
+  }, [status, role, pathname, router]);
 
   useEffect(() => {
     if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
@@ -278,10 +291,10 @@ export default function PainelLayout({ children }: { children: ReactNode }) {
       <div className="flex flex-1 flex-col bg-slate-50 dark:bg-slate-950">
         <div className="flex items-center justify-between border-b border-slate-200 bg-white px-4 py-2 dark:border-slate-800 dark:bg-slate-900">
           <a
-            href="/painel"
+            href={role === "caixa" ? "/painel/caixa" : "/painel"}
             className="text-sm font-medium text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
           >
-            ← Voltar ao painel
+            {role === "caixa" ? "Abrir/fechar caixa" : "← Voltar ao painel"}
           </a>
           <p className="truncate text-sm font-semibold text-slate-900 dark:text-slate-50">{store!.name}</p>
         </div>
@@ -366,7 +379,7 @@ export default function PainelLayout({ children }: { children: ReactNode }) {
           </div>
         </div>
         <nav className="flex gap-1 overflow-x-auto md:flex-col md:overflow-visible">
-          {NAV_ITEMS.map((item) => {
+          {(role === "caixa" ? NAV_ITEMS.filter((item) => CAIXA_ALLOWED_PATHS.has(item.href)) : NAV_ITEMS).map((item) => {
             const isActive = pathname === item.href;
             return (
               <a

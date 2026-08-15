@@ -8,6 +8,12 @@ type Member = {
   id: string;
   email: string;
   created_at: string;
+  role: "completo" | "caixa";
+};
+
+const ROLE_LABEL: Record<Member["role"], string> = {
+  completo: "Acesso completo",
+  caixa: "Só caixa/PDV",
 };
 
 function formatDate(iso: string) {
@@ -20,8 +26,10 @@ export default function Equipe() {
   const [loading, setLoading] = useState(true);
   const [isOwner, setIsOwner] = useState(false);
   const [email, setEmail] = useState("");
+  const [role, setRole] = useState<Member["role"]>("completo");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [savingRoleId, setSavingRoleId] = useState<string | null>(null);
 
   async function load() {
     setLoading(true);
@@ -33,7 +41,7 @@ export default function Equipe() {
 
     const { data } = await supabase
       .from("store_members")
-      .select("id, email, created_at")
+      .select("id, email, created_at, role")
       .eq("store_id", store.id)
       .order("created_at", { ascending: false });
     setMembers((data ?? []) as Member[]);
@@ -56,7 +64,7 @@ export default function Equipe() {
     setSaving(true);
     const { error: insertError } = await getSupabase()
       .from("store_members")
-      .insert({ store_id: store.id, email: trimmed });
+      .insert({ store_id: store.id, email: trimmed, role });
     setSaving(false);
     if (insertError) {
       setError(
@@ -67,6 +75,7 @@ export default function Equipe() {
       return;
     }
     setEmail("");
+    setRole("completo");
     load();
   }
 
@@ -74,6 +83,13 @@ export default function Equipe() {
     if (!confirm("Remover essa pessoa da equipe? Ela perde o acesso ao painel na hora.")) return;
     await getSupabase().from("store_members").delete().eq("id", id);
     load();
+  }
+
+  async function handleRoleChange(id: string, newRole: Member["role"]) {
+    setSavingRoleId(id);
+    setMembers((prev) => prev.map((m) => (m.id === id ? { ...m, role: newRole } : m)));
+    await getSupabase().from("store_members").update({ role: newRole }).eq("id", id);
+    setSavingRoleId(null);
   }
 
   if (!loading && !isOwner) {
@@ -91,22 +107,33 @@ export default function Equipe() {
     <div className="max-w-lg">
       <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-50">Equipe</h1>
       <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
-        Convide gente de confiança pra ajudar a tocar a loja — quem entra na lista tem acesso completo
-        ao painel (produtos, pedidos, PDV, caixa, fiado etc.), como se fosse você. Só você continua
-        podendo gerenciar a equipe e excluir a conta.
+        Convide gente de confiança pra ajudar a tocar a loja. "Acesso completo" é como se fosse você
+        (produtos, pedidos, PDV, caixa, fiado, relatórios etc.); "Só caixa/PDV" só consegue abrir/fechar
+        caixa e vender no balcão — sem ver fiado, despesas, relatórios ou mexer no cadastro. Só você
+        continua podendo gerenciar a equipe e excluir a conta.
       </p>
 
       <form
         onSubmit={handleInvite}
-        className="mt-4 flex flex-col gap-2 rounded-xl border border-slate-200 bg-white p-4 sm:flex-row dark:border-slate-800 dark:bg-slate-900"
+        className="mt-4 flex flex-col gap-2 rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900"
       >
-        <input
-          type="email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          placeholder="email@exemplo.com"
-          className="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800"
-        />
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <input
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="email@exemplo.com"
+            className="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800"
+          />
+          <select
+            value={role}
+            onChange={(e) => setRole(e.target.value as Member["role"])}
+            className="rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800"
+          >
+            <option value="completo">Acesso completo</option>
+            <option value="caixa">Só caixa/PDV</option>
+          </select>
+        </div>
         <button
           type="submit"
           disabled={saving}
@@ -142,12 +169,24 @@ export default function Equipe() {
                 adicionado em {formatDate(m.created_at)}
               </p>
             </div>
-            <button
-              onClick={() => handleRemove(m.id)}
-              className="text-xs font-medium text-red-600 hover:underline dark:text-red-400"
-            >
-              Remover
-            </button>
+            <div className="flex items-center gap-3">
+              <select
+                value={m.role}
+                onChange={(e) => handleRoleChange(m.id, e.target.value as Member["role"])}
+                disabled={savingRoleId === m.id}
+                title={ROLE_LABEL[m.role]}
+                className="rounded-lg border border-slate-300 px-2 py-1 text-xs dark:border-slate-700 dark:bg-slate-800"
+              >
+                <option value="completo">Acesso completo</option>
+                <option value="caixa">Só caixa/PDV</option>
+              </select>
+              <button
+                onClick={() => handleRemove(m.id)}
+                className="text-xs font-medium text-red-600 hover:underline dark:text-red-400"
+              >
+                Remover
+              </button>
+            </div>
           </div>
         ))}
       </div>
