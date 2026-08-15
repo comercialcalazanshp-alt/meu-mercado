@@ -15,13 +15,14 @@ function StatCard({ label, value }: { label: string; value: number }) {
 export default async function AdminDashboard() {
   const supabase = getSupabaseAdmin();
 
-  const [{ data: stores }, { data: products }, { data: orders }] = await Promise.all([
+  const [{ data: stores }, { data: products }, { data: orders }, { data: plans }] = await Promise.all([
     supabase
       .from("stores")
-      .select("id, slug, name, whatsapp, active, created_at")
+      .select("id, slug, name, whatsapp, active, created_at, plan_id")
       .order("created_at", { ascending: false }),
     supabase.from("products").select("store_id"),
     supabase.from("orders").select("store_id"),
+    supabase.from("plans").select("id, code, name, price_monthly").order("price_monthly"),
   ]);
 
   const productCounts = new Map<string, number>();
@@ -55,6 +56,7 @@ export default async function AdminDashboard() {
               <th className="px-3 py-2 font-medium">Criada em</th>
               <th className="px-3 py-2 font-medium">Produtos</th>
               <th className="px-3 py-2 font-medium">Pedidos</th>
+              <th className="px-3 py-2 font-medium">Plano</th>
               <th className="px-3 py-2 font-medium">Status</th>
               <th className="px-3 py-2 font-medium"></th>
             </tr>
@@ -62,7 +64,7 @@ export default async function AdminDashboard() {
           <tbody className="divide-y divide-slate-200 bg-white dark:divide-slate-800 dark:bg-slate-900">
             {(stores ?? []).length === 0 && (
               <tr>
-                <td colSpan={7} className="px-3 py-6 text-center text-slate-500">
+                <td colSpan={8} className="px-3 py-6 text-center text-slate-500">
                   Nenhuma loja cadastrada ainda.
                 </td>
               </tr>
@@ -73,6 +75,7 @@ export default async function AdminDashboard() {
                 store={store}
                 productCount={productCounts.get(store.id) ?? 0}
                 orderCount={orderCounts.get(store.id) ?? 0}
+                plans={plans ?? []}
               />
             ))}
           </tbody>

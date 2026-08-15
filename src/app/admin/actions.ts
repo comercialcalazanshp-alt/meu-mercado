@@ -52,3 +52,10 @@ export async function toggleStoreActive(storeId: string, active: boolean) {
   }
   await getSupabaseAdmin().from("stores").update({ active }).eq("id", storeId);
 }
+
+export async function updateStorePlan(storeId: string, planId: string) {
+  if (!(await isAdminAuthenticated())) {
+    throw new Error("Não autorizado");
+  }
+  await getSupabaseAdmin().from("stores").update({ plan_id: planId }).eq("id", storeId);
+}

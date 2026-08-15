@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { toggleStoreActive } from "./actions";
+import { toggleStoreActive, updateStorePlan } from "./actions";
 
 type Store = {
   id: string;
@@ -11,6 +11,14 @@ type Store = {
   whatsapp: string | null;
   active: boolean;
   created_at: string;
+  plan_id: string | null;
+};
+
+type Plan = {
+  id: string;
+  code: string;
+  name: string;
+  price_monthly: number;
 };
 
 function formatDate(iso: string) {
@@ -21,20 +29,32 @@ export default function StoreRow({
   store,
   productCount,
   orderCount,
+  plans,
 }: {
   store: Store;
   productCount: number;
   orderCount: number;
+  plans: Plan[];
 }) {
   const router = useRouter();
   const [active, setActive] = useState(store.active);
+  const [planId, setPlanId] = useState(store.plan_id ?? "");
   const [isPending, startTransition] = useTransition();
+  const [planPending, startPlanTransition] = useTransition();
 
   function handleToggle() {
     const next = !active;
     setActive(next);
     startTransition(async () => {
       await toggleStoreActive(store.id, next);
+      router.refresh();
+    });
+  }
+
+  function handlePlanChange(newPlanId: string) {
+    setPlanId(newPlanId);
+    startPlanTransition(async () => {
+      await updateStorePlan(store.id, newPlanId);
       router.refresh();
     });
   }
@@ -58,6 +78,20 @@ export default function StoreRow({
       </td>
       <td className="px-3 py-2 text-slate-600 dark:text-slate-400">{productCount}</td>
       <td className="px-3 py-2 text-slate-600 dark:text-slate-400">{orderCount}</td>
+      <td className="px-3 py-2">
+        <select
+          value={planId}
+          onChange={(e) => handlePlanChange(e.target.value)}
+          disabled={planPending}
+          className="rounded-lg border border-slate-300 px-2 py-1 text-xs disabled:opacity-50 dark:border-slate-700 dark:bg-slate-800"
+        >
+          {plans.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.name}
+            </option>
+          ))}
+        </select>
+      </td>
       <td className="px-3 py-2">
         <span
           className={`rounded-full px-2.5 py-1 text-xs font-medium ${
