@@ -285,6 +285,7 @@ export default function StorefrontClient({
 }) {
   const searchParams = useSearchParams();
   const [cart, setCart] = useState<Record<string, number>>({});
+  const [attributedRecipeId, setAttributedRecipeId] = useState<string | null>(null);
   const [reviews, setReviews] = useState<Review[]>(initialReviews);
   const [expandedProductId, setExpandedProductId] = useState<string | null>(null);
   const [reviewerName, setReviewerName] = useState("");
@@ -741,6 +742,11 @@ export default function StorefrontClient({
       }
       return next;
     });
+    setAttributedRecipeId(recipe.id);
+    getSupabase()
+      .from("recipe_clicks")
+      .insert({ store_id: store.id, recipe_id: recipe.id })
+      .then(() => {});
   }
 
   const ratingsByProduct = useMemo(() => {
@@ -993,6 +999,7 @@ export default function StorefrontClient({
       p_birthday: birthday || undefined,
       p_neighborhood_id: neighborhoodId === "retirada" ? undefined : neighborhoodId,
       p_delivery_address: neighborhoodId === "retirada" ? undefined : deliveryAddress.trim(),
+      p_recipe_id: attributedRecipeId ?? undefined,
     });
 
     if (rpcError) {
@@ -1127,6 +1134,7 @@ export default function StorefrontClient({
 
   function handleNewOrder() {
     setCart({});
+    setAttributedRecipeId(null);
     setCouponCode("");
     setCouponPreview(null);
     setUseCashback(false);

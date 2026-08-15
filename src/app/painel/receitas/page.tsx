@@ -54,25 +54,45 @@ export default function Receitas() {
   const [selectedItems, setSelectedItems] = useState<Ingredient[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [statsByRecipe, setStatsByRecipe] = useState<Record<string, { clicks: number; orders: number }>>({});
 
   async function load() {
     setLoading(true);
     const supabase = getSupabase();
-    const [{ data: recipeData }, { data: productData }] = await Promise.all([
-      supabase
-        .from("recipes")
-        .select("id, name, description, instructions, image_url, ingredients, featured, created_at")
-        .eq("store_id", store.id)
-        .order("created_at", { ascending: false }),
-      supabase
-        .from("products")
-        .select("id, name, image_url")
-        .eq("store_id", store.id)
-        .eq("active", true)
-        .order("name"),
-    ]);
+    const [{ data: recipeData }, { data: productData }, { data: clickRows }, { data: orderRows }] =
+      await Promise.all([
+        supabase
+          .from("recipes")
+          .select("id, name, description, instructions, image_url, ingredients, featured, created_at")
+          .eq("store_id", store.id)
+          .order("created_at", { ascending: false }),
+        supabase
+          .from("products")
+          .select("id, name, image_url")
+          .eq("store_id", store.id)
+          .eq("active", true)
+          .order("name"),
+        supabase.from("recipe_clicks").select("recipe_id").eq("store_id", store.id),
+        supabase
+          .from("orders")
+          .select("recipe_id")
+          .eq("store_id", store.id)
+          .not("recipe_id", "is", null)
+          .neq("status", "cancelado"),
+      ]);
     setRecipes((recipeData ?? []) as Recipe[]);
     setProducts((productData ?? []) as ProductOption[]);
+
+    const stats: Record<string, { clicks: number; orders: number }> = {};
+    for (const row of clickRows ?? []) {
+      const s = (stats[row.recipe_id] ??= { clicks: 0, orders: 0 });
+      s.clicks += 1;
+    }
+    for (const row of orderRows ?? []) {
+      const s = (stats[row.recipe_id as string] ??= { clicks: 0, orders: 0 });
+      s.orders += 1;
+    }
+    setStatsByRecipe(stats);
     setLoading(false);
   }
 
@@ -354,6 +374,14 @@ export default function Receitas() {
                 )}
                 <p className="mt-1 text-xs text-slate-500 dark:text-slate-500">
                   {r.ingredients.length} ingrediente{r.ingredients.length === 1 ? "" : "s"}
+                </p>
+                <p className="mt-1 text-xs text-slate-500 dark:text-slate-500">
+                  {(() => {
+                    const s = statsByRecipe[r.id] ?? { clicks: 0, orders: 0 };
+                    if (s.clicks === 0) return "Ainda sem cliques em “montar carrinho”";
+                    const rate = Math.round((s.orders / s.clicks) * 100);
+                    return `${s.clicks} clique${s.clicks === 1 ? "" : "s"} em “montar carrinho” → ${s.orders} pedido${s.orders === 1 ? "" : "s"} (${rate}% de conversão)`;
+                  })()}
                 </p>
               </div>
             </div>
