@@ -6,7 +6,7 @@ import { useStore } from "@/lib/store-context";
 
 type Transaction = {
   id: string;
-  type: "venda" | "pagamento";
+  type: "venda" | "pagamento" | "juros" | "baixa";
   amount: number;
   note: string | null;
   created_at: string;
@@ -18,6 +18,7 @@ type Customer = {
   name: string;
   phone: string;
   balance: number;
+  credit_limit: number | null;
 };
 
 function formatCurrency(value: number) {
@@ -64,6 +65,7 @@ export default function Fiado() {
 
   const [paymentAmount, setPaymentAmount] = useState("");
   const [payingId, setPayingId] = useState<string | null>(null);
+  const [applyingInterestId, setApplyingInterestId] = useState<string | null>(null);
 
   const [interestPercent, setInterestPercent] = useState("");
   const [savingInterest, setSavingInterest] = useState(false);
@@ -73,7 +75,7 @@ export default function Fiado() {
     setLoading(true);
     const { data } = await getSupabase()
       .from("credit_customers")
-      .select("id, name, phone, balance")
+      .select("id, name, phone, balance, credit_limit")
       .eq("store_id", store.id)
       .order("balance", { ascending: false });
     setCustomers(data ?? []);
@@ -144,7 +146,11 @@ export default function Fiado() {
     setSaving(false);
 
     if (txError) {
-      setError("Não deu pra registrar a venda: " + txError.message);
+      setError(
+        txError.message.includes("limite de crédito")
+          ? txError.message
+          : "Não deu pra registrar a venda: " + txError.message,
+      );
       return;
     }
 
@@ -192,6 +198,59 @@ export default function Fiado() {
     if (expandedId === customerId) fetchTransactions(customerId);
   }
 
+  async function handleUpdateCreditLimit(customer: Customer) {
+    const raw = window.prompt(
+      `Limite de crédito pra ${customer.name} (em R$, deixe vazio pra não ter limite):`,
+      customer.credit_limit !== null ? String(customer.credit_limit) : "",
+    );
+    if (raw === null) return; // cancelou
+    const trimmed = raw.trim();
+    const value = trimmed ? Number(trimmed.replace(",", ".")) : null;
+    if (trimmed && (Number.isNaN(value) || (value as number) < 0)) {
+      window.alert("Digite um valor válido (ou deixe vazio pra remover o limite).");
+      return;
+    }
+    setCustomers((prev) => prev.map((c) => (c.id === customer.id ? { ...c, credit_limit: value } : c)));
+    await getSupabase().from("credit_customers").update({ credit_limit: value }).eq("id", customer.id);
+  }
+
+  async function handleWriteOff(customerId: string, currentBalance: number) {
+    if (currentBalance <= 0) return;
+    const raw = window.prompt(
+      `Dar baixa em quanto da dívida de ${formatCurrency(currentBalance)}? (não é um pagamento recebido — fica registrado como perdão de dívida)`,
+      String(currentBalance),
+    );
+    if (raw === null) return;
+    const value = Number(raw.replace(",", "."));
+    if (Number.isNaN(value) || value <= 0 || value > currentBalance) {
+      window.alert("Digite um valor válido, até o saldo devedor atual.");
+      return;
+    }
+    if (!window.confirm(`Confirma dar baixa em ${formatCurrency(value)}? Essa dívida sai do saldo do cliente sem ter sido paga.`)) return;
+    await getSupabase().from("credit_transactions").insert({
+      customer_id: customerId,
+      type: "baixa",
+      amount: value,
+      note: "Baixa de dívida incobrável",
+    });
+    loadCustomers();
+    if (expandedId === customerId) fetchTransactions(customerId);
+  }
+
+  async function handleApplyInterest(customerId: string, tx: Transaction, interest: number) {
+    if (interest <= 0.01 || applyingInterestId) return;
+    setApplyingInterestId(tx.id);
+    await getSupabase().from("credit_transactions").insert({
+      customer_id: customerId,
+      type: "juros",
+      amount: Math.round(interest * 100) / 100,
+      note: `Juros por atraso na venda de ${formatDate(tx.created_at)} (ref:${tx.id})`,
+    });
+    setApplyingInterestId(null);
+    loadCustomers();
+    fetchTransactions(customerId);
+  }
+
   return (
     <div>
       <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-50">Fiado / crediário</h1>
@@ -212,7 +271,8 @@ export default function Fiado() {
         </h2>
         <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
           Se você marcar um vencimento na venda, e o cliente atrasar, o juro abaixo é calculado
-          por mês de atraso — só pra você saber quanto cobrar, o saldo em aberto não muda sozinho.
+          por mês de atraso. Ele só vira saldo de verdade quando você clicar em &quot;Aplicar ao
+          saldo&quot; no extrato do cliente — até lá é só uma estimativa.
         </p>
         <div className="mt-3 flex items-center gap-2">
           <input
@@ -307,6 +367,15 @@ export default function Fiado() {
                   >
                     {customer.phone}
                   </a>
+                  <button
+                    type="button"
+                    onClick={() => handleUpdateCreditLimit(customer)}
+                    className="block text-xs text-slate-400 hover:underline dark:text-slate-500"
+                  >
+                    {customer.credit_limit !== null
+                      ? `Limite: ${formatCurrency(customer.credit_limit)}`
+                      : "Sem limite de crédito — definir"}
+                  </button>
                 </div>
                 <div className="flex items-center gap-3">
                   <div className="text-right">
@@ -335,15 +404,24 @@ export default function Fiado() {
                   <ul className="space-y-1 text-sm">
                     {transactions.map((tx) => {
                       const overdue = tx.type === "venda" && tx.due_date && isOverdue(tx.due_date);
+                      const interestAlreadyApplied = transactions.some(
+                        (t) => t.type === "juros" && t.note?.includes(`ref:${tx.id}`),
+                      );
                       const interest =
-                        tx.type === "venda" && tx.due_date
+                        tx.type === "venda" && tx.due_date && !interestAlreadyApplied
                           ? calcInterest(tx.amount, tx.due_date, interestRate)
                           : 0;
                       return (
                         <li key={tx.id}>
                           <div className="flex justify-between text-slate-600 dark:text-slate-400">
                             <span>
-                              {tx.type === "venda" ? "Venda" : "Pagamento"}
+                              {tx.type === "venda"
+                                ? "Venda"
+                                : tx.type === "juros"
+                                  ? "Juros"
+                                  : tx.type === "baixa"
+                                    ? "Baixa"
+                                    : "Pagamento"}
                               {tx.note ? ` — ${tx.note}` : ""} · {formatDate(tx.created_at)}
                               {tx.due_date && (
                                 <>
@@ -355,14 +433,28 @@ export default function Fiado() {
                                 </>
                               )}
                             </span>
-                            <span className={tx.type === "venda" ? "text-red-600" : "text-green-600"}>
-                              {tx.type === "venda" ? "+" : "−"}
+                            <span
+                              className={
+                                tx.type === "pagamento" || tx.type === "baixa"
+                                  ? "text-green-600"
+                                  : "text-red-600"
+                              }
+                            >
+                              {tx.type === "pagamento" || tx.type === "baixa" ? "−" : "+"}
                               {formatCurrency(tx.amount)}
                             </span>
                           </div>
                           {interest > 0.01 && (
-                            <p className="text-right text-xs text-amber-600">
-                              + {formatCurrency(interest)} de juros por atraso
+                            <p className="flex items-center justify-end gap-2 text-right text-xs text-amber-600">
+                              <span>+ {formatCurrency(interest)} de juros por atraso (estimativa)</span>
+                              <button
+                                type="button"
+                                onClick={() => handleApplyInterest(customer.id, tx, interest)}
+                                disabled={applyingInterestId === tx.id}
+                                className="font-semibold underline disabled:opacity-50"
+                              >
+                                {applyingInterestId === tx.id ? "Aplicando…" : "Aplicar ao saldo"}
+                              </button>
                             </p>
                           )}
                         </li>
@@ -395,12 +487,22 @@ export default function Fiado() {
                         </button>
                       </>
                     ) : (
-                      <button
-                        onClick={() => setPayingId(customer.id)}
-                        className="rounded-lg border border-slate-300 px-3 py-1 text-sm font-medium text-slate-700 dark:border-slate-700 dark:text-slate-300"
-                      >
-                        Registrar pagamento
-                      </button>
+                      <>
+                        <button
+                          onClick={() => setPayingId(customer.id)}
+                          className="rounded-lg border border-slate-300 px-3 py-1 text-sm font-medium text-slate-700 dark:border-slate-700 dark:text-slate-300"
+                        >
+                          Registrar pagamento
+                        </button>
+                        {customer.balance > 0 && (
+                          <button
+                            onClick={() => handleWriteOff(customer.id, customer.balance)}
+                            className="rounded-lg border border-red-200 px-3 py-1 text-sm font-medium text-red-600 hover:bg-red-50 dark:border-red-900 dark:text-red-400 dark:hover:bg-red-950"
+                          >
+                            Dar baixa
+                          </button>
+                        )}
+                      </>
                     )}
                   </div>
                 </div>
