@@ -15,6 +15,7 @@ type Coupon = {
   active: boolean;
   expires_at: string | null;
   influencer_id: string | null;
+  single_use_per_customer: boolean;
 };
 
 type Influencer = {
@@ -83,6 +84,7 @@ export default function Cupons() {
   const [discountValue, setDiscountValue] = useState("");
   const [minOrderValue, setMinOrderValue] = useState("");
   const [usageLimit, setUsageLimit] = useState("");
+  const [singleUsePerCustomer, setSingleUsePerCustomer] = useState(true);
   const [expiresAt, setExpiresAt] = useState("");
   const [influencerId, setInfluencerId] = useState("");
   const [saving, setSaving] = useState(false);
@@ -106,7 +108,7 @@ export default function Cupons() {
       supabase
         .from("coupons")
         .select(
-          "id, code, discount_type, discount_value, min_order_value, usage_limit, used_count, active, expires_at, influencer_id",
+          "id, code, discount_type, discount_value, min_order_value, usage_limit, used_count, active, expires_at, influencer_id, single_use_per_customer",
         )
         .eq("store_id", store.id)
         .order("created_at", { ascending: false }),
@@ -152,6 +154,7 @@ export default function Cupons() {
       discount_value: value,
       min_order_value: minOrderValue ? Number(minOrderValue.replace(",", ".")) : 0,
       usage_limit: usageLimit ? Number(usageLimit) : null,
+      single_use_per_customer: singleUsePerCustomer,
       expires_at: expiresAt ? new Date(expiresAt).toISOString() : null,
       influencer_id: influencerId || null,
     });
@@ -170,6 +173,7 @@ export default function Cupons() {
     setDiscountValue("");
     setMinOrderValue("");
     setUsageLimit("");
+    setSingleUsePerCustomer(true);
     setExpiresAt("");
     setInfluencerId("");
     loadAll();
@@ -558,6 +562,15 @@ export default function Cupons() {
             </option>
           ))}
         </select>
+        <label className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400 lg:col-span-3">
+          <input
+            type="checkbox"
+            checked={singleUsePerCustomer}
+            onChange={(e) => setSingleUsePerCustomer(e.target.checked)}
+            className="h-4 w-4"
+          />
+          Cada cliente só pode usar esse cupom uma vez (recomendado pra cupom de boas-vindas)
+        </label>
         <button
           type="submit"
           disabled={saving}
@@ -610,6 +623,11 @@ export default function Cupons() {
                 <td className="px-3 py-2 text-slate-600 dark:text-slate-400">
                   {c.used_count}
                   {c.usage_limit ? ` / ${c.usage_limit}` : ""}
+                  {c.single_use_per_customer && (
+                    <span className="ml-1 text-xs text-slate-400" title="Cada cliente só pode usar esse cupom uma vez">
+                      (1x/cliente)
+                    </span>
+                  )}
                 </td>
                 <td className="px-3 py-2 text-slate-600 dark:text-slate-400">
                   {c.expires_at ? new Date(c.expires_at).toLocaleDateString("pt-BR") : "Sem prazo"}

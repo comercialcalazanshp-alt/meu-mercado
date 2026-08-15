@@ -19,6 +19,8 @@ type OrderItem = {
   price: number;
   quantity: number;
   line_total?: number;
+  product_id?: string;
+  kit_id?: string;
 };
 
 type Order = {
@@ -148,6 +150,8 @@ export default function Pedidos() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editItems, setEditItems] = useState<OrderItem[]>([]);
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
   const [noteDrafts, setNoteDrafts] = useState<Record<string, string>>({});
   const [products, setProducts] = useState<Product[]>([]);
   const [addProductId, setAddProductId] = useState<Record<string, string>>({});
@@ -343,6 +347,7 @@ export default function Pedidos() {
   function startEdit(order: Order) {
     setEditingId(order.id);
     setEditItems(order.items.map((i) => ({ ...i })));
+    setEditError(null);
   }
 
   function editQuantity(index: number, quantity: number) {
@@ -362,7 +367,7 @@ export default function Pedidos() {
       if (existing) {
         return prev.map((i) => (i.name === product.name ? { ...i, quantity: i.quantity + 1 } : i));
       }
-      return [...prev, { name: product.name, price: product.price, quantity: 1 }];
+      return [...prev, { name: product.name, price: product.price, quantity: 1, product_id: product.id }];
     });
     setAddProductId((prev) => ({ ...prev, [orderId]: "" }));
   }
@@ -371,12 +376,25 @@ export default function Pedidos() {
     const cleanItems = editItems
       .filter((i) => i.quantity > 0)
       .map((i) => ({ ...i, line_total: i.price * i.quantity }));
-    const newTotal = cleanItems.reduce((sum, i) => sum + (i.line_total ?? 0), 0) + order.delivery_fee - order.discount_amount;
+    setSavingEdit(true);
+    setEditError(null);
+    // Passa pela função no banco (não um update direto) porque editar
+    // quantidade precisa devolver/descontar estoque — aumentar um item além
+    // do que tem em estoque é rejeitado em vez de deixar o estoque negativo.
+    const { data, error } = await getSupabase().rpc("adjust_order_items", {
+      p_order_id: order.id,
+      p_items: cleanItems,
+    });
+    setSavingEdit(false);
+    if (error) {
+      setEditError(error.message);
+      return;
+    }
+    const newTotal = data?.[0]?.total ?? order.total;
     setOrders((prev) =>
       prev.map((o) => (o.id === order.id ? { ...o, items: cleanItems, total: newTotal } : o)),
     );
     setEditingId(null);
-    await getSupabase().from("orders").update({ items: cleanItems, total: newTotal }).eq("id", order.id);
   }
 
   async function saveNote(order: Order) {
@@ -788,20 +806,25 @@ export default function Pedidos() {
                               e.stopPropagation();
                               saveEdit(order);
                             }}
-                            className="rounded-lg bg-blue-900 px-3 py-1 text-xs font-semibold text-white dark:bg-blue-700"
+                            disabled={savingEdit}
+                            className="rounded-lg bg-blue-900 px-3 py-1 text-xs font-semibold text-white disabled:opacity-60 dark:bg-blue-700"
                           >
-                            Salvar itens
+                            {savingEdit ? "Salvando…" : "Salvar itens"}
                           </button>
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
                               setEditingId(null);
+                              setEditError(null);
                             }}
                             className="rounded-lg border border-slate-300 px-3 py-1 text-xs text-slate-600 dark:border-slate-700 dark:text-slate-300"
                           >
                             Cancelar
                           </button>
                         </div>
+                        {editError && (
+                          <p className="mt-2 text-xs text-red-600 dark:text-red-400">{editError}</p>
+                        )}
                       </div>
                     )}
 
