@@ -330,7 +330,7 @@ export default function StorefrontClient({
   const [cardHolder, setCardHolder] = useState("");
   const [cardExpiry, setCardExpiry] = useState("");
   const [cardCvv, setCardCvv] = useState("");
-  const [cardCpf, setCardCpf] = useState("");
+  const [customerCpf, setCustomerCpf] = useState("");
   const [cardLoading, setCardLoading] = useState(false);
   const [cardError, setCardError] = useState<string | null>(null);
   const [cardPaid, setCardPaid] = useState(false);
@@ -1043,7 +1043,7 @@ export default function StorefrontClient({
         const res = await fetch("/api/pagbank/create-pix", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ order_id: newOrderId }),
+          body: JSON.stringify({ order_id: newOrderId, customer_tax_id: customerCpf.trim() }),
         });
         const pixData = await res.json();
         if (!res.ok) {
@@ -1095,7 +1095,7 @@ export default function StorefrontClient({
               order_id: newOrderId,
               encrypted_card: card.encryptedCard,
               holder_name: cardHolder,
-              holder_cpf: cardCpf,
+              holder_cpf: customerCpf,
             }),
           });
           const chargeData = await chargeRes.json();
@@ -1150,7 +1150,7 @@ export default function StorefrontClient({
     setCardHolder("");
     setCardExpiry("");
     setCardCvv("");
-    setCardCpf("");
+    setCustomerCpf("");
     setCardLoading(false);
     setCardError(null);
     setCardPaid(false);
@@ -1673,52 +1673,57 @@ export default function StorefrontClient({
                   Cartão de crédito — pagar agora
                 </label>
               </div>
-              {paymentMethod === "cartao" && (
+              {(paymentMethod === "pix" || paymentMethod === "cartao") && (
                 <div className="mt-2 space-y-2 rounded-lg border border-slate-200 p-3 dark:border-slate-800">
+                  {paymentMethod === "cartao" && (
+                    <>
+                      <input
+                        required
+                        inputMode="numeric"
+                        value={cardNumber}
+                        onChange={(e) => setCardNumber(e.target.value)}
+                        placeholder="Número do cartão"
+                        className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                      />
+                      <input
+                        required
+                        value={cardHolder}
+                        onChange={(e) => setCardHolder(e.target.value.toUpperCase())}
+                        placeholder="Nome impresso no cartão"
+                        className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                      />
+                      <div className="flex gap-2">
+                        <input
+                          required
+                          inputMode="numeric"
+                          value={cardExpiry}
+                          onChange={(e) => setCardExpiry(e.target.value)}
+                          placeholder="Validade MM/AA"
+                          className="w-1/2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                        />
+                        <input
+                          required
+                          inputMode="numeric"
+                          value={cardCvv}
+                          onChange={(e) => setCardCvv(e.target.value)}
+                          placeholder="CVV"
+                          className="w-1/2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                        />
+                      </div>
+                    </>
+                  )}
                   <input
                     required
                     inputMode="numeric"
-                    value={cardNumber}
-                    onChange={(e) => setCardNumber(e.target.value)}
-                    placeholder="Número do cartão"
-                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
-                  />
-                  <input
-                    required
-                    value={cardHolder}
-                    onChange={(e) => setCardHolder(e.target.value.toUpperCase())}
-                    placeholder="Nome impresso no cartão"
-                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
-                  />
-                  <div className="flex gap-2">
-                    <input
-                      required
-                      inputMode="numeric"
-                      value={cardExpiry}
-                      onChange={(e) => setCardExpiry(e.target.value)}
-                      placeholder="Validade MM/AA"
-                      className="w-1/2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
-                    />
-                    <input
-                      required
-                      inputMode="numeric"
-                      value={cardCvv}
-                      onChange={(e) => setCardCvv(e.target.value)}
-                      placeholder="CVV"
-                      className="w-1/2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
-                    />
-                  </div>
-                  <input
-                    required
-                    inputMode="numeric"
-                    value={cardCpf}
-                    onChange={(e) => setCardCpf(e.target.value)}
-                    placeholder="CPF do titular do cartão"
+                    value={customerCpf}
+                    onChange={(e) => setCustomerCpf(e.target.value)}
+                    placeholder={paymentMethod === "cartao" ? "CPF do titular do cartão" : "Seu CPF (exigido pelo Pix)"}
                     className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
                   />
                   <p className="text-xs text-slate-500 dark:text-slate-400">
-                    Pagamento à vista (1x). Seus dados de cartão são criptografados no seu
-                    navegador antes de sair daqui.
+                    {paymentMethod === "cartao"
+                      ? "Pagamento à vista (1x). Seus dados de cartão são criptografados no seu navegador antes de sair daqui."
+                      : "O CPF é exigido pelo Pix pra identificar quem está pagando."}
                   </p>
                 </div>
               )}

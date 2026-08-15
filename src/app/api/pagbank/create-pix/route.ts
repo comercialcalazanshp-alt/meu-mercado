@@ -1,5 +1,6 @@
 import "server-only";
 import { getSupabaseAdmin } from "@/lib/supabase-admin";
+import { isValidCPF } from "@/lib/cpf";
 
 // Chamada pelo site logo depois que o pedido é criado (checkout já validou
 // preço/estoque e gravou o pedido) — aqui só pedimos ao PagBank pra gerar
@@ -10,10 +11,17 @@ export async function POST(request: Request) {
     return Response.json({ error: "Pagamento Pix não configurado" }, { status: 500 });
   }
 
-  const { order_id } = (await request.json()) as { order_id: string };
+  const { order_id, customer_tax_id } = (await request.json()) as {
+    order_id: string;
+    customer_tax_id: string;
+  };
   if (!order_id) {
     return Response.json({ error: "order_id é obrigatório" }, { status: 400 });
   }
+  if (!customer_tax_id || !isValidCPF(customer_tax_id)) {
+    return Response.json({ error: "CPF do cliente inválido" }, { status: 400 });
+  }
+  const cpfDigits = customer_tax_id.replace(/\D/g, "");
 
   const supabase = getSupabaseAdmin();
   const { data: order } = await supabase
@@ -34,6 +42,7 @@ export async function POST(request: Request) {
     customer: {
       name: order.customer_name || "Cliente",
       email: `cliente-${order.id}@meumercado.app`,
+      tax_id: cpfDigits,
       phones: phoneDigits
         ? [
             {

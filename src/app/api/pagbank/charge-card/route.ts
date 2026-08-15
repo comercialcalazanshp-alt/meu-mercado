@@ -1,17 +1,6 @@
 import "server-only";
 import { getSupabaseAdmin } from "@/lib/supabase-admin";
-
-function isValidCpf(cpf: string): boolean {
-  const digits = cpf.replace(/\D/g, "");
-  if (digits.length !== 11 || /^(\d)\1{10}$/.test(digits)) return false;
-  const calc = (len: number) => {
-    let sum = 0;
-    for (let i = 0; i < len; i++) sum += Number(digits[i]) * (len + 1 - i);
-    const rest = (sum * 10) % 11;
-    return rest === 10 ? 0 : rest;
-  };
-  return calc(9) === Number(digits[9]) && calc(10) === Number(digits[10]);
-}
+import { isValidCPF } from "@/lib/cpf";
 
 // Recebe o cartão já criptografado no navegador (nunca em texto puro) e
 // manda pro PagBank cobrar o valor exato do pedido. Só à vista (1x) por
@@ -33,7 +22,7 @@ export async function POST(request: Request) {
     return Response.json({ error: "Dados do cartão incompletos" }, { status: 400 });
   }
 
-  if (!isValidCpf(holder_cpf)) {
+  if (!isValidCPF(holder_cpf)) {
     return Response.json({ error: "CPF do titular do cartão inválido" }, { status: 400 });
   }
 
