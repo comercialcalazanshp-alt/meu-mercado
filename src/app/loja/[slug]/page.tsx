@@ -89,7 +89,7 @@ export default async function Loja({ params }: { params: Promise<{ slug: string 
       .order("created_at", { ascending: false }),
     supabase
       .from("reviews")
-      .select("id, product_id, customer_name, rating, comment, created_at")
+      .select("id, product_id, customer_name, rating, comment, created_at, owner_reply")
       .eq("store_id", store.id)
       .order("created_at", { ascending: false }),
     supabase

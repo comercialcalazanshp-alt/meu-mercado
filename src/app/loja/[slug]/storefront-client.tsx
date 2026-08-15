@@ -161,6 +161,7 @@ export type Review = {
   rating: number;
   comment: string | null;
   created_at: string;
+  owner_reply: string | null;
 };
 
 export type Recipe = {
@@ -905,7 +906,7 @@ export default function StorefrontClient({
         rating: reviewerRating,
         comment: reviewerComment.trim() || null,
       })
-      .select("id, product_id, customer_name, rating, comment, created_at")
+      .select("id, product_id, customer_name, rating, comment, created_at, owner_reply")
       .single();
     setSubmittingReview(false);
 
@@ -2379,6 +2380,12 @@ export default function StorefrontClient({
                               </p>
                               {r.comment && (
                                 <p className="text-slate-500 dark:text-slate-400">{r.comment}</p>
+                              )}
+                              {r.owner_reply && (
+                                <div className="mt-1 rounded-lg bg-slate-50 px-2.5 py-1.5 dark:bg-slate-800/60">
+                                  <p className="text-xs font-semibold text-[var(--brand-bg)]">Resposta da loja</p>
+                                  <p className="text-xs text-slate-600 dark:text-slate-400">{r.owner_reply}</p>
+                                </div>
                               )}
                             </li>
                           ))}

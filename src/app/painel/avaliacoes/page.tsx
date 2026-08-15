@@ -11,6 +11,8 @@ type ProductReview = {
   rating: number;
   comment: string | null;
   created_at: string;
+  owner_reply: string | null;
+  owner_reply_at: string | null;
   products: { name: string } | null;
 };
 
@@ -20,6 +22,8 @@ type StoreReview = {
   rating: number;
   comment: string | null;
   created_at: string;
+  owner_reply: string | null;
+  owner_reply_at: string | null;
 };
 
 function formatDate(iso: string) {
@@ -42,6 +46,9 @@ export default function Avaliacoes() {
   const [productReviews, setProductReviews] = useState<ProductReview[]>([]);
   const [loading, setLoading] = useState(true);
   const [minRating, setMinRating] = useState(0);
+  const [editingReplyId, setEditingReplyId] = useState<string | null>(null);
+  const [replyDraft, setReplyDraft] = useState("");
+  const [savingReply, setSavingReply] = useState(false);
 
   async function load() {
     setLoading(true);
@@ -49,12 +56,14 @@ export default function Avaliacoes() {
     const [{ data: storeData }, { data: productData }] = await Promise.all([
       supabase
         .from("store_reviews")
-        .select("id, customer_name, rating, comment, created_at")
+        .select("id, customer_name, rating, comment, created_at, owner_reply, owner_reply_at")
         .eq("store_id", store.id)
         .order("created_at", { ascending: false }),
       supabase
         .from("reviews")
-        .select("id, product_id, customer_name, rating, comment, created_at, products(name)")
+        .select(
+          "id, product_id, customer_name, rating, comment, created_at, owner_reply, owner_reply_at, products(name)",
+        )
         .eq("store_id", store.id)
         .order("created_at", { ascending: false }),
     ]);
@@ -93,6 +102,46 @@ export default function Avaliacoes() {
     if (!confirm("Excluir essa avaliação de produto? Não dá pra desfazer.")) return;
     setProductReviews((prev) => prev.filter((r) => r.id !== id));
     await getSupabase().from("reviews").delete().eq("id", id);
+  }
+
+  function startReply(id: string, currentReply: string | null) {
+    setEditingReplyId(id);
+    setReplyDraft(currentReply ?? "");
+  }
+
+  function cancelReply() {
+    setEditingReplyId(null);
+    setReplyDraft("");
+  }
+
+  async function saveStoreReply(id: string) {
+    const reply = replyDraft.trim();
+    setSavingReply(true);
+    const now = new Date().toISOString();
+    await getSupabase()
+      .from("store_reviews")
+      .update({ owner_reply: reply || null, owner_reply_at: reply ? now : null })
+      .eq("id", id);
+    setStoreReviews((prev) =>
+      prev.map((r) => (r.id === id ? { ...r, owner_reply: reply || null, owner_reply_at: reply ? now : null } : r)),
+    );
+    setSavingReply(false);
+    cancelReply();
+  }
+
+  async function saveProductReply(id: string) {
+    const reply = replyDraft.trim();
+    setSavingReply(true);
+    const now = new Date().toISOString();
+    await getSupabase()
+      .from("reviews")
+      .update({ owner_reply: reply || null, owner_reply_at: reply ? now : null })
+      .eq("id", id);
+    setProductReviews((prev) =>
+      prev.map((r) => (r.id === id ? { ...r, owner_reply: reply || null, owner_reply_at: reply ? now : null } : r)),
+    );
+    setSavingReply(false);
+    cancelReply();
   }
 
   return (
@@ -191,6 +240,51 @@ export default function Avaliacoes() {
                   Excluir
                 </button>
               </div>
+
+              {editingReplyId === r.id ? (
+                <div className="mt-2 border-l-2 border-blue-200 pl-3 dark:border-blue-900">
+                  <textarea
+                    value={replyDraft}
+                    onChange={(e) => setReplyDraft(e.target.value)}
+                    rows={2}
+                    placeholder="Escreva a resposta pública…"
+                    className="w-full rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                  />
+                  <div className="mt-1 flex gap-2">
+                    <button
+                      onClick={() => saveStoreReply(r.id)}
+                      disabled={savingReply}
+                      className="rounded-lg bg-blue-900 px-3 py-1 text-xs font-semibold text-amber-300 disabled:opacity-60 dark:bg-blue-800"
+                    >
+                      {savingReply ? "Salvando…" : "Publicar resposta"}
+                    </button>
+                    <button
+                      onClick={cancelReply}
+                      className="text-xs text-slate-500 hover:underline dark:text-slate-400"
+                    >
+                      Cancelar
+                    </button>
+                  </div>
+                </div>
+              ) : r.owner_reply ? (
+                <div className="mt-2 border-l-2 border-blue-200 pl-3 dark:border-blue-900">
+                  <p className="text-xs font-semibold text-blue-900 dark:text-blue-400">Resposta da loja</p>
+                  <p className="text-sm text-slate-600 dark:text-slate-400">{r.owner_reply}</p>
+                  <button
+                    onClick={() => startReply(r.id, r.owner_reply)}
+                    className="mt-1 text-xs font-medium text-blue-900 hover:underline dark:text-blue-400"
+                  >
+                    Editar resposta
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => startReply(r.id, null)}
+                  className="mt-2 text-xs font-medium text-blue-900 hover:underline dark:text-blue-400"
+                >
+                  Responder publicamente
+                </button>
+              )}
             </div>
           ))}
         </div>
@@ -225,6 +319,51 @@ export default function Avaliacoes() {
                   Excluir
                 </button>
               </div>
+
+              {editingReplyId === r.id ? (
+                <div className="mt-2 border-l-2 border-blue-200 pl-3 dark:border-blue-900">
+                  <textarea
+                    value={replyDraft}
+                    onChange={(e) => setReplyDraft(e.target.value)}
+                    rows={2}
+                    placeholder="Escreva a resposta pública…"
+                    className="w-full rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                  />
+                  <div className="mt-1 flex gap-2">
+                    <button
+                      onClick={() => saveProductReply(r.id)}
+                      disabled={savingReply}
+                      className="rounded-lg bg-blue-900 px-3 py-1 text-xs font-semibold text-amber-300 disabled:opacity-60 dark:bg-blue-800"
+                    >
+                      {savingReply ? "Salvando…" : "Publicar resposta"}
+                    </button>
+                    <button
+                      onClick={cancelReply}
+                      className="text-xs text-slate-500 hover:underline dark:text-slate-400"
+                    >
+                      Cancelar
+                    </button>
+                  </div>
+                </div>
+              ) : r.owner_reply ? (
+                <div className="mt-2 border-l-2 border-blue-200 pl-3 dark:border-blue-900">
+                  <p className="text-xs font-semibold text-blue-900 dark:text-blue-400">Resposta da loja</p>
+                  <p className="text-sm text-slate-600 dark:text-slate-400">{r.owner_reply}</p>
+                  <button
+                    onClick={() => startReply(r.id, r.owner_reply)}
+                    className="mt-1 text-xs font-medium text-blue-900 hover:underline dark:text-blue-400"
+                  >
+                    Editar resposta
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => startReply(r.id, null)}
+                  className="mt-2 text-xs font-medium text-blue-900 hover:underline dark:text-blue-400"
+                >
+                  Responder publicamente
+                </button>
+              )}
             </div>
           ))}
         </div>
