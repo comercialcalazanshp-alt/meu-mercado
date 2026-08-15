@@ -59,3 +59,10 @@ export async function updateStorePlan(storeId: string, planId: string) {
   }
   await getSupabaseAdmin().from("stores").update({ plan_id: planId }).eq("id", storeId);
 }
+
+export async function updateSupportRequestStatus(requestId: string, status: "aberto" | "respondido") {
+  if (!(await isAdminAuthenticated())) {
+    throw new Error("Não autorizado");
+  }
+  await getSupabaseAdmin().from("support_requests").update({ status }).eq("id", requestId);
+}

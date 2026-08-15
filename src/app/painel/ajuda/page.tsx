@@ -1,3 +1,9 @@
+"use client";
+
+import { useState, type FormEvent } from "react";
+import { getSupabase } from "@/lib/supabase";
+import { useStore } from "@/lib/store-context";
+
 type Faq = {
   question: string;
   answer: string;
@@ -130,7 +136,37 @@ const SECTIONS: Section[] = [
   },
 ];
 
+const PLATFORM_WHATSAPP = process.env.NEXT_PUBLIC_PLATFORM_WHATSAPP;
+
 export default function Ajuda() {
+  const store = useStore();
+  const [message, setMessage] = useState("");
+  const [sending, setSending] = useState(false);
+  const [sent, setSent] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleSubmit(e: FormEvent) {
+    e.preventDefault();
+    if (!message.trim() || sending) return;
+    setSending(true);
+    setError(null);
+    const { error: insertError } = await getSupabase()
+      .from("support_requests")
+      .insert({ store_id: store.id, message: message.trim() });
+    setSending(false);
+    if (insertError) {
+      setError("Não deu pra enviar agora: " + insertError.message);
+      return;
+    }
+    setSent(true);
+    setMessage("");
+  }
+
+  function whatsappUrl() {
+    const text = `Oi! Sou dono(a) da loja "${store.name}" no Meu Mercado e preciso de ajuda: ${message.trim() || "…"}`;
+    return `https://wa.me/${(PLATFORM_WHATSAPP ?? "").replace(/\D/g, "")}?text=${encodeURIComponent(text)}`;
+  }
+
   return (
     <div className="max-w-2xl">
       <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-50">Central de ajuda</h1>
@@ -159,6 +195,50 @@ export default function Ajuda() {
             </div>
           </div>
         ))}
+      </div>
+
+      <div className="mt-8 rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+          Ainda com dúvida?
+        </h2>
+        <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
+          Escreva o que está acontecendo — a mensagem fica registrada e a gente responde.
+        </p>
+        {sent ? (
+          <p className="mt-3 text-sm font-medium text-green-700 dark:text-green-500">
+            Mensagem enviada! Vamos responder o quanto antes.
+          </p>
+        ) : (
+          <form onSubmit={handleSubmit} className="mt-3">
+            <textarea
+              value={message}
+              onChange={(e) => setMessage(e.target.value)}
+              rows={3}
+              placeholder="Conte o que está acontecendo…"
+              className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+            />
+            {error && <p className="mt-1 text-sm text-red-600 dark:text-red-400">{error}</p>}
+            <div className="mt-2 flex flex-wrap gap-2">
+              <button
+                type="submit"
+                disabled={sending || !message.trim()}
+                className="rounded-lg bg-blue-900 px-4 py-2 text-sm font-semibold text-amber-300 disabled:opacity-60 dark:bg-blue-800"
+              >
+                {sending ? "Enviando…" : "Enviar mensagem"}
+              </button>
+              {PLATFORM_WHATSAPP && (
+                <a
+                  href={whatsappUrl()}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="rounded-lg border border-green-600 px-4 py-2 text-sm font-medium text-green-700 hover:bg-green-50 dark:border-green-700 dark:text-green-400 dark:hover:bg-green-950"
+                >
+                  Falar no WhatsApp agora
+                </a>
+              )}
+            </div>
+          </form>
+        )}
       </div>
     </div>
   );

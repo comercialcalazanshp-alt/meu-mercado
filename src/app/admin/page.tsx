@@ -1,5 +1,6 @@
 import { getSupabaseAdmin } from "@/lib/supabase-admin";
 import StoreRow from "./store-row";
+import SupportRequestRow, { type SupportRequest } from "./support-request-row";
 
 export const dynamic = "force-dynamic";
 
@@ -37,13 +38,23 @@ export default async function AdminDashboard({
     storesQuery = storesQuery.or(`name.ilike.%${escaped}%,slug.ilike.%${escaped}%,whatsapp.ilike.%${escaped}%`);
   }
 
-  const [{ data: stores, count: filteredCount }, { count: totalStores }, { count: activeCount }, { data: plans }] =
-    await Promise.all([
-      storesQuery,
-      supabase.from("stores").select("id", { count: "exact", head: true }),
-      supabase.from("stores").select("id", { count: "exact", head: true }).eq("active", true),
-      supabase.from("plans").select("id, code, name, price_monthly").order("price_monthly"),
-    ]);
+  const [
+    { data: stores, count: filteredCount },
+    { count: totalStores },
+    { count: activeCount },
+    { data: plans },
+    { data: supportRequests },
+  ] = await Promise.all([
+    storesQuery,
+    supabase.from("stores").select("id", { count: "exact", head: true }),
+    supabase.from("stores").select("id", { count: "exact", head: true }).eq("active", true),
+    supabase.from("plans").select("id, code, name, price_monthly").order("price_monthly"),
+    supabase
+      .from("support_requests")
+      .select("id, message, status, created_at, store:stores(name, slug, whatsapp)")
+      .order("created_at", { ascending: false })
+      .limit(50),
+  ]);
 
   const storeIds = (stores ?? []).map((s) => s.id);
   const [{ data: products }, { data: orders }] = await Promise.all([
@@ -64,6 +75,8 @@ export default async function AdminDashboard({
     orderCounts.set(o.store_id, (orderCounts.get(o.store_id) ?? 0) + 1);
   }
 
+  const openSupportCount = (supportRequests ?? []).filter((r) => r.status === "aberto").length;
+
   const totalPages = Math.max(1, Math.ceil((filteredCount ?? 0) / PAGE_SIZE));
 
   function pageHref(p: number) {
@@ -76,7 +89,7 @@ export default async function AdminDashboard({
 
   return (
     <div>
-      <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-50">Lojas cadastradas</h1>
+      <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-50">Painel da plataforma</h1>
 
       <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-4">
         <StatCard label="Lojas" value={totalStores ?? 0} />
@@ -85,7 +98,21 @@ export default async function AdminDashboard({
         <StatCard label="Pedidos (página atual)" value={orders?.length ?? 0} />
       </div>
 
-      <form method="get" className="mt-6 flex gap-2">
+      <h2 className="mt-8 text-lg font-bold text-slate-900 dark:text-slate-50">
+        Solicitações de ajuda {openSupportCount > 0 && `(${openSupportCount} aberta${openSupportCount === 1 ? "" : "s"})`}
+      </h2>
+      <div className="mt-3 flex flex-col gap-2">
+        {(supportRequests ?? []).length === 0 && (
+          <p className="text-sm text-slate-500">Nenhuma solicitação por aqui.</p>
+        )}
+        {(supportRequests as unknown as SupportRequest[] | null ?? []).map((r) => (
+          <SupportRequestRow key={r.id} request={r} />
+        ))}
+      </div>
+
+      <h2 className="mt-8 text-lg font-bold text-slate-900 dark:text-slate-50">Lojas cadastradas</h2>
+
+      <form method="get" className="mt-4 flex gap-2">
         <input
           type="search"
           name="q"
