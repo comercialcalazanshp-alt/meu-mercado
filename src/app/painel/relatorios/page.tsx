@@ -93,6 +93,15 @@ export default function Relatorios() {
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
 
+  const [profit, setProfit] = useState<{
+    revenue: number;
+    cogs: number;
+    missing_cost: boolean;
+    expenses: number;
+    profit: number;
+  } | null>(null);
+  const [profitLoading, setProfitLoading] = useState(true);
+
   useEffect(() => {
     async function load() {
       setLoading(true);
@@ -131,6 +140,23 @@ export default function Relatorios() {
     }
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [store.id]);
+
+  useEffect(() => {
+    async function loadProfit() {
+      setProfitLoading(true);
+      const now = new Date();
+      const since = new Date(now.getFullYear(), now.getMonth(), 1);
+      const until = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+      const { data, error } = await getSupabase().rpc("get_profit_summary", {
+        p_store_id: store.id,
+        p_since: since.toISOString(),
+        p_until: until.toISOString(),
+      });
+      if (!error && data && data.length > 0) setProfit(data[0]);
+      setProfitLoading(false);
+    }
+    loadProfit();
   }, [store.id]);
 
   const validOrders = useMemo(() => orders.filter((o) => o.status !== "cancelado"), [orders]);
@@ -315,6 +341,47 @@ export default function Relatorios() {
           </button>
         </div>
         {exportError && <p className="mt-2 text-sm text-red-600">{exportError}</p>}
+      </div>
+
+      <div className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+          Lucro real do mês
+        </h2>
+        {profitLoading ? (
+          <p className="mt-2 text-sm text-slate-500">Calculando…</p>
+        ) : !profit ? (
+          <p className="mt-2 text-sm text-slate-500">Não deu pra calcular agora.</p>
+        ) : (
+          <div className="mt-3 space-y-1 text-sm">
+            <div className="flex justify-between text-slate-600 dark:text-slate-400">
+              <span>Receita de vendas</span>
+              <span>{formatCurrency(profit.revenue)}</span>
+            </div>
+            <div className="flex justify-between text-slate-600 dark:text-slate-400">
+              <span>Custo dos produtos vendidos</span>
+              <span>− {formatCurrency(profit.cogs)}</span>
+            </div>
+            <div className="flex justify-between text-slate-600 dark:text-slate-400">
+              <span>Despesas do mês</span>
+              <span>− {formatCurrency(profit.expenses)}</span>
+            </div>
+            <div className="mt-2 flex justify-between border-t border-slate-100 pt-2 text-base font-semibold text-slate-900 dark:border-slate-800 dark:text-slate-50">
+              <span>Lucro líquido</span>
+              <span className={profit.profit >= 0 ? "text-green-700 dark:text-green-500" : "text-red-600"}>
+                {formatCurrency(profit.profit)}
+              </span>
+            </div>
+            {profit.missing_cost && (
+              <p className="mt-2 text-xs text-amber-600 dark:text-amber-500">
+                Alguns produtos vendidos não têm preço de custo cadastrado — o custo (e o lucro) real
+                pode ser menor do que o mostrado aqui.{" "}
+                <a href="/painel/produtos" className="underline">
+                  Cadastrar custo dos produtos
+                </a>
+              </p>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
