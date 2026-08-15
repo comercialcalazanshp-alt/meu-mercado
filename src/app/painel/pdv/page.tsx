@@ -19,6 +19,7 @@ type Product = {
   price_fiado: number | null;
   on_offer: boolean;
   offer_price: number | null;
+  offer_ends_at: string | null;
 };
 
 type KitOption = {
@@ -43,6 +44,7 @@ type CartLine = {
   priceFiado?: number | null;
   onOffer?: boolean;
   offerPrice?: number | null;
+  offerEndsAt?: string | null;
 };
 
 type RecentSale = {
@@ -110,7 +112,7 @@ function pdvLineTotal(
   if (!isSplit && paymentMethod === "fiado" && line.priceFiado != null) {
     return line.priceFiado * quantity;
   }
-  if (line.onOffer && line.offerPrice != null) {
+  if (line.onOffer && line.offerPrice != null && (!line.offerEndsAt || new Date(line.offerEndsAt) > new Date())) {
     return line.offerPrice * quantity;
   }
   if (line.priceWholesale != null && line.wholesaleMinQty != null && quantity >= line.wholesaleMinQty) {
@@ -332,7 +334,7 @@ export default function Pdv() {
     const { data } = await getSupabase()
       .from("products")
       .select(
-        "id, name, price, stock, barcode, sold_by_weight, promo_buy_qty, promo_pay_qty, price_wholesale, wholesale_min_qty, price_fiado, on_offer, offer_price",
+        "id, name, price, stock, barcode, sold_by_weight, promo_buy_qty, promo_pay_qty, price_wholesale, wholesale_min_qty, price_fiado, on_offer, offer_price, offer_ends_at",
       )
       .eq("store_id", store.id)
       .order("name", { ascending: true });
@@ -480,6 +482,7 @@ export default function Pdv() {
           priceFiado: product.price_fiado,
           onOffer: product.on_offer,
           offerPrice: product.offer_price,
+          offerEndsAt: product.offer_ends_at,
         },
       ];
     });
@@ -597,6 +600,7 @@ export default function Pdv() {
               priceFiado: current.price_fiado,
               onOffer: current.on_offer,
               offerPrice: current.offer_price,
+              offerEndsAt: current.offer_ends_at,
             }
           : line;
       }),
@@ -653,7 +657,7 @@ export default function Pdv() {
         sold_by_weight: quickAddSoldByWeight,
       })
       .select(
-        "id, name, price, stock, barcode, sold_by_weight, promo_buy_qty, promo_pay_qty, price_wholesale, wholesale_min_qty, price_fiado, on_offer, offer_price",
+        "id, name, price, stock, barcode, sold_by_weight, promo_buy_qty, promo_pay_qty, price_wholesale, wholesale_min_qty, price_fiado, on_offer, offer_price, offer_ends_at",
       )
       .single();
     setQuickAddSaving(false);
@@ -960,7 +964,11 @@ export default function Pdv() {
                         {p.sold_by_weight && <IconScale className="h-3.5 w-3.5 text-slate-400" />}
                       </span>
                       <span className="shrink-0 text-slate-500 dark:text-slate-400">
-                        {formatCurrency(p.on_offer && p.offer_price != null ? p.offer_price : p.price)}
+                        {formatCurrency(
+                          p.on_offer && p.offer_price != null && (!p.offer_ends_at || new Date(p.offer_ends_at) > new Date())
+                            ? p.offer_price
+                            : p.price,
+                        )}
                         {p.sold_by_weight ? "/kg" : ""} · estoque{" "}
                         {Number.isInteger(p.stock) ? p.stock : p.stock.toFixed(3)}
                       </span>

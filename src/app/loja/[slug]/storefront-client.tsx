@@ -35,6 +35,7 @@ type Product = {
   wholesale_min_qty: number | null;
   on_offer: boolean;
   offer_price: number | null;
+  offer_ends_at: string | null;
   created_at: string;
   barcode: string | null;
 };
@@ -43,8 +44,19 @@ function isNewProduct(createdAt: string) {
   return Date.now() - new Date(createdAt).getTime() < 7 * 86400000;
 }
 
+// "Ofertas do dia" tem prazo opcional (offer_ends_at) — depois de vencido,
+// o preço/selo de oferta some da vitrine sozinho, sem o dono precisar
+// lembrar de desmarcar. checkout() já trata o mesmo prazo do lado do banco.
+function isOfferActive(product: Product) {
+  return (
+    product.on_offer &&
+    product.offer_price !== null &&
+    (!product.offer_ends_at || new Date(product.offer_ends_at) > new Date())
+  );
+}
+
 function effectivePrice(product: Product) {
-  return product.on_offer && product.offer_price !== null ? product.offer_price : product.price;
+  return isOfferActive(product) ? product.offer_price! : product.price;
 }
 
 function lineTotalFor(
@@ -511,7 +523,7 @@ export default function StorefrontClient({
             price: unitPrice,
             quantity,
             lineTotal:
-              product.on_offer && product.offer_price !== null
+              isOfferActive(product)
                 ? unitPrice * quantity
                 : lineTotalFor(
                     unitPrice,
@@ -2224,7 +2236,7 @@ export default function StorefrontClient({
                             </div>
                           )}
                           <div className="absolute left-2 top-2 flex flex-col gap-1">
-                            {product.on_offer && product.offer_price !== null && (
+                            {isOfferActive(product) && (
                               <span className="rounded-full bg-red-600 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white shadow-sm">
                                 Oferta
                               </span>
@@ -2251,10 +2263,10 @@ export default function StorefrontClient({
                         </p>
 
                         <div className="mt-1.5">
-                          {product.on_offer && product.offer_price !== null ? (
+                          {isOfferActive(product) ? (
                             <p className="flex items-baseline gap-1.5">
                               <span className="text-base font-bold text-red-600">
-                                {formatCurrency(product.offer_price)}
+                                {formatCurrency(product.offer_price!)}
                               </span>
                               <span className="text-xs text-slate-400 line-through dark:text-slate-500">
                                 {formatCurrency(product.price)}
@@ -2267,12 +2279,12 @@ export default function StorefrontClient({
                           )}
                         </div>
 
-                        {!product.on_offer && product.promo_buy_qty && product.promo_pay_qty && (
+                        {!isOfferActive(product) && product.promo_buy_qty && product.promo_pay_qty && (
                           <p className="mt-0.5 text-xs font-medium text-emerald-700 dark:text-emerald-400">
                             Leve {product.promo_buy_qty}, pague {product.promo_pay_qty}
                           </p>
                         )}
-                        {!product.on_offer &&
+                        {!isOfferActive(product) &&
                           product.price_wholesale &&
                           product.wholesale_min_qty && (
                             <p className="mt-0.5 text-xs font-medium text-blue-700 dark:text-blue-400">

@@ -33,6 +33,7 @@ type Product = {
   supplier: string | null;
   on_offer: boolean;
   offer_price: number | null;
+  offer_ends_at: string | null;
   sold_by_weight: boolean;
   created_at: string;
 };
@@ -289,6 +290,7 @@ export default function Produtos() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [offerDrafts, setOfferDrafts] = useState<Record<string, string>>({});
   const [offerUiOpen, setOfferUiOpen] = useState<Record<string, boolean>>({});
+  const [offerEndsAtDrafts, setOfferEndsAtDrafts] = useState<Record<string, string>>({});
 
   const [search, setSearch] = useState("");
   const [gapFilter, setGapFilter] = useState<"photo" | "cost" | "category" | null>(null);
@@ -457,7 +459,7 @@ export default function Produtos() {
     const { data } = await getSupabase()
       .from("products")
       .select(
-        "id, name, category, price, cost_price, image_url, stock, active, promo_buy_qty, promo_pay_qty, barcode, price_fiado, price_wholesale, wholesale_min_qty, stock_alert_threshold, expiry_date, supplier, on_offer, offer_price, sold_by_weight, created_at",
+        "id, name, category, price, cost_price, image_url, stock, active, promo_buy_qty, promo_pay_qty, barcode, price_fiado, price_wholesale, wholesale_min_qty, stock_alert_threshold, expiry_date, supplier, on_offer, offer_price, offer_ends_at, sold_by_weight, created_at",
       )
       .eq("store_id", store.id)
       .order("created_at", { ascending: false });
@@ -554,6 +556,10 @@ export default function Produtos() {
       if (dupe) {
         if (!window.confirm(`Esse código de barras já está no produto "${dupe.name}". Cadastrar mesmo assim?`)) return;
       }
+    }
+
+    if (costValue !== null && !Number.isNaN(costValue) && priceValue <= costValue) {
+      if (!window.confirm(`O preço de venda (${formatCurrency(priceValue)}) não é maior que o custo (${formatCurrency(costValue)}) — você vai vender no prejuízo. Cadastrar mesmo assim?`)) return;
     }
 
     const wholesaleRaw = wholesalePriceNew.trim() ? Number(wholesalePriceNew.replace(",", ".")) : null;
@@ -713,11 +719,21 @@ export default function Produtos() {
     return offerDrafts[p.id] ?? (p.offer_price ? String(p.offer_price) : "");
   }
 
+  function offerEndsAtDraftFor(p: Product) {
+    if (offerEndsAtDrafts[p.id] !== undefined) return offerEndsAtDrafts[p.id];
+    return p.offer_ends_at ? p.offer_ends_at.slice(0, 10) : "";
+  }
+
   function handleToggleOfferUi(p: Product, checked: boolean) {
     setOfferUiOpen((prev) => ({ ...prev, [p.id]: checked }));
     if (!checked && p.on_offer) {
-      updateProduct(p.id, { on_offer: false, offer_price: null });
+      updateProduct(p.id, { on_offer: false, offer_price: null, offer_ends_at: null });
       setOfferDrafts((prev) => {
+        const next = { ...prev };
+        delete next[p.id];
+        return next;
+      });
+      setOfferEndsAtDrafts((prev) => {
         const next = { ...prev };
         delete next[p.id];
         return next;
@@ -732,7 +748,9 @@ export default function Produtos() {
       window.alert('Preço da oferta precisa ser um número válido, menor que o preço normal.');
       return;
     }
-    await updateProduct(p.id, { on_offer: true, offer_price: value });
+    const endsAtRaw = offerEndsAtDraftFor(p).trim();
+    const offerEndsAt = endsAtRaw ? new Date(`${endsAtRaw}T23:59:59`).toISOString() : null;
+    await updateProduct(p.id, { on_offer: true, offer_price: value, offer_ends_at: offerEndsAt });
   }
 
   async function deleteProduct(id: string, productName: string) {
@@ -983,6 +1001,12 @@ export default function Produtos() {
 
     const supabase = getSupabase();
     const existingByName = new Map(products.map((p) => [p.name.trim().toLowerCase(), p]));
+    // Casa por código de barras primeiro quando a planilha traz um — assim
+    // reimportar depois de renomear um produto (ex: fornecedor mudou o nome)
+    // atualiza o mesmo produto em vez de criar um duplicado.
+    const existingByBarcode = new Map(
+      products.filter((p) => p.barcode).map((p) => [p.barcode!.trim(), p]),
+    );
 
     const numAt = (row: string[], col: number) => {
       if (col === -1) return undefined;
@@ -1035,9 +1059,14 @@ export default function Produtos() {
       if (expiryDateValue !== undefined) extra.expiry_date = expiryDateValue;
       if (alertThresholdValue !== undefined && alertThresholdValue !== null) extra.stock_alert_threshold = alertThresholdValue;
 
-      const existing = existingByName.get(rowName.toLowerCase());
+      const existing =
+        (barcodeValue ? existingByBarcode.get(barcodeValue.trim()) : undefined) ??
+        existingByName.get(rowName.toLowerCase());
       if (existing) {
-        const patch: Record<string, unknown> = { price: priceValue, ...extra };
+        // Inclui o nome no patch pra quando o casamento foi por código de
+        // barras e o nome na planilha mudou (fornecedor renomeou) — sem
+        // isso o produto ficava com o nome antigo pra sempre.
+        const patch: Record<string, unknown> = { name: rowName, price: priceValue, ...extra };
         if (stockValue !== undefined && stockValue !== null) patch.stock = stockValue;
         if (costValue !== undefined) patch.cost_price = costValue;
         if (categoryValue) patch.category = categoryValue;
@@ -1965,7 +1994,7 @@ export default function Produtos() {
                             Em oferta hoje
                           </label>
                           {offerUiOpenFor(p) && (
-                            <div className="mt-1 flex items-center gap-1">
+                            <div className="mt-1 flex flex-wrap items-center gap-1">
                               <input
                                 type="number"
                                 step="0.01"
@@ -1976,12 +2005,28 @@ export default function Produtos() {
                                 }
                                 className="w-24 rounded border border-slate-300 bg-white px-2 py-1 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
                               />
+                              <input
+                                type="date"
+                                title="Até quando vale a oferta (opcional — sem data, fica até você desmarcar)"
+                                value={offerEndsAtDraftFor(p)}
+                                onChange={(e) =>
+                                  setOfferEndsAtDrafts((prev) => ({ ...prev, [p.id]: e.target.value }))
+                                }
+                                className="rounded border border-slate-300 bg-white px-2 py-1 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                              />
                               <button
                                 onClick={() => handleSaveOfferPrice(p)}
                                 className="text-xs font-medium text-blue-900 hover:underline dark:text-blue-400"
                               >
                                 Salvar
                               </button>
+                              {p.on_offer && p.offer_ends_at && (
+                                <span className="w-full text-xs text-slate-400">
+                                  {new Date(p.offer_ends_at) > new Date()
+                                    ? `Válida até ${new Date(p.offer_ends_at).toLocaleDateString("pt-BR")}`
+                                    : "Prazo vencido — não aparece mais no site nem no balcão"}
+                                </span>
+                              )}
                             </div>
                           )}
                         </div>
