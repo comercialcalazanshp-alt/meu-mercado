@@ -12,6 +12,10 @@ type Customer = {
   birthday: string | null;
 };
 
+function formatDate(iso: string) {
+  return new Date(iso).toLocaleDateString("pt-BR");
+}
+
 type Segment = "todos" | "inativos" | "aniversariantes" | "cashback";
 
 const SEGMENTS: { value: Segment; label: string }[] = [
@@ -32,9 +36,24 @@ export default function Campanhas() {
   const store = useStore();
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [lastOrderByCustomer, setLastOrderByCustomer] = useState<Record<string, string>>({});
+  const [lastContactByCustomer, setLastContactByCustomer] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [segment, setSegment] = useState<Segment>("todos");
   const [message, setMessage] = useState(DEFAULT_MESSAGE);
+  const [hideRecentlyContacted, setHideRecentlyContacted] = useState(false);
+
+  async function loadContacts() {
+    const { data } = await getSupabase()
+      .from("campaign_contacts")
+      .select("customer_id, contacted_at")
+      .eq("store_id", store.id)
+      .order("contacted_at", { ascending: false });
+    const lastContact: Record<string, string> = {};
+    for (const row of data ?? []) {
+      if (!lastContact[row.customer_id]) lastContact[row.customer_id] = row.contacted_at;
+    }
+    setLastContactByCustomer(lastContact);
+  }
 
   useEffect(() => {
     async function load() {
@@ -63,9 +82,11 @@ export default function Campanhas() {
         }
       }
       setLastOrderByCustomer(lastOrder);
+      await loadContacts();
       setLoading(false);
     }
     load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [store.id]);
 
   const filteredCustomers = useMemo(() => {
@@ -73,23 +94,41 @@ export default function Campanhas() {
     const thisMonth = new Date().getMonth();
 
     return customers.filter((c) => {
-      if (segment === "cashback") return c.cashback_balance > 0;
+      if (segment === "cashback" && !(c.cashback_balance > 0)) return false;
       if (segment === "aniversariantes") {
-        return c.birthday && new Date(c.birthday + "T00:00:00").getMonth() === thisMonth;
+        if (!c.birthday || new Date(c.birthday + "T00:00:00").getMonth() !== thisMonth) return false;
       }
       if (segment === "inativos") {
         const lastOrder = lastOrderByCustomer[c.id];
-        if (!lastOrder) return true;
-        const daysSince = (now - new Date(lastOrder).getTime()) / (1000 * 60 * 60 * 24);
-        return daysSince > 30;
+        if (lastOrder) {
+          const daysSince = (now - new Date(lastOrder).getTime()) / (1000 * 60 * 60 * 24);
+          if (daysSince <= 30) return false;
+        }
+      }
+      if (hideRecentlyContacted) {
+        const lastContact = lastContactByCustomer[c.id];
+        if (lastContact) {
+          const daysSince = (now - new Date(lastContact).getTime()) / (1000 * 60 * 60 * 24);
+          if (daysSince <= 7) return false;
+        }
       }
       return true;
     });
-  }, [customers, segment, lastOrderByCustomer]);
+  }, [customers, segment, lastOrderByCustomer, hideRecentlyContacted, lastContactByCustomer]);
 
   function whatsappUrl(customer: Customer) {
     const personalized = message.replace(/\{nome\}/g, customer.name || "cliente");
     return `https://wa.me/55${customer.phone.replace(/\D/g, "")}?text=${encodeURIComponent(personalized)}`;
+  }
+
+  function handleSend(customer: Customer) {
+    window.open(whatsappUrl(customer), "_blank", "noopener,noreferrer");
+    const now = new Date().toISOString();
+    setLastContactByCustomer((prev) => ({ ...prev, [customer.id]: now }));
+    getSupabase()
+      .from("campaign_contacts")
+      .insert({ store_id: store.id, customer_id: customer.id, segment, message })
+      .then(() => {});
   }
 
   return (
@@ -133,27 +172,38 @@ export default function Campanhas() {
         </div>
       </div>
 
-      <div className="mt-6 overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800">
-        <table className="w-full min-w-[520px] text-left text-sm">
+      <label className="mt-3 flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400">
+        <input
+          type="checkbox"
+          checked={hideRecentlyContacted}
+          onChange={(e) => setHideRecentlyContacted(e.target.checked)}
+          className="h-4 w-4 rounded border-slate-300 dark:border-slate-700"
+        />
+        Esconder quem já foi contatado nos últimos 7 dias
+      </label>
+
+      <div className="mt-3 overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800">
+        <table className="w-full min-w-[600px] text-left text-sm">
           <thead className="bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300">
             <tr>
               <th className="px-3 py-2 font-medium">Cliente</th>
               <th className="px-3 py-2 font-medium">WhatsApp</th>
               <th className="px-3 py-2 font-medium">Cashback</th>
+              <th className="px-3 py-2 font-medium">Último contato</th>
               <th className="px-3 py-2 font-medium"></th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-200 bg-white dark:divide-slate-800 dark:bg-slate-900">
             {loading && (
               <tr>
-                <td colSpan={4} className="px-3 py-6 text-center text-slate-500">
+                <td colSpan={5} className="px-3 py-6 text-center text-slate-500">
                   Carregando…
                 </td>
               </tr>
             )}
             {!loading && filteredCustomers.length === 0 && (
               <tr>
-                <td colSpan={4} className="px-3 py-6 text-center text-slate-500">
+                <td colSpan={5} className="px-3 py-6 text-center text-slate-500">
                   Nenhum cliente nesse grupo.
                 </td>
               </tr>
@@ -167,15 +217,16 @@ export default function Campanhas() {
                 <td className="px-3 py-2 text-slate-600 dark:text-slate-400">
                   {c.cashback_balance > 0 ? formatCurrency(c.cashback_balance) : "—"}
                 </td>
+                <td className="px-3 py-2 text-slate-600 dark:text-slate-400">
+                  {lastContactByCustomer[c.id] ? formatDate(lastContactByCustomer[c.id]) : "Nunca"}
+                </td>
                 <td className="px-3 py-2 text-right">
-                  <a
-                    href={whatsappUrl(c)}
-                    target="_blank"
-                    rel="noopener noreferrer"
+                  <button
+                    onClick={() => handleSend(c)}
                     className="rounded-lg bg-green-600 px-3 py-1.5 text-xs font-medium text-white"
                   >
                     Enviar no WhatsApp
-                  </a>
+                  </button>
                 </td>
               </tr>
             ))}
