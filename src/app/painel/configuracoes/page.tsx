@@ -73,13 +73,19 @@ export default function Configuracoes() {
   const [regeneratingToken, setRegeneratingToken] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
 
+  const [alertLowStock, setAlertLowStock] = useState(true);
+  const [alertStalledOrder, setAlertStalledOrder] = useState(true);
+  const [alertDeliveryDelay, setAlertDeliveryDelay] = useState(true);
+  const [savingAlerts, setSavingAlerts] = useState(false);
+  const [alertsSaved, setAlertsSaved] = useState(false);
+
   const canDelete = confirmText.trim() === store.slug;
 
   useEffect(() => {
     getSupabase()
       .from("stores")
       .select(
-        "business_hours_enabled, opens_at, closes_at, open_days, manually_closed, accountant_token, brand_color, accent_color, cashback_percent, referral_bonus, loyalty_silver_threshold, loyalty_gold_threshold, credit_interest_percent, sales_goal",
+        "business_hours_enabled, opens_at, closes_at, open_days, manually_closed, accountant_token, brand_color, accent_color, cashback_percent, referral_bonus, loyalty_silver_threshold, loyalty_gold_threshold, credit_interest_percent, sales_goal, alert_low_stock_enabled, alert_stalled_order_enabled, alert_delivery_delay_enabled",
       )
       .eq("id", store.id)
       .single()
@@ -99,6 +105,9 @@ export default function Configuracoes() {
         setGoldThreshold(data.loyalty_gold_threshold > 0 ? String(data.loyalty_gold_threshold) : "");
         setInterestPercent(data.credit_interest_percent > 0 ? String(data.credit_interest_percent) : "");
         setSalesGoal(data.sales_goal > 0 ? String(data.sales_goal) : "");
+        setAlertLowStock(data.alert_low_stock_enabled);
+        setAlertStalledOrder(data.alert_stalled_order_enabled);
+        setAlertDeliveryDelay(data.alert_delivery_delay_enabled);
       });
   }, [store.id]);
 
@@ -250,6 +259,25 @@ export default function Configuracoes() {
     setSavingGoal(false);
     setGoalSaved(true);
     setTimeout(() => setGoalSaved(false), 2500);
+  }
+
+  async function handleSaveAlerts(e: FormEvent) {
+    e.preventDefault();
+    setSavingAlerts(true);
+    setAlertsSaved(false);
+    const { error: updateError } = await getSupabase()
+      .from("stores")
+      .update({
+        alert_low_stock_enabled: alertLowStock,
+        alert_stalled_order_enabled: alertStalledOrder,
+        alert_delivery_delay_enabled: alertDeliveryDelay,
+      })
+      .eq("id", store.id);
+    setSavingAlerts(false);
+    if (!updateError) {
+      setAlertsSaved(true);
+      setTimeout(() => setAlertsSaved(false), 2000);
+    }
   }
 
   async function handleDelete() {
@@ -637,6 +665,57 @@ export default function Configuracoes() {
             {savingGoal ? "Salvando…" : "Salvar"}
           </button>
           {goalSaved && <span className="text-sm text-green-600">Salvo!</span>}
+        </div>
+      </form>
+
+      <form
+        onSubmit={handleSaveAlerts}
+        className="mt-4 rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900"
+      >
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+          Alertas automáticos
+        </h2>
+        <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
+          Manda notificação push (mesmo com o painel fechado) quando alguma dessas situações acontecer. Precisa ter ativado as notificações push no navegador.
+        </p>
+        <div className="mt-3 space-y-2">
+          <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200">
+            <input
+              type="checkbox"
+              checked={alertLowStock}
+              onChange={(e) => setAlertLowStock(e.target.checked)}
+              className="h-4 w-4 rounded border-slate-300"
+            />
+            Estoque baixo (produto chegou no limite cadastrado)
+          </label>
+          <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200">
+            <input
+              type="checkbox"
+              checked={alertStalledOrder}
+              onChange={(e) => setAlertStalledOrder(e.target.checked)}
+              className="h-4 w-4 rounded border-slate-300"
+            />
+            Pedido parado sem confirmar há mais de 20 minutos
+          </label>
+          <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200">
+            <input
+              type="checkbox"
+              checked={alertDeliveryDelay}
+              onChange={(e) => setAlertDeliveryDelay(e.target.checked)}
+              className="h-4 w-4 rounded border-slate-300"
+            />
+            Entrega a caminho há mais de 45 minutos
+          </label>
+        </div>
+        <div className="mt-3 flex items-center gap-2">
+          <button
+            type="submit"
+            disabled={savingAlerts}
+            className="rounded-lg bg-blue-900 px-4 py-2 text-sm font-semibold text-amber-300 disabled:opacity-60 dark:bg-blue-800"
+          >
+            {savingAlerts ? "Salvando…" : "Salvar"}
+          </button>
+          {alertsSaved && <span className="text-sm text-green-600">Salvo!</span>}
         </div>
       </form>
 

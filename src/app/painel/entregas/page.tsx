@@ -120,7 +120,10 @@ export default function Entregas() {
 
   async function markEmRota(id: string) {
     setUpdatingId(id);
-    await getSupabase().from("orders").update({ status: "entregando" }).eq("id", id);
+    await getSupabase()
+      .from("orders")
+      .update({ status: "entregando", out_for_delivery_at: new Date().toISOString() })
+      .eq("id", id);
     await load();
     setUpdatingId(null);
   }
