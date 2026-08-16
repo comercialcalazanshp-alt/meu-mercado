@@ -47,6 +47,7 @@ function playNewOrderChime() {
 }
 
 const CAIXA_ALLOWED_PATHS = new Set(["/painel/pdv", "/painel/caixa"]);
+const ENTREGADOR_ALLOWED_PATHS = new Set(["/painel/entregas"]);
 
 const NAV_ITEMS = [
   { href: "/painel", label: "Início" },
@@ -68,6 +69,8 @@ const NAV_ITEMS = [
   { href: "/painel/mensagens", label: "Mensagens" },
   { href: "/painel/campanhas", label: "Campanhas" },
   { href: "/painel/pedidos", label: "Pedidos" },
+  { href: "/painel/entregas", label: "Entregas" },
+  { href: "/painel/afiliados", label: "Afiliados" },
   { href: "/painel/relatorios", label: "Relatórios" },
   { href: "/painel/avaliacoes", label: "Avaliações" },
   { href: "/painel/trafego", label: "Tráfego" },
@@ -83,7 +86,7 @@ export default function PainelLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const [store, setStore] = useState<Store | null>(null);
   const [status, setStatus] = useState<"loading" | "ready" | "sem-loja">("loading");
-  const [role, setRole] = useState<"completo" | "caixa">("completo");
+  const [role, setRole] = useState<"completo" | "caixa" | "entregador">("completo");
   const [notifications, setNotifications] = useState<OrderNotification[]>([]);
   const [soundMuted, setSoundMuted] = useState(false);
   const [pushStatus, setPushStatus] = useState<"unsupported" | "off" | "on" | "denied">("off");
@@ -118,7 +121,7 @@ export default function PainelLayout({ children }: { children: ReactNode }) {
       setStatus("ready");
 
       const { data: roleData } = await supabase.rpc("get_my_role", { p_store_id: storeRow.id });
-      if (active && roleData === "caixa") setRole("caixa");
+      if (active && (roleData === "caixa" || roleData === "entregador")) setRole(roleData);
     }
 
     load();
@@ -143,9 +146,11 @@ export default function PainelLayout({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    if (status !== "ready" || role !== "caixa") return;
-    if (!CAIXA_ALLOWED_PATHS.has(pathname)) {
+    if (status !== "ready") return;
+    if (role === "caixa" && !CAIXA_ALLOWED_PATHS.has(pathname)) {
       router.replace("/painel/pdv");
+    } else if (role === "entregador" && !ENTREGADOR_ALLOWED_PATHS.has(pathname)) {
+      router.replace("/painel/entregas");
     }
   }, [status, role, pathname, router]);
 
@@ -332,6 +337,27 @@ export default function PainelLayout({ children }: { children: ReactNode }) {
     );
   }
 
+  const isEntregas = pathname === "/painel/entregas";
+
+  if (isEntregas) {
+    return (
+      <div className="flex flex-1 flex-col bg-slate-50 dark:bg-slate-950">
+        <div className="flex items-center justify-between border-b border-slate-200 bg-white px-4 py-2 dark:border-slate-800 dark:bg-slate-900">
+          <p className="truncate text-sm font-semibold text-slate-900 dark:text-slate-50">{store!.name}</p>
+          <button
+            onClick={handleSignOut}
+            className="text-sm font-medium text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
+          >
+            Sair
+          </button>
+        </div>
+        <main className="flex-1 px-4 py-4 md:px-6 md:py-6">
+          <StoreContext.Provider value={store}>{children}</StoreContext.Provider>
+        </main>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-1 flex-col bg-slate-50 dark:bg-slate-950 md:flex-row">
       <aside className="flex shrink-0 flex-col border-b border-slate-200 bg-white px-4 py-4 dark:border-slate-800 dark:bg-slate-900 md:w-56 md:border-b-0 md:border-r md:px-3 md:py-6">
@@ -379,7 +405,12 @@ export default function PainelLayout({ children }: { children: ReactNode }) {
           </div>
         </div>
         <nav className="flex gap-1 overflow-x-auto md:flex-col md:overflow-visible">
-          {(role === "caixa" ? NAV_ITEMS.filter((item) => CAIXA_ALLOWED_PATHS.has(item.href)) : NAV_ITEMS).map((item) => {
+          {(role === "caixa"
+            ? NAV_ITEMS.filter((item) => CAIXA_ALLOWED_PATHS.has(item.href))
+            : role === "entregador"
+              ? NAV_ITEMS.filter((item) => ENTREGADOR_ALLOWED_PATHS.has(item.href))
+              : NAV_ITEMS
+          ).map((item) => {
             const isActive = pathname === item.href;
             return (
               <a
