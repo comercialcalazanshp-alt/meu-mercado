@@ -51,6 +51,7 @@ const ENTREGADOR_ALLOWED_PATHS = new Set(["/painel/entregas"]);
 
 const NAV_ITEMS = [
   { href: "/painel", label: "Início" },
+  { href: "/painel/dashboard", label: "Dashboard" },
   { href: "/painel/pdv", label: "PDV" },
   { href: "/painel/caixa", label: "Caixa" },
   { href: "/painel/produtos", label: "Produtos" },
