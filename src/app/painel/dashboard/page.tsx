@@ -251,6 +251,7 @@ export default function Dashboard() {
   const [clubSubs, setClubSubs] = useState<ClubSubscription[]>([]);
   const [entregadores, setEntregadores] = useState<EntregadorMember[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [prevExpenses, setPrevExpenses] = useState<Expense[]>([]);
   const [profit, setProfit] = useState<Profit | null>(null);
   const [prevProfit, setPrevProfit] = useState<Profit | null>(null);
 
@@ -284,8 +285,8 @@ export default function Dashboard() {
           .from("expenses")
           .select("id, description, category, amount, expense_date")
           .eq("store_id", store.id)
-          .gte("expense_date", since.toISOString().slice(0, 10))
-          .lte("expense_date", until.toISOString().slice(0, 10)),
+          .gte("expense_date", prevSince.toISOString().slice(0, 10))
+          .lt("expense_date", until.toISOString().slice(0, 10)),
         supabase.rpc("get_profit_summary", { p_store_id: store.id, p_since: since.toISOString(), p_until: until.toISOString() }),
         supabase.rpc("get_profit_summary", { p_store_id: store.id, p_since: prevSince.toISOString(), p_until: prevUntil.toISOString() }),
       ]);
@@ -317,7 +318,17 @@ export default function Dashboard() {
 
       setClubSubs((clubRes.data ?? []) as ClubSubscription[]);
       setEntregadores((entregadoresRes.data ?? []) as EntregadorMember[]);
-      setExpenses((expensesRes.data ?? []) as Expense[]);
+      {
+        // expense_date é uma coluna "date" pura (sem hora) — comparar como
+        // string YYYY-MM-DD evita qualquer confusão de fuso horário que um
+        // "new Date(expense_date)" poderia introduzir. sinceKey/untilKey
+        // usam o MESMO recorte que a query já aplicou, só pra separar o
+        // resultado único em período atual vs anterior.
+        const allExpenses = (expensesRes.data ?? []) as Expense[];
+        const sinceKey = since.toISOString().slice(0, 10);
+        setExpenses(allExpenses.filter((e) => e.expense_date >= sinceKey));
+        setPrevExpenses(allExpenses.filter((e) => e.expense_date < sinceKey));
+      }
       if (!profitRes.error && profitRes.data?.length) setProfit(profitRes.data[0]);
       if (!prevProfitRes.error && prevProfitRes.data?.length) setPrevProfit(prevProfitRes.data[0]);
       setLoading(false);
@@ -469,6 +480,7 @@ export default function Dashboard() {
       .sort((a, b) => b.value - a.value);
   }, [expenses]);
   const totalDespesas = expenses.reduce((s, e) => s + e.amount, 0);
+  const prevTotalDespesas = prevExpenses.reduce((s, e) => s + e.amount, 0);
 
   // ---------- P&L completo: nada fica de fora ----------
   // Faturamento = tudo que a loja realmente faturou no período: vendas do
@@ -481,7 +493,13 @@ export default function Dashboard() {
   const custoProdutos = profit?.cogs ?? 0;
   const lucroLiquido = faturamentoTotal - custoProdutos - totalDespesas - custoEntregadoresTotal;
   const prevCustoProdutos = prevProfit?.cogs ?? 0;
-  const prevLucroLiquido = prevFaturamentoTotal - prevCustoProdutos - (prevProfit?.expenses ?? 0) - prevCustoEntregadoresTotal;
+  // Usa prevTotalDespesas (mesma query client-side, mesmo corte de data que
+  // o período atual) em vez de prevProfit.expenses — a RPC get_profit_summary
+  // corta despesas com "expense_date < until::date" (exclui o dia de
+  // "until"), enquanto aqui já se soma dia inteiro incluído; misturar as
+  // duas fontes faria o período atual e o anterior usarem regras de data
+  // diferentes pro mesmo tipo de número, distorcendo o "vs. período anterior".
+  const prevLucroLiquido = prevFaturamentoTotal - prevCustoProdutos - prevTotalDespesas - prevCustoEntregadoresTotal;
 
   const maxRank = (arr: { value: number }[]) => Math.max(1, ...arr.map((a) => a.value));
 

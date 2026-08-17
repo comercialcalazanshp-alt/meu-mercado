@@ -76,6 +76,8 @@ export default function Configuracoes() {
   const [alertLowStock, setAlertLowStock] = useState(true);
   const [alertStalledOrder, setAlertStalledOrder] = useState(true);
   const [alertDeliveryDelay, setAlertDeliveryDelay] = useState(true);
+  const [alertGoalReached, setAlertGoalReached] = useState(true);
+  const [weeklySummary, setWeeklySummary] = useState(true);
   const [savingAlerts, setSavingAlerts] = useState(false);
   const [alertsSaved, setAlertsSaved] = useState(false);
 
@@ -85,7 +87,7 @@ export default function Configuracoes() {
     getSupabase()
       .from("stores")
       .select(
-        "business_hours_enabled, opens_at, closes_at, open_days, manually_closed, accountant_token, brand_color, accent_color, cashback_percent, referral_bonus, loyalty_silver_threshold, loyalty_gold_threshold, credit_interest_percent, sales_goal, alert_low_stock_enabled, alert_stalled_order_enabled, alert_delivery_delay_enabled",
+        "business_hours_enabled, opens_at, closes_at, open_days, manually_closed, accountant_token, brand_color, accent_color, cashback_percent, referral_bonus, loyalty_silver_threshold, loyalty_gold_threshold, credit_interest_percent, sales_goal, alert_low_stock_enabled, alert_stalled_order_enabled, alert_delivery_delay_enabled, alert_goal_reached_enabled, weekly_summary_enabled",
       )
       .eq("id", store.id)
       .single()
@@ -108,6 +110,8 @@ export default function Configuracoes() {
         setAlertLowStock(data.alert_low_stock_enabled);
         setAlertStalledOrder(data.alert_stalled_order_enabled);
         setAlertDeliveryDelay(data.alert_delivery_delay_enabled);
+        setAlertGoalReached(data.alert_goal_reached_enabled);
+        setWeeklySummary(data.weekly_summary_enabled);
       });
   }, [store.id]);
 
@@ -271,6 +275,8 @@ export default function Configuracoes() {
         alert_low_stock_enabled: alertLowStock,
         alert_stalled_order_enabled: alertStalledOrder,
         alert_delivery_delay_enabled: alertDeliveryDelay,
+        alert_goal_reached_enabled: alertGoalReached,
+        weekly_summary_enabled: weeklySummary,
       })
       .eq("id", store.id);
     setSavingAlerts(false);
@@ -705,6 +711,24 @@ export default function Configuracoes() {
               className="h-4 w-4 rounded border-slate-300"
             />
             Entrega a caminho há mais de 45 minutos
+          </label>
+          <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200">
+            <input
+              type="checkbox"
+              checked={alertGoalReached}
+              onChange={(e) => setAlertGoalReached(e.target.checked)}
+              className="h-4 w-4 rounded border-slate-300"
+            />
+            Meta de vendas do mês batida (defina a meta mais abaixo)
+          </label>
+          <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200">
+            <input
+              type="checkbox"
+              checked={weeklySummary}
+              onChange={(e) => setWeeklySummary(e.target.checked)}
+              className="h-4 w-4 rounded border-slate-300"
+            />
+            Resumo da semana toda segunda de manhã
           </label>
         </div>
         <div className="mt-3 flex items-center gap-2">

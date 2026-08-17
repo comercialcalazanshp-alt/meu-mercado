@@ -1,5 +1,7 @@
 "use client";
 
+import { useEffect, useState } from "react";
+
 type OrderItem = {
   name: string;
   price: number;
@@ -52,6 +54,19 @@ function deliveryEstimateText(order: OrderReceipt): string | null {
   return `Chega em ${range} depois que o pedido for confirmado`;
 }
 
+// % da janela de entrega já percorrida, calculada a partir de out_for_delivery_at
+// até out_for_delivery_at + eta_max (ou eta_min, se não tiver máximo) — só
+// faz sentido enquanto a entrega já saiu e ainda não chegou.
+function deliveryProgressPercent(order: OrderReceipt, now: number): number | null {
+  if (order.status !== "entregando" || !order.out_for_delivery_at) return null;
+  const windowMinutes = order.eta_max_minutes ?? order.eta_min_minutes;
+  if (!windowMinutes) return null;
+  const start = new Date(order.out_for_delivery_at).getTime();
+  const elapsedMs = now - start;
+  const totalMs = windowMinutes * 60000;
+  return Math.max(0, Math.min(100, (elapsedMs / totalMs) * 100));
+}
+
 const STATUS_LABEL: Record<string, string> = {
   pendente: "Pendente",
   confirmado: "Confirmado",
@@ -73,6 +88,17 @@ export default function ReciboClient({ order }: { order: OrderReceipt }) {
     dateStyle: "short",
     timeStyle: "short",
   });
+
+  // Só liga o relógio quando faz sentido (entrega a caminho) — pra não
+  // ficar um setInterval rodando à toa numa página estática de recibo já
+  // entregue/cancelado.
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (order.status !== "entregando") return;
+    const id = setInterval(() => setNow(Date.now()), 30000);
+    return () => clearInterval(id);
+  }, [order.status]);
+  const progressPercent = deliveryProgressPercent(order, now);
 
   return (
     <div className="flex flex-1 justify-center bg-slate-50 px-6 py-10 dark:bg-slate-950">
@@ -125,6 +151,21 @@ export default function ReciboClient({ order }: { order: OrderReceipt }) {
               <p className="mt-1 font-medium text-slate-700 dark:text-slate-200 print:text-slate-700">
                 🕒 {deliveryEstimateText(order)}
               </p>
+            )}
+            {progressPercent !== null && (
+              <div className="mt-2 print:hidden">
+                <div className="h-2 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
+                  <div
+                    className="h-full rounded-full bg-blue-600 transition-all duration-700 dark:bg-blue-500"
+                    style={{ width: `${progressPercent}%` }}
+                  />
+                </div>
+                {progressPercent >= 100 && (
+                  <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
+                    Já passou do previsto — deve estar quase chegando
+                  </p>
+                )}
+              </div>
             )}
           </div>
 

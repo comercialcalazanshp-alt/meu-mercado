@@ -88,6 +88,7 @@ export default function PainelLayout({ children }: { children: ReactNode }) {
   const [store, setStore] = useState<Store | null>(null);
   const [status, setStatus] = useState<"loading" | "ready" | "sem-loja">("loading");
   const [role, setRole] = useState<"completo" | "caixa" | "entregador">("completo");
+  const [memberId, setMemberId] = useState<string | null>(null);
   const [notifications, setNotifications] = useState<OrderNotification[]>([]);
   const [soundMuted, setSoundMuted] = useState(false);
   const [pushStatus, setPushStatus] = useState<"unsupported" | "off" | "on" | "denied">("off");
@@ -123,6 +124,19 @@ export default function PainelLayout({ children }: { children: ReactNode }) {
 
       const { data: roleData } = await supabase.rpc("get_my_role", { p_store_id: storeRow.id });
       if (active && (roleData === "caixa" || roleData === "entregador")) setRole(roleData);
+
+      // Só o entregador precisa marcar a inscrição de push com o próprio
+      // member_id — pra loja receber alerta de gestão (estoque, pedido
+      // parado) só o dono, e entrega demorando os dois. Sem isso a
+      // inscrição de push do entregador ficaria indistinguível da do dono.
+      if (active && roleData === "entregador") {
+        const { data: memberRow } = await supabase
+          .from("store_members")
+          .select("id")
+          .eq("store_id", storeRow.id)
+          .maybeSingle();
+        if (active && memberRow) setMemberId(memberRow.id);
+      }
     }
 
     load();
@@ -194,6 +208,7 @@ export default function PainelLayout({ children }: { children: ReactNode }) {
       await getSupabase().from("push_subscriptions").upsert(
         {
           store_id: store.id,
+          member_id: memberId,
           endpoint: json.endpoint!,
           p256dh: json.keys!.p256dh,
           auth: json.keys!.auth,
@@ -345,12 +360,29 @@ export default function PainelLayout({ children }: { children: ReactNode }) {
       <div className="flex flex-1 flex-col bg-slate-50 dark:bg-slate-950">
         <div className="flex items-center justify-between border-b border-slate-200 bg-white px-4 py-2 dark:border-slate-800 dark:bg-slate-900">
           <p className="truncate text-sm font-semibold text-slate-900 dark:text-slate-50">{store!.name}</p>
-          <button
-            onClick={handleSignOut}
-            className="text-sm font-medium text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
-          >
-            Sair
-          </button>
+          <div className="flex items-center gap-1">
+            {pushStatus === "off" && (
+              <button
+                onClick={handleEnablePush}
+                disabled={pushLoading}
+                title="Ativar notificação de entrega demorando mesmo com o painel fechado"
+                className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600 disabled:opacity-50 dark:hover:bg-slate-800 dark:hover:text-slate-300"
+              >
+                📲
+              </button>
+            )}
+            {pushStatus === "on" && (
+              <span title="Notificação ativada nesse aparelho" className="rounded-lg p-1.5 text-emerald-500">
+                ✅
+              </span>
+            )}
+            <button
+              onClick={handleSignOut}
+              className="text-sm font-medium text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
+            >
+              Sair
+            </button>
+          </div>
         </div>
         <main className="flex-1 px-4 py-4 md:px-6 md:py-6">
           <StoreContext.Provider value={store}>{children}</StoreContext.Provider>
