@@ -133,7 +133,16 @@ type Neighborhood = {
   id: string;
   name: string;
   fee: number;
+  eta_min_minutes: number | null;
+  eta_max_minutes: number | null;
 };
+
+function etaLabel(min: number | null, max: number | null): string | null {
+  if (min && max) return min === max ? `${min} min` : `${min}-${max} min`;
+  if (min) return `a partir de ${min} min`;
+  if (max) return `até ${max} min`;
+  return null;
+}
 
 type StoreReviewSummary = {
   id: string;
@@ -319,6 +328,7 @@ export default function StorefrontClient({
   const [neighborhoodId, setNeighborhoodId] = useState<string>("retirada");
   const [deliveryAddress, setDeliveryAddress] = useState("");
   const [confirmedDeliveryFee, setConfirmedDeliveryFee] = useState(0);
+  const [confirmedEta, setConfirmedEta] = useState<{ min: number | null; max: number | null } | null>(null);
   const [confirmedOrderId, setConfirmedOrderId] = useState<string | null>(null);
   const [paymentMethod, setPaymentMethod] = useState<"combinar" | "pix" | "cartao">("combinar");
   const [pixQrCodeText, setPixQrCodeText] = useState<string | null>(null);
@@ -557,10 +567,9 @@ export default function StorefrontClient({
   const total = cartItems.reduce((sum, item) => sum + item.lineTotal, 0);
   const cartCount = cartItems.reduce((sum, item) => sum + item.quantity, 0);
   const storeStatus = useMemo(() => isStoreOpenNow(store), [store]);
-  const deliveryFee =
-    neighborhoodId === "retirada"
-      ? 0
-      : (neighborhoods.find((n) => n.id === neighborhoodId)?.fee ?? 0);
+  const selectedNeighborhood = neighborhoodId === "retirada" ? null : neighborhoods.find((n) => n.id === neighborhoodId);
+  const deliveryFee = selectedNeighborhood?.fee ?? 0;
+  const deliveryEtaLabel = selectedNeighborhood ? etaLabel(selectedNeighborhood.eta_min_minutes, selectedNeighborhood.eta_max_minutes) : null;
   const scratchDiscountPreview =
     scratchResult && !scratchResult.redeemed && !scratchResult.expired
       ? Math.round(total * (scratchResult.discount_percent / 100) * 100) / 100
@@ -1018,6 +1027,11 @@ export default function StorefrontClient({
     setConfirmedReferralCode(data?.[0]?.referral_code ?? null);
     setConfirmedReferralBonus(data?.[0]?.referral_bonus_earned ?? 0);
     setConfirmedDeliveryFee(data?.[0]?.delivery_fee ?? 0);
+    setConfirmedEta(
+      data?.[0]?.eta_min_minutes || data?.[0]?.eta_max_minutes
+        ? { min: data[0].eta_min_minutes, max: data[0].eta_max_minutes }
+        : null,
+    );
     // "Minha conta" mostra saldo/pedidos em cache (ver openAccountPanel) — sem
     // isso, um pedido feito aqui não apareceria lá até recarregar a página.
     // customerRecord pode ainda ser null aqui (1º pedido do cliente nessa
@@ -1212,6 +1226,11 @@ export default function StorefrontClient({
         {confirmedDeliveryFee > 0 && (
           <p className="text-sm text-white/60">
             Inclui {formatCurrency(confirmedDeliveryFee)} de frete.
+          </p>
+        )}
+        {confirmedEta && etaLabel(confirmedEta.min, confirmedEta.max) && (
+          <p className="text-sm text-white/60">
+            🕒 Chega em {etaLabel(confirmedEta.min, confirmedEta.max)}
           </p>
         )}
         {neighborhoodId !== "retirada" && deliveryAddress.trim() && (
@@ -1480,9 +1499,15 @@ export default function StorefrontClient({
                 {neighborhoods.map((n) => (
                   <option key={n.id} value={n.id}>
                     {n.name} — {n.fee > 0 ? formatCurrency(n.fee) : "grátis"}
+                    {etaLabel(n.eta_min_minutes, n.eta_max_minutes) ? ` · ${etaLabel(n.eta_min_minutes, n.eta_max_minutes)}` : ""}
                   </option>
                 ))}
               </select>
+              {deliveryEtaLabel && (
+                <p className="mt-1.5 text-xs text-slate-500 dark:text-slate-400">
+                  🕒 Chega em <span className="font-semibold">{deliveryEtaLabel}</span> depois da confirmação do pedido
+                </p>
+              )}
               {neighborhoodId !== "retirada" && (
                 <div className="mt-2">
                   <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">

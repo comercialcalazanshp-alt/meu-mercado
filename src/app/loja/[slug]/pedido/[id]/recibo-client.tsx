@@ -24,7 +24,33 @@ export type OrderReceipt = {
   channel: string;
   payment_method: string | null;
   created_at: string;
+  out_for_delivery_at: string | null;
+  eta_min_minutes: number | null;
+  eta_max_minutes: number | null;
 };
+
+function formatTime(iso: string) {
+  return new Date(iso).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+}
+
+function deliveryEstimateText(order: OrderReceipt): string | null {
+  if (order.status === "entregue" || order.status === "cancelado") return null;
+  if (!order.eta_min_minutes && !order.eta_max_minutes) return null;
+
+  if (order.out_for_delivery_at) {
+    const base = new Date(order.out_for_delivery_at).getTime();
+    const from = order.eta_min_minutes ? new Date(base + order.eta_min_minutes * 60000) : null;
+    const to = order.eta_max_minutes ? new Date(base + order.eta_max_minutes * 60000) : null;
+    if (from && to) return `Previsão de chegada: entre ${formatTime(from.toISOString())} e ${formatTime(to.toISOString())}`;
+    if (to) return `Previsão de chegada: até ${formatTime(to.toISOString())}`;
+    return null;
+  }
+
+  const min = order.eta_min_minutes;
+  const max = order.eta_max_minutes;
+  const range = min && max ? (min === max ? `${min} min` : `${min}-${max} min`) : min ? `a partir de ${min} min` : `até ${max} min`;
+  return `Chega em ${range} depois que o pedido for confirmado`;
+}
 
 const STATUS_LABEL: Record<string, string> = {
   pendente: "Pendente",
@@ -93,6 +119,11 @@ export default function ReciboClient({ order }: { order: OrderReceipt }) {
             {order.payment_method && (
               <p className="text-slate-500 dark:text-slate-400 print:text-slate-500">
                 Pagamento: {order.payment_method}
+              </p>
+            )}
+            {deliveryEstimateText(order) && (
+              <p className="mt-1 font-medium text-slate-700 dark:text-slate-200 print:text-slate-700">
+                🕒 {deliveryEstimateText(order)}
               </p>
             )}
           </div>
