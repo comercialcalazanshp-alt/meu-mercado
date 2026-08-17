@@ -1,6 +1,33 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type FormEvent } from "react";
+import { getSupabase } from "@/lib/supabase";
+
+type Complaint = {
+  id: string;
+  category: string;
+  description: string;
+  status: "aberta" | "em_andamento" | "resolvida";
+  owner_reply: string | null;
+  owner_reply_at: string | null;
+  created_at: string;
+};
+
+const COMPLAINT_CATEGORIES: { value: string; label: string }[] = [
+  { value: "produto_errado", label: "Veio produto errado" },
+  { value: "produto_danificado", label: "Produto danificado" },
+  { value: "faltou_item", label: "Faltou item no pedido" },
+  { value: "atraso_entrega", label: "Atraso na entrega" },
+  { value: "cobranca_errada", label: "Cobrança errada" },
+  { value: "atendimento", label: "Problema no atendimento" },
+  { value: "outro", label: "Outro" },
+];
+
+const COMPLAINT_STATUS_LABEL: Record<Complaint["status"], string> = {
+  aberta: "Aberta",
+  em_andamento: "Em andamento",
+  resolvida: "Resolvida",
+};
 
 type OrderItem = {
   name: string;
@@ -99,6 +126,56 @@ export default function ReciboClient({ order }: { order: OrderReceipt }) {
     return () => clearInterval(id);
   }, [order.status]);
   const progressPercent = deliveryProgressPercent(order, now);
+
+  const [complaint, setComplaint] = useState<Complaint | null | undefined>(undefined); // undefined = ainda carregando
+  const [showComplaintForm, setShowComplaintForm] = useState(false);
+  const [complaintCategory, setComplaintCategory] = useState(COMPLAINT_CATEGORIES[0].value);
+  const [complaintDescription, setComplaintDescription] = useState("");
+  const [submittingComplaint, setSubmittingComplaint] = useState(false);
+  const [complaintError, setComplaintError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    getSupabase()
+      .rpc("get_order_complaint", { p_order_id: order.order_id })
+      .then(({ data }) => {
+        if (active) setComplaint((data?.[0] as Complaint | undefined) ?? null);
+      });
+    return () => {
+      active = false;
+    };
+  }, [order.order_id]);
+
+  async function handleSubmitComplaint(e: FormEvent) {
+    e.preventDefault();
+    if (!complaintDescription.trim()) {
+      setComplaintError("Conta pra gente o que aconteceu.");
+      return;
+    }
+    setSubmittingComplaint(true);
+    setComplaintError(null);
+    const { error } = await getSupabase().rpc("file_complaint", {
+      p_order_id: order.order_id,
+      p_category: complaintCategory,
+      p_description: complaintDescription.trim(),
+    });
+    setSubmittingComplaint(false);
+    if (error) {
+      setComplaintError("Não deu pra enviar, tenta de novo em instantes.");
+      return;
+    }
+    setComplaint({
+      id: "novo",
+      category: complaintCategory,
+      description: complaintDescription.trim(),
+      status: "aberta",
+      owner_reply: null,
+      owner_reply_at: null,
+      created_at: new Date().toISOString(),
+    });
+    setShowComplaintForm(false);
+    setComplaintDescription("");
+  }
 
   return (
     <div className="flex flex-1 justify-center bg-slate-50 px-6 py-10 dark:bg-slate-950">
@@ -217,6 +294,85 @@ export default function ReciboClient({ order }: { order: OrderReceipt }) {
             )}
           </div>
         </div>
+
+        {complaint !== undefined && (
+          <div className="mt-4 print:hidden">
+            {complaint ? (
+              <div className="rounded-xl border border-slate-200 bg-white p-4 text-sm dark:border-slate-800 dark:bg-slate-900">
+                <div className="flex items-center justify-between">
+                  <p className="font-semibold text-slate-900 dark:text-slate-50">Sua reclamação</p>
+                  <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                    {COMPLAINT_STATUS_LABEL[complaint.status]}
+                  </span>
+                </div>
+                <p className="mt-1 text-slate-600 dark:text-slate-400">{complaint.description}</p>
+                {complaint.owner_reply ? (
+                  <div className="mt-3 rounded-lg bg-slate-50 p-3 dark:bg-slate-800">
+                    <p className="text-xs font-medium text-slate-500 dark:text-slate-400">Resposta da loja</p>
+                    <p className="mt-1 text-slate-700 dark:text-slate-200">{complaint.owner_reply}</p>
+                  </div>
+                ) : (
+                  <p className="mt-3 text-xs text-slate-400 dark:text-slate-500">A loja ainda não respondeu.</p>
+                )}
+              </div>
+            ) : showComplaintForm ? (
+              <form
+                onSubmit={handleSubmitComplaint}
+                className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900"
+              >
+                <p className="text-sm font-semibold text-slate-900 dark:text-slate-50">Relatar um problema</p>
+                <label className="mt-2 block text-xs font-medium text-slate-500 dark:text-slate-400">
+                  O que aconteceu?
+                </label>
+                <select
+                  value={complaintCategory}
+                  onChange={(e) => setComplaintCategory(e.target.value)}
+                  className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-50"
+                >
+                  {COMPLAINT_CATEGORIES.map((c) => (
+                    <option key={c.value} value={c.value}>
+                      {c.label}
+                    </option>
+                  ))}
+                </select>
+                <label className="mt-2 block text-xs font-medium text-slate-500 dark:text-slate-400">
+                  Conte com mais detalhes
+                </label>
+                <textarea
+                  value={complaintDescription}
+                  onChange={(e) => setComplaintDescription(e.target.value)}
+                  rows={3}
+                  placeholder="Descreva o que houve…"
+                  className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-50"
+                />
+                {complaintError && <p className="mt-1 text-xs text-red-600">{complaintError}</p>}
+                <div className="mt-3 flex gap-2">
+                  <button
+                    type="submit"
+                    disabled={submittingComplaint}
+                    className="rounded-lg bg-blue-900 px-4 py-2 text-sm font-semibold text-amber-300 disabled:opacity-60 dark:bg-blue-800"
+                  >
+                    {submittingComplaint ? "Enviando…" : "Enviar"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowComplaintForm(false)}
+                    className="rounded-lg px-4 py-2 text-sm font-medium text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800"
+                  >
+                    Cancelar
+                  </button>
+                </div>
+              </form>
+            ) : (
+              <button
+                onClick={() => setShowComplaintForm(true)}
+                className="w-full rounded-xl border border-dashed border-slate-300 py-3 text-sm font-medium text-slate-500 hover:border-slate-400 hover:text-slate-700 dark:border-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
+              >
+                ⚠️ Tive um problema com esse pedido
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       <style jsx global>{`
