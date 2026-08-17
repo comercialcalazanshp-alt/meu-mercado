@@ -1,22 +1,39 @@
 "use client";
 
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { getSupabase } from "@/lib/supabase";
 import {
   type Product,
   type Neighborhood,
   type Store,
+  type Banner,
   type PagSeguroSdk,
   effectivePrice,
   lineTotalFor,
   formatCurrency,
   readableTextColor,
   storeInitials,
-  darkenHex,
-  isStoreOpenNow,
+  isOfferActive,
+  isNewProduct,
   groupProductsByCategory,
   loadPagSeguroSdk,
 } from "@/lib/storefront-pricing";
+import { BannerOverlay } from "@/components/BannerOverlay";
+import { categoryIcon } from "@/lib/hub-categories";
+import {
+  Home as HomeIcon,
+  Search,
+  LayoutGrid,
+  ShoppingCart,
+  User,
+  ChevronLeft,
+  ChevronRight,
+  Minus,
+  Plus,
+  MessageCircle,
+  Package,
+  ShieldCheck,
+} from "lucide-react";
 
 export type HubModule = {
   partnership_id: string;
@@ -34,6 +51,14 @@ type ModuleCatalog = {
   loading: boolean;
   loaded: boolean;
   error: string | null;
+};
+
+type OfferProduct = Product & {
+  store_id: string;
+  store_name: string;
+  store_slug: string;
+  brand_color: string;
+  accent_color: string;
 };
 
 type CartLine = {
@@ -72,16 +97,31 @@ type ReceiptRow = {
   eta_max_minutes: number | null;
 };
 
+type View = "inicio" | "modulos" | "modulo" | "carrinho" | "entrega" | "pagamento" | "confirmado" | "conta";
+
 function cartKey(storeId: string, productId: string) {
   return `${storeId}|${productId}`;
 }
+
+// Cromo neutro da plataforma — não é a brand_color de nenhum afiliado, de
+// propósito: o cliente está numa vitrine com vários módulos, não "dentro"
+// da loja de um afiliado específico, exceto quando ele entra num módulo.
+const PLATFORM_BG = "#0B1220";
+const PLATFORM_SURFACE = "#111C34";
+// Acento da PLATAFORMA (botões de Carrinho/Entrega/Pagamento, nav ativa) —
+// deliberadamente não é a accent_color de nenhum afiliado, pra não
+// favorecer visualmente quem já está no carrinho por acaso.
+const PLATFORM_ACCENT = "#F5A524";
+const PLATFORM_ACCENT_TEXT = "#1A1200";
+const FONT_DISPLAY = { fontFamily: "var(--font-sora)" };
+const FONT_BODY = { fontFamily: "var(--font-manrope)" };
 
 export default function HubStorefrontClient({ hubStore, modules }: { hubStore: Store; modules: HubModule[] }) {
   const allModules: HubModule[] = useMemo(
     () => [
       {
         partnership_id: "hub",
-        category: hubStore.name,
+        category: "Mercado",
         store_id: hubStore.id,
         store_slug: hubStore.slug,
         store_name: hubStore.name,
@@ -94,11 +134,25 @@ export default function HubStorefrontClient({ hubStore, modules }: { hubStore: S
   );
 
   const cartStorageKey = `hub-cart:${hubStore.id}`;
-  const [expandedStoreId, setExpandedStoreId] = useState<string | null>(hubStore.id);
+  const lastOrderStorageKey = `hub-last-order:${hubStore.id}`;
+
+  const [view, setView] = useState<View>("inicio");
+  const [activeModuleId, setActiveModuleId] = useState<string | null>(null);
   const [catalogs, setCatalogs] = useState<Record<string, ModuleCatalog>>({});
   const [cart, setCart] = useState<Record<string, number>>({});
   const [cartLoaded, setCartLoaded] = useState(false);
-  const [view, setView] = useState<"catalogo" | "checkout" | "confirmado">("catalogo");
+
+  const [homeOffers, setHomeOffers] = useState<OfferProduct[]>([]);
+  const [homeOffersLoading, setHomeOffersLoading] = useState(true);
+  const [homeBanners, setHomeBanners] = useState<(Banner & { store_id: string })[]>([]);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<OfferProduct[] | null>(null);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const [moduleSearch, setModuleSearch] = useState("");
+  const [activeCategory, setActiveCategory] = useState<string | null>(null);
+
+  const [lastOrderId, setLastOrderId] = useState<string | null>(null);
 
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
@@ -124,25 +178,15 @@ export default function HubStorefrontClient({ hubStore, modules }: { hubStore: S
   const [confirmedHubOrderId, setConfirmedHubOrderId] = useState<string | null>(null);
   const [receipt, setReceipt] = useState<ReceiptRow[] | null>(null);
 
-  const brandStyle = {
-    "--brand-bg": hubStore.brand_color,
-    "--brand-text": readableTextColor(hubStore.brand_color),
-    "--accent-bg": hubStore.accent_color,
-    "--accent-text": readableTextColor(hubStore.accent_color),
-    "--page-bg": darkenHex(hubStore.brand_color, 0.38),
-  } as React.CSSProperties;
-
-  const storeStatus = isStoreOpenNow(hubStore);
-
-  // Carrinho do hub fica separado do carrinho de loja única (chave própria)
-  // — visitar um hub e uma loja comum no mesmo navegador não deve misturar
-  // os dois carrinhos.
+  // Carrinho fica numa chave própria do hub — visitar um hub e uma loja
+  // comum no mesmo navegador não deve misturar os dois carrinhos.
   useEffect(() => {
     try {
       const raw = localStorage.getItem(cartStorageKey);
       if (raw) setCart(JSON.parse(raw));
+      setLastOrderId(localStorage.getItem(lastOrderStorageKey));
     } catch {
-      // localStorage indisponível ou dado corrompido — segue com carrinho vazio
+      // localStorage indisponível ou dado corrompido — segue vazio
     }
     setCartLoaded(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -160,6 +204,51 @@ export default function HubStorefrontClient({ hubStore, modules }: { hubStore: S
   useEffect(() => {
     if (paymentMethod === "cartao") loadPagSeguroSdk().catch(() => {});
   }, [paymentMethod]);
+
+  // "Ofertas perto de você" na Home — busca uma vez ao montar.
+  useEffect(() => {
+    setHomeOffersLoading(true);
+    getSupabase()
+      .rpc("get_hub_offers", { p_hub_store_id: hubStore.id, p_only_offers: true, p_limit: 12 })
+      .then(({ data }) => {
+        setHomeOffers((data as OfferProduct[]) ?? []);
+        setHomeOffersLoading(false);
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hubStore.id]);
+
+  // Banners de divulgação da Home — de todas as lojas do hub, cada um leva
+  // pra onde o próprio afiliado configurou (link_url já existe no banner,
+  // mesma estrutura que a vitrine de loja única já usa).
+  useEffect(() => {
+    const storeIds = allModules.map((m) => m.store_id);
+    getSupabase()
+      .from("banners")
+      .select("id, store_id, title, image_url, link_url, focal_x, focal_y, text_style, overlay_text")
+      .in("store_id", storeIds)
+      .order("created_at", { ascending: false })
+      .then(({ data }) => setHomeBanners((data as (Banner & { store_id: string })[]) ?? []));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hubStore.id]);
+
+  // Busca global (Home) — com debounce, cruzando todas as lojas do hub.
+  useEffect(() => {
+    const q = searchQuery.trim();
+    if (!q) {
+      setSearchResults(null);
+      return;
+    }
+    setSearchLoading(true);
+    const timeout = setTimeout(() => {
+      getSupabase()
+        .rpc("get_hub_offers", { p_hub_store_id: hubStore.id, p_search: q, p_limit: 30 })
+        .then(({ data }) => {
+          setSearchResults((data as OfferProduct[]) ?? []);
+          setSearchLoading(false);
+        });
+    }, 350);
+    return () => clearTimeout(timeout);
+  }, [searchQuery, hubStore.id]);
 
   async function loadCatalog(storeId: string) {
     setCatalogs((prev) => {
@@ -199,21 +288,11 @@ export default function HubStorefrontClient({ hubStore, modules }: { hubStore: S
     }));
   }
 
-  // O módulo do próprio hub já começa expandido (é o mais provável de o
-  // cliente comprar) — sem isso, o catálogo dele só carregaria se o
-  // cliente clicasse pra fechar e abrir de novo, já que toggleModule só
-  // busca dados durante um clique real.
-  useEffect(() => {
-    loadCatalog(hubStore.id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hubStore.id]);
-
-  function toggleModule(storeId: string) {
-    if (expandedStoreId === storeId) {
-      setExpandedStoreId(null);
-      return;
-    }
-    setExpandedStoreId(storeId);
+  function openModule(storeId: string) {
+    setActiveModuleId(storeId);
+    setModuleSearch("");
+    setActiveCategory(null);
+    setView("modulo");
     loadCatalog(storeId);
   }
 
@@ -245,6 +324,7 @@ export default function HubStorefrontClient({ hubStore, modules }: { hubStore: S
   }, [cartItems]);
 
   const storesInCart = useMemo(() => allModules.filter((m) => cartByStore.has(m.store_id)), [allModules, cartByStore]);
+  const moduleById = useMemo(() => new Map(allModules.map((m) => [m.store_id, m])), [allModules]);
 
   const subtotal = cartItems.reduce((sum, l) => sum + l.lineTotal, 0);
   const cartCount = cartItems.reduce((sum, l) => sum + l.quantity, 0);
@@ -258,13 +338,39 @@ export default function HubStorefrontClient({ hubStore, modules }: { hubStore: S
 
   const totalGeral = subtotal + deliveryFeeTotal;
 
-  function openCheckout() {
+  // Adicionar direto de um card de oferta na Home, sem precisar abrir o
+  // módulo antes — o catálogo daquela loja pode nem estar carregado ainda,
+  // então guarda o produto num "catálogo parcial" pra o carrinho conseguir
+  // achar o preço/estoque dele.
+  function addOfferToCart(offer: OfferProduct) {
+    setCatalogs((prev) => {
+      const existing = prev[offer.store_id];
+      if (existing?.products.some((p) => p.id === offer.id)) return prev;
+      return {
+        ...prev,
+        [offer.store_id]: {
+          products: [...(existing?.products ?? []), offer],
+          neighborhoods: existing?.neighborhoods ?? [],
+          loading: false,
+          loaded: existing?.loaded ?? false,
+          error: existing?.error ?? null,
+        },
+      };
+    });
+    setQuantity(offer.store_id, offer.id, (cart[cartKey(offer.store_id, offer.id)] ?? 0) + 1);
+  }
+
+  function goToCart() {
     if (cartItems.length === 0) {
       setError("Seu carrinho está vazio.");
       return;
     }
     setError(null);
-    setView("checkout");
+    setView("carrinho");
+  }
+
+  function goToDelivery() {
+    setView("entrega");
   }
 
   async function handleCheckout(e: FormEvent) {
@@ -272,10 +378,6 @@ export default function HubStorefrontClient({ hubStore, modules }: { hubStore: S
     if (saving) return;
     setError(null);
 
-    if (!storeStatus.open) {
-      setError(storeStatus.message ?? "Loja fechada no momento.");
-      return;
-    }
     if (cartItems.length === 0) {
       setError("Seu carrinho está vazio.");
       return;
@@ -318,6 +420,14 @@ export default function HubStorefrontClient({ hubStore, modules }: { hubStore: S
     setConfirmedHubOrderId(hubOrderId);
     setView("confirmado");
     setCart({});
+    if (hubOrderId) {
+      try {
+        localStorage.setItem(lastOrderStorageKey, hubOrderId);
+        setLastOrderId(hubOrderId);
+      } catch {
+        // sem storage — só não vai ter atalho de "meu último pedido"
+      }
+    }
 
     if (hubOrderId) {
       const { data: receiptData } = await getSupabase().rpc("get_hub_order_receipt", { p_hub_order_id: hubOrderId });
@@ -395,191 +505,904 @@ export default function HubStorefrontClient({ hubStore, modules }: { hubStore: S
     }
   }
 
-  if (view === "confirmado") {
-    const receiptTotal = receipt?.reduce((s, r) => s + r.store_total, 0) ?? totalGeral;
+  // ============================================================
+  // Cromo comum: barra inferior (mobile)
+  // ============================================================
+  function BottomNav() {
+    const items: { key: View; label: string; icon: typeof HomeIcon }[] = [
+      { key: "inicio", label: "Início", icon: HomeIcon },
+      { key: "inicio", label: "Buscar", icon: Search },
+      { key: "modulos", label: "Categorias", icon: LayoutGrid },
+      { key: "carrinho", label: "Carrinho", icon: ShoppingCart },
+      { key: "conta", label: "Conta", icon: User },
+    ];
     return (
-      <div style={brandStyle} className="flex flex-1 flex-col items-center bg-[var(--page-bg)] px-4 py-10">
-        <div className="w-full max-w-md">
-          <div className="flex h-16 w-16 items-center justify-center rounded-full bg-[var(--brand-bg)] text-2xl font-bold text-[var(--brand-text)] shadow-lg">
-            ✓
-          </div>
-          <h1 className="mt-4 text-2xl font-bold text-white">Pedido enviado!</h1>
-          <p className="mt-1 text-sm text-white/70">
-            {receipt && receipt.length > 1
-              ? `Seu pedido foi dividido em ${receipt.length} lojas — cada uma vai preparar a parte dela.`
-              : "Seu pedido foi enviado."}
-          </p>
-
-          <div className="mt-6 space-y-3">
-            {(receipt ?? []).map((r) => (
-              <div key={r.order_id} className="rounded-2xl border border-white/10 bg-white p-4 shadow-sm dark:bg-slate-900">
-                <p className="text-sm font-bold text-slate-900 dark:text-slate-50">{r.store_name}</p>
-                <ul className="mt-2 space-y-1 text-sm text-slate-600 dark:text-slate-400">
-                  {r.items.map((item, i) => (
-                    <li key={i} className="flex justify-between">
-                      <span>{item.quantity}x {item.name}</span>
-                      <span>{formatCurrency(item.line_total ?? item.price * item.quantity)}</span>
-                    </li>
-                  ))}
-                </ul>
-                {r.delivery_fee > 0 && (
-                  <p className="mt-1 flex justify-between text-xs text-slate-500">
-                    <span>Entrega{r.neighborhood_name ? ` (${r.neighborhood_name})` : ""}</span>
-                    <span>{formatCurrency(r.delivery_fee)}</span>
-                  </p>
-                )}
-                <p className="mt-2 flex justify-between border-t border-slate-100 pt-2 text-sm font-semibold text-slate-900 dark:border-slate-800 dark:text-slate-50">
-                  <span>Subtotal dessa loja</span>
-                  <span>{formatCurrency(r.store_total)}</span>
-                </p>
-              </div>
-            ))}
-          </div>
-
-          <div className="mt-4 rounded-2xl bg-[var(--brand-text)]/10 p-4 text-center">
-            <p className="text-xs uppercase tracking-wide text-white/60">Total combinado</p>
-            <p className="text-2xl font-bold text-white">{formatCurrency(receiptTotal)}</p>
-          </div>
-
-          {paymentMethod === "pix" && (
-            <div className="mt-4 rounded-2xl border border-white/10 bg-white p-4 text-center dark:bg-slate-900">
-              {pixLoading && <p className="text-sm text-slate-500">Gerando o Pix…</p>}
-              {pixError && <p className="text-sm text-red-600">{pixError}</p>}
-              {pixQrCodeImage && (
-                <>
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={pixQrCodeImage} alt="QR Code Pix" className="mx-auto h-48 w-48" />
-                  <p className="mt-2 text-xs text-slate-500">Escaneie com o app do seu banco pra pagar.</p>
-                </>
-              )}
-              {pixQrCodeText && (
-                <textarea
-                  readOnly
-                  value={pixQrCodeText}
-                  onFocus={(e) => e.target.select()}
-                  className="mt-2 w-full rounded-lg border border-slate-300 bg-slate-50 p-2 text-[10px] text-slate-500 dark:border-slate-700 dark:bg-slate-800"
-                  rows={3}
-                />
-              )}
-            </div>
-          )}
-
-          {paymentMethod === "cartao" && (
-            <div className="mt-4 rounded-2xl border border-white/10 bg-white p-4 text-center dark:bg-slate-900">
-              {cardLoading && <p className="text-sm text-slate-500">Processando o cartão…</p>}
-              {cardError && <p className="text-sm text-red-600">{cardError}</p>}
-              {cardPaid && <p className="text-sm font-semibold text-green-600">✓ Pagamento aprovado!</p>}
-            </div>
-          )}
-
-          {confirmedHubOrderId && (
-            <a
-              href={`/loja/${hubStore.slug}/pedido-hub/${confirmedHubOrderId}`}
-              className="mt-6 block w-full rounded-full border border-white/20 px-4 py-3 text-center font-semibold text-white"
+      <nav
+        className="fixed inset-x-0 bottom-0 z-40 flex items-center justify-around border-t border-white/10 px-2 pb-[env(safe-area-inset-bottom)] pt-1.5 shadow-[0_-8px_24px_rgba(0,0,0,0.35)] backdrop-blur-lg sm:hidden"
+        style={{ backgroundColor: `${PLATFORM_SURFACE}f0` }}
+      >
+        {items.map((item, i) => {
+          const isActive = view === item.key && !(item.label === "Buscar" && view === "inicio" && !searchFocusedRef.current);
+          const isSearch = item.label === "Buscar";
+          return (
+            <button
+              key={item.label}
+              onClick={() => {
+                setView(item.key);
+                if (isSearch) setTimeout(() => searchInputRef.current?.focus(), 50);
+              }}
+              className="flex flex-1 flex-col items-center gap-0.5 py-1.5 text-[10px] font-medium transition"
+              style={{ color: isActive || (isSearch && i === 1 && view === "inicio") ? PLATFORM_ACCENT : "rgba(255,255,255,0.45)" }}
             >
-              Ver recibo completo
+              <item.icon size={20} strokeWidth={isActive ? 2.4 : 2} />
+              {item.label}
+              {item.key === "carrinho" && cartCount > 0 && (
+                <span
+                  key={cartCount}
+                  className="animate-mm-badge-bump absolute mb-5 ml-6 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[9px] font-bold text-white shadow-[0_0_0_2px_rgba(0,0,0,0.3)]"
+                >
+                  {cartCount}
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </nav>
+    );
+  }
+  const searchFocusedRef = useRef(false);
+
+  // ============================================================
+  // Cromo comum: barra flutuante do carrinho (aparece por cima dos
+  // produtos enquanto o cliente navega, some quando o carrinho fica vazio)
+  // ============================================================
+  function FloatingCartBar() {
+    if (cartCount === 0) return null;
+    return (
+      <div className="fixed inset-x-0 bottom-16 z-30 px-4 pb-3 sm:bottom-0 sm:left-60 sm:px-6 sm:pb-4">
+        <button
+          onClick={goToCart}
+          className="mx-auto flex w-full max-w-2xl items-center justify-between rounded-2xl px-5 py-3.5 font-semibold shadow-xl shadow-black/30 transition active:scale-[0.99]"
+          style={{ backgroundColor: PLATFORM_ACCENT, color: PLATFORM_ACCENT_TEXT, ...FONT_DISPLAY }}
+        >
+          <span className="flex items-center gap-2">
+            <ShoppingCart size={18} />
+            {cartCount} {cartCount === 1 ? "item" : "itens"}
+          </span>
+          <span key={subtotal} className="animate-mm-scale-in flex items-center gap-1.5">
+            {formatCurrency(subtotal)}
+            <ChevronRight size={18} />
+          </span>
+        </button>
+      </div>
+    );
+  }
+
+  // ============================================================
+  // Cromo comum: barra lateral (desktop)
+  // ============================================================
+  function DesktopSidebar() {
+    const navItems: { key: View; label: string; icon: typeof HomeIcon }[] = [
+      { key: "inicio", label: "Início", icon: HomeIcon },
+      { key: "modulos", label: "Categorias", icon: LayoutGrid },
+      { key: "carrinho", label: "Carrinho", icon: ShoppingCart },
+      { key: "conta", label: "Conta", icon: User },
+    ];
+    return (
+      <aside
+        className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col border-r border-white/10 px-4 py-6 sm:flex"
+        style={{ backgroundColor: PLATFORM_SURFACE }}
+      >
+        <button onClick={() => setView("inicio")} className="flex items-center gap-2.5 px-1 text-left">
+          <span
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-xs font-bold"
+            style={{ backgroundColor: hubStore.brand_color, color: readableTextColor(hubStore.brand_color) }}
+          >
+            {storeInitials(hubStore.name)}
+          </span>
+          <span className="truncate text-sm font-bold text-white" style={FONT_DISPLAY}>
+            {hubStore.name}
+          </span>
+        </button>
+
+        <nav className="mt-8 flex flex-col gap-1">
+          {navItems.map((item) => {
+            const isActive = view === item.key;
+            return (
+              <button
+                key={item.key}
+                onClick={() => setView(item.key)}
+                className="relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition"
+                style={{ backgroundColor: isActive ? "rgba(255,255,255,0.08)" : "transparent", color: isActive ? "#fff" : "rgba(255,255,255,0.55)" }}
+              >
+                <item.icon size={18} strokeWidth={isActive ? 2.4 : 2} />
+                {item.label}
+                {item.key === "carrinho" && cartCount > 0 && (
+                  <span
+                    key={cartCount}
+                    className="animate-mm-badge-bump ml-auto flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white"
+                  >
+                    {cartCount}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </nav>
+
+        <p className="mb-2 mt-8 px-3 text-[10px] font-semibold uppercase tracking-wide text-white/35">Módulos</p>
+        <nav className="flex flex-col gap-1">
+          {allModules.map((m) => {
+            const Icon = categoryIcon(m.category);
+            const isActive = view === "modulo" && activeModuleId === m.store_id;
+            return (
+              <button
+                key={m.store_id}
+                onClick={() => openModule(m.store_id)}
+                className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-medium transition"
+                style={{ backgroundColor: isActive ? "rgba(255,255,255,0.08)" : "transparent", color: isActive ? "#fff" : "rgba(255,255,255,0.55)" }}
+              >
+                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg" style={{ backgroundColor: m.brand_color }}>
+                  <Icon size={14} color={readableTextColor(m.brand_color)} />
+                </span>
+                <span className="truncate">{m.category}</span>
+              </button>
+            );
+          })}
+        </nav>
+
+        <div className="mt-auto flex flex-col gap-1 pt-6">
+          {lastOrderId && (
+            <a href={`/loja/${hubStore.slug}/pedido-hub/${lastOrderId}`} className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-white/55 transition hover:text-white">
+              <Package size={18} />
+              Meu último pedido
             </a>
           )}
-          <a
-            href={`/loja/${hubStore.slug}`}
-            className="mt-3 block w-full rounded-full bg-[var(--accent-bg)] px-4 py-3 text-center font-semibold text-[var(--accent-text)] shadow-sm"
-          >
-            Voltar à loja
-          </a>
+          {hubStore.whatsapp && (
+            <a
+              href={`https://wa.me/55${hubStore.whatsapp.replace(/\D/g, "")}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-white/55 transition hover:text-white"
+            >
+              <MessageCircle size={18} />
+              Ajuda
+            </a>
+          )}
+        </div>
+      </aside>
+    );
+  }
+
+  // ============================================================
+  // Tela: Início
+  // ============================================================
+  function HomeScreen() {
+    const showingSearch = searchQuery.trim().length > 0;
+    return (
+      <div className={cartCount > 0 ? "flex flex-1 flex-col pb-40" : "flex flex-1 flex-col pb-24"}>
+        <div
+          className="rounded-b-[28px] px-4 pb-8 pt-5 shadow-lg shadow-black/30 sm:px-6"
+          style={{ backgroundColor: PLATFORM_SURFACE }}
+        >
+          <div className="flex items-center justify-between">
+            <div className="flex min-w-0 items-center gap-2.5">
+              <span
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-xs font-bold"
+                style={{ backgroundColor: hubStore.brand_color, color: readableTextColor(hubStore.brand_color) }}
+              >
+                {storeInitials(hubStore.name)}
+              </span>
+              <div className="min-w-0">
+                <p className="truncate text-[10px] font-medium uppercase tracking-wide text-white/45">Bem-vindo a</p>
+                <p className="-mt-0.5 truncate text-base font-bold text-white" style={FONT_DISPLAY}>
+                  {hubStore.name}
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="-mt-5 px-4 sm:px-6">
+          <div className="relative">
+            <Search size={18} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input
+              ref={searchInputRef}
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              onFocus={() => (searchFocusedRef.current = true)}
+              onBlur={() => (searchFocusedRef.current = false)}
+              placeholder="O que você está procurando?"
+              className="w-full rounded-2xl border-0 bg-white py-3.5 pl-10 pr-4 text-sm text-slate-900 shadow-xl shadow-black/20 outline-none ring-1 ring-black/5 placeholder:text-slate-400"
+            />
+          </div>
+        </div>
+
+        {showingSearch ? (
+          <div className="px-4 pt-5 sm:px-6">
+            <p className="text-sm font-medium text-white/70">
+              {searchLoading ? "Buscando…" : `${searchResults?.length ?? 0} resultado(s) pra "${searchQuery.trim()}"`}
+            </p>
+            <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+              {(searchResults ?? []).map((offer) => (
+                <OfferCard key={`${offer.store_id}-${offer.id}`} offer={offer} />
+              ))}
+            </div>
+          </div>
+        ) : (
+          <>
+            <div className="px-4 pt-7 sm:px-6">
+              <h2 className="mb-3 text-sm font-bold text-white" style={FONT_DISPLAY}>
+                Categorias
+              </h2>
+              <div className="flex gap-3 overflow-x-auto pb-1">
+                {allModules.map((m, i) => {
+                  const Icon = categoryIcon(m.category);
+                  return (
+                    <button
+                      key={m.store_id}
+                      onClick={() => openModule(m.store_id)}
+                      className="animate-mm-fade-up group flex shrink-0 flex-col items-center gap-1.5"
+                      style={{ animationDelay: `${i * 60}ms` }}
+                    >
+                      <span
+                        className="flex h-14 w-14 items-center justify-center rounded-2xl transition duration-200 group-hover:-translate-y-0.5 group-active:scale-90"
+                        style={{ backgroundColor: m.brand_color, boxShadow: `0 10px 24px -8px ${m.brand_color}99` }}
+                      >
+                        <Icon size={24} color={readableTextColor(m.brand_color)} strokeWidth={2} />
+                      </span>
+                      <span className="max-w-[64px] truncate text-center text-[11px] font-medium text-white/80">{m.category}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {homeBanners.length > 0 && (
+              <div className="mt-6 px-4 sm:px-6">
+                <div className="flex snap-x gap-3 overflow-x-auto pb-1">
+                  {homeBanners.map((banner, bi) => {
+                    const content = (
+                      <div className="relative h-32 w-72 shrink-0 snap-start overflow-hidden rounded-2xl shadow-lg shadow-black/30 transition duration-300 group-hover:shadow-2xl sm:h-40 sm:w-96">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={banner.image_url}
+                          alt={banner.title}
+                          loading="lazy"
+                          className="h-full w-full object-cover transition duration-500 group-hover:scale-105"
+                          style={{ objectPosition: `${banner.focal_x * 100}% ${banner.focal_y * 100}%` }}
+                        />
+                        <BannerOverlay style={banner.text_style} text={banner.overlay_text} />
+                      </div>
+                    );
+                    const animStyle = { animationDelay: `${Math.min(bi * 80, 320)}ms` };
+                    return banner.link_url ? (
+                      <a
+                        key={banner.id}
+                        href={banner.link_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="animate-mm-fade-up group shrink-0"
+                        style={animStyle}
+                      >
+                        {content}
+                      </a>
+                    ) : (
+                      <div key={banner.id} className="animate-mm-fade-up group shrink-0" style={animStyle}>
+                        {content}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            <div className="mt-6 px-4 sm:px-6">
+              <div className="flex items-center justify-between">
+                <h2 className="text-sm font-bold text-white" style={FONT_DISPLAY}>
+                  Ofertas perto de você
+                </h2>
+                <button onClick={() => setView("modulos")} className="text-xs font-semibold transition active:scale-95" style={{ color: PLATFORM_ACCENT }}>
+                  Ver todas
+                </button>
+              </div>
+              <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+                {homeOffersLoading &&
+                  [0, 1, 2, 3].map((i) => (
+                    <div key={i} className="relative aspect-[3/4] overflow-hidden rounded-2xl bg-white/10">
+                      <div className="animate-mm-shimmer absolute inset-0" />
+                    </div>
+                  ))}
+                {!homeOffersLoading && homeOffers.length === 0 && (
+                  <p className="col-span-2 text-sm text-white/50">Nenhuma oferta no momento.</p>
+                )}
+                {homeOffers.map((offer, i) => (
+                  <div key={`${offer.store_id}-${offer.id}`} className="animate-mm-fade-up" style={{ animationDelay: `${i * 70}ms` }}>
+                    <OfferCard offer={offer} />
+                  </div>
+                ))}
+              </div>
+            </div>
+          </>
+        )}
+        <FloatingCartBar />
+      </div>
+    );
+  }
+
+  function OfferCard({ offer }: { offer: OfferProduct }) {
+    const price = effectivePrice(offer);
+    const onOffer = isOfferActive(offer);
+    const quantity = cart[cartKey(offer.store_id, offer.id)] ?? 0;
+    return (
+      <div
+        className="group flex flex-col overflow-hidden rounded-2xl bg-white shadow-lg shadow-black/25 transition duration-300 hover:-translate-y-1 hover:shadow-2xl"
+        style={{ boxShadow: `0 12px 28px -14px ${offer.brand_color}80` }}
+      >
+        <div className="relative aspect-square w-full overflow-hidden bg-slate-100">
+          {offer.image_url ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={offer.image_url}
+              alt={offer.name}
+              loading="lazy"
+              className="h-full w-full object-cover transition duration-500 group-hover:scale-110"
+            />
+          ) : (
+            <div className="flex h-full w-full items-center justify-center text-slate-300">
+              <Package size={28} />
+            </div>
+          )}
+          {onOffer && (
+            <span className="absolute left-2 top-2 rounded-full bg-red-600 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-white">
+              Oferta
+            </span>
+          )}
+        </div>
+        <div className="flex flex-1 flex-col p-2.5">
+          <p className="line-clamp-2 min-h-[2.2em] text-xs font-medium leading-tight text-slate-900">{offer.name}</p>
+          <p className="mt-0.5 truncate text-[10px] text-slate-400">{offer.store_name}</p>
+          {onOffer ? (
+            <p className="mt-1 flex items-baseline gap-1">
+              <span className="text-sm font-bold text-red-600">{formatCurrency(price)}</span>
+              <span className="text-[10px] text-slate-400 line-through">{formatCurrency(offer.price)}</span>
+            </p>
+          ) : (
+            <p className="mt-1 text-sm font-bold" style={{ color: offer.brand_color }}>
+              {formatCurrency(price)}
+            </p>
+          )}
+          <div className="mt-auto pt-2">
+            {quantity === 0 ? (
+              <button
+                onClick={() => addOfferToCart(offer)}
+                style={{ backgroundColor: offer.accent_color, color: readableTextColor(offer.accent_color) }}
+                className="flex w-full items-center justify-center gap-1 rounded-full px-2 py-1.5 text-xs font-semibold shadow-md transition active:scale-90"
+              >
+                <Plus size={13} /> Adicionar
+              </button>
+            ) : (
+              <div className="animate-mm-scale-in flex w-full items-center justify-between rounded-full bg-slate-100 px-1 py-1">
+                <button onClick={() => setQuantity(offer.store_id, offer.id, quantity - 1)} className="flex h-6 w-6 items-center justify-center rounded-full bg-white text-slate-700 shadow-sm transition active:scale-75">
+                  <Minus size={12} />
+                </button>
+                <span key={quantity} className="animate-mm-scale-in text-xs font-semibold text-slate-900">
+                  {quantity}
+                </span>
+                <button onClick={() => setQuantity(offer.store_id, offer.id, quantity + 1)} className="flex h-6 w-6 items-center justify-center rounded-full bg-white text-slate-700 shadow-sm transition active:scale-75">
+                  <Plus size={12} />
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     );
   }
 
-  if (view === "checkout") {
+  // ============================================================
+  // Tela: Escolha um módulo
+  // ============================================================
+  function ModulePickerScreen() {
     return (
-      <div style={brandStyle} className="flex flex-1 flex-col items-center bg-[var(--page-bg)] px-4 py-10">
-        <form onSubmit={handleCheckout} className="w-full max-w-md space-y-4">
-          <button type="button" onClick={() => setView("catalogo")} className="text-sm font-medium text-white/70 underline">
-            ← Voltar pro catálogo
-          </button>
-          <h1 className="text-xl font-bold text-white">Finalizar pedido</h1>
+      <div className="flex flex-1 flex-col pb-24">
+        <div className="px-4 pb-5 pt-5 sm:px-6" style={{ backgroundColor: PLATFORM_SURFACE }}>
+          <h1 className="text-xl font-bold text-white" style={FONT_DISPLAY}>
+            Escolha um módulo
+          </h1>
+          <p className="mt-0.5 text-xs text-white/50">Cada módulo é uma loja parceira independente</p>
+        </div>
 
-          <div className="rounded-2xl bg-white p-4 shadow-sm dark:bg-slate-900">
-            <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">Seu nome</label>
+        <div className="grid grid-cols-2 gap-3 px-4 pt-5 sm:grid-cols-3 sm:px-6 lg:grid-cols-4">
+          {allModules.map((m, i) => {
+            const Icon = categoryIcon(m.category);
+            const count = catalogs[m.store_id]?.products.length;
+            return (
+              <button
+                key={m.store_id}
+                onClick={() => openModule(m.store_id)}
+                className="animate-mm-fade-up group relative flex aspect-[4/5] flex-col justify-between overflow-hidden rounded-3xl p-4 text-left transition duration-300 hover:-translate-y-1 active:scale-[0.97]"
+                style={{ backgroundColor: m.brand_color, animationDelay: `${i * 80}ms`, boxShadow: `0 16px 32px -12px ${m.brand_color}b3` }}
+              >
+                <div
+                  className="pointer-events-none absolute -right-6 -top-6 h-24 w-24 rounded-full opacity-20 transition duration-500 group-hover:scale-125"
+                  style={{ backgroundColor: readableTextColor(m.brand_color) }}
+                />
+                <span
+                  className="relative flex h-11 w-11 items-center justify-center rounded-2xl"
+                  style={{ backgroundColor: "rgba(255,255,255,0.18)" }}
+                >
+                  <Icon size={22} color={readableTextColor(m.brand_color)} strokeWidth={2.2} />
+                </span>
+                <div className="relative">
+                  <p className="text-base font-bold leading-tight" style={{ ...FONT_DISPLAY, color: readableTextColor(m.brand_color) }}>
+                    {m.category}
+                  </p>
+                  <p className="mt-0.5 truncate text-[11px] opacity-75" style={{ color: readableTextColor(m.brand_color) }}>
+                    {m.store_name}
+                  </p>
+                  <p className="mt-2 text-[11px] font-semibold opacity-90" style={{ color: readableTextColor(m.brand_color) }}>
+                    {count ? `${count} produtos` : "Ver produtos"} →
+                  </p>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
+
+  // ============================================================
+  // Tela: dentro de um módulo
+  // ============================================================
+  function ModuleCatalogScreen() {
+    const m = allModules.find((x) => x.store_id === activeModuleId);
+    if (!m) return null;
+    const catalog = catalogs[m.store_id];
+    const storeCartCount = (cartByStore.get(m.store_id) ?? []).reduce((s, l) => s + l.quantity, 0);
+    const categories = catalog?.loaded ? groupProductsByCategory(catalog.products) : [];
+    const q = moduleSearch.trim().toLowerCase();
+    const visibleCategories = categories
+      .filter(([cat]) => !activeCategory || activeCategory === "Destaques" || cat === activeCategory)
+      .map(([cat, products]) => [cat, q ? products.filter((p) => p.name.toLowerCase().includes(q)) : products] as [string, Product[]])
+      .filter(([, products]) => products.length > 0);
+
+    return (
+      <div className={cartCount > 0 ? "flex flex-1 flex-col pb-40" : "flex flex-1 flex-col pb-24"}>
+        <div
+          className="px-4 pb-4 pt-4 text-white transition-colors duration-300 sm:px-6"
+          style={{ backgroundColor: m.brand_color, color: readableTextColor(m.brand_color) }}
+        >
+          <div className="flex items-center gap-3">
+            <button onClick={() => setView("modulos")} className="rounded-full p-1 opacity-90 active:scale-90">
+              <ChevronLeft size={22} />
+            </button>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-base font-bold">{m.category}</p>
+              <p className="truncate text-xs opacity-80">{m.store_name}</p>
+            </div>
+            <button onClick={goToCart} className="relative rounded-full p-1.5 opacity-90 active:scale-90">
+              <ShoppingCart size={20} />
+              {storeCartCount > 0 && (
+                <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-white px-1 text-[9px] font-bold" style={{ color: m.brand_color }}>
+                  {storeCartCount}
+                </span>
+              )}
+            </button>
+          </div>
+
+          <div className="relative mt-3">
+            <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input
+              value={moduleSearch}
+              onChange={(e) => setModuleSearch(e.target.value)}
+              placeholder={`Buscar em ${m.store_name.toLowerCase()}…`}
+              className="w-full rounded-xl border-0 bg-white/95 py-2 pl-9 pr-3 text-sm text-slate-900 outline-none placeholder:text-slate-400"
+            />
+          </div>
+        </div>
+
+        {categories.length > 0 && (
+          <div className="flex gap-4 overflow-x-auto border-b border-slate-100 bg-white px-4 pt-2 sm:px-6">
+            {["Destaques", ...categories.map(([c]) => c)].map((cat) => {
+              const isActive = activeCategory === cat || (!activeCategory && cat === "Destaques");
+              return (
+                <button
+                  key={cat}
+                  onClick={() => setActiveCategory(cat)}
+                  className="shrink-0 whitespace-nowrap pb-2.5 text-sm font-medium transition"
+                  style={{
+                    color: isActive ? m.brand_color : "#94a3b8",
+                    borderBottom: isActive ? `2px solid ${m.brand_color}` : "2px solid transparent",
+                  }}
+                >
+                  {cat}
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        <div className="flex-1 bg-white px-4 pt-4 sm:px-6">
+          {catalog?.loading && (
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+              {[0, 1, 2, 3].map((i) => (
+                <div key={i} className="relative aspect-[3/4] overflow-hidden rounded-2xl bg-slate-100">
+                  <div className="animate-mm-shimmer absolute inset-0" />
+                </div>
+              ))}
+            </div>
+          )}
+          {catalog?.error && <p className="py-2 text-sm text-red-600">{catalog.error}</p>}
+          {catalog?.loaded && catalog.products.length === 0 && <p className="py-2 text-sm text-slate-500">Essa loja ainda não cadastrou produtos.</p>}
+          {catalog?.loaded &&
+            visibleCategories.map(([category, products], i) => (
+              <div key={category} className={i > 0 ? "mt-5" : ""}>
+                {(!activeCategory || activeCategory === "Destaques") && (
+                  <h3 className="mb-2.5 text-xs font-bold uppercase tracking-wide text-slate-400">{category}</h3>
+                )}
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+                  {products.map((product, pi) => {
+                    const key = cartKey(m.store_id, product.id);
+                    const quantity = cart[key] ?? 0;
+                    const price = effectivePrice(product);
+                    const onOffer = isOfferActive(product);
+                    return (
+                      <div
+                        key={product.id}
+                        className="animate-mm-fade-up group flex flex-col overflow-hidden rounded-2xl border border-slate-100 shadow-md transition duration-300 hover:-translate-y-1 hover:shadow-2xl"
+                        style={{ animationDelay: `${pi * 50}ms`, boxShadow: `0 12px 26px -16px ${m.brand_color}80` }}
+                      >
+                        <div className="relative aspect-square w-full overflow-hidden bg-slate-100">
+                          {product.image_url ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={product.image_url} alt={product.name} loading="lazy" className="h-full w-full object-cover transition duration-500 group-hover:scale-110" />
+                          ) : (
+                            <div className="flex h-full w-full items-center justify-center text-slate-300">
+                              <Package size={28} />
+                            </div>
+                          )}
+                          <div className="absolute left-1.5 top-1.5 flex flex-col gap-1">
+                            {onOffer && (
+                              <span className="rounded-full bg-red-600 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-white">Oferta</span>
+                            )}
+                            {isNewProduct(product.created_at) && (
+                              <span className="rounded-full bg-blue-600 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-white">Novo</span>
+                            )}
+                          </div>
+                          {product.stock <= 0 && (
+                            <div className="absolute inset-0 flex items-center justify-center bg-white/70 backdrop-blur-[1px]">
+                              <span className="rounded-full bg-slate-900/90 px-2 py-0.5 text-[10px] font-semibold text-white">Sem estoque</span>
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex flex-1 flex-col p-2.5">
+                          <p className="line-clamp-2 min-h-[2.3em] text-xs font-medium leading-tight text-slate-900">{product.name}</p>
+                          {onOffer ? (
+                            <p className="mt-1 flex items-baseline gap-1">
+                              <span className="text-sm font-bold text-red-600">{formatCurrency(price)}</span>
+                              <span className="text-[10px] text-slate-400 line-through">{formatCurrency(product.price)}</span>
+                            </p>
+                          ) : (
+                            <p className="mt-1 text-sm font-bold" style={{ color: m.brand_color }}>
+                              {formatCurrency(price)}
+                            </p>
+                          )}
+                          <div className="mt-auto pt-2">
+                            {quantity === 0 ? (
+                              <button
+                                onClick={() => setQuantity(m.store_id, product.id, 1)}
+                                disabled={product.stock <= 0}
+                                style={{ backgroundColor: m.accent_color, color: readableTextColor(m.accent_color) }}
+                                className="w-full rounded-full px-2 py-1.5 text-xs font-semibold shadow-md transition active:scale-90 disabled:opacity-40"
+                              >
+                                {product.stock <= 0 ? "Sem estoque" : "Adicionar"}
+                              </button>
+                            ) : (
+                              <div className="animate-mm-scale-in flex w-full items-center justify-between rounded-full bg-slate-100 px-1 py-1">
+                                <button onClick={() => setQuantity(m.store_id, product.id, quantity - 1)} className="flex h-6 w-6 items-center justify-center rounded-full bg-white text-slate-700 shadow-sm transition active:scale-75">
+                                  <Minus size={12} />
+                                </button>
+                                <span key={quantity} className="animate-mm-scale-in text-xs font-semibold text-slate-900">
+                                  {quantity}
+                                </span>
+                                <button
+                                  onClick={() => setQuantity(m.store_id, product.id, Math.min(quantity + 1, product.stock))}
+                                  disabled={quantity >= product.stock}
+                                  className="flex h-6 w-6 items-center justify-center rounded-full bg-white text-slate-700 shadow-sm transition active:scale-75 disabled:opacity-40"
+                                >
+                                  <Plus size={12} />
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+        </div>
+
+        <FloatingCartBar />
+      </div>
+    );
+  }
+
+  // ============================================================
+  // Tela: Carrinho
+  // ============================================================
+  function CartScreen() {
+    return (
+      <div className="flex flex-1 flex-col pb-24">
+        <div className="flex items-center gap-3 px-4 pb-4 pt-5 sm:px-6" style={{ backgroundColor: PLATFORM_SURFACE }}>
+          <button onClick={() => setView("inicio")} className="rounded-full p-1 text-white/80 active:scale-90">
+            <ChevronLeft size={22} />
+          </button>
+          <div>
+            <h1 className="text-lg font-bold text-white" style={FONT_DISPLAY}>
+              Meu carrinho
+            </h1>
+            <p className="text-xs text-white/60">
+              {storesInCart.length} {storesInCart.length === 1 ? "loja" : "lojas"}
+            </p>
+          </div>
+        </div>
+
+        {cartItems.length === 0 ? (
+          <div className="flex flex-1 flex-col items-center justify-center gap-2 px-4 text-center">
+            <ShoppingCart size={32} className="text-white/30" />
+            <p className="text-sm text-white/60">Seu carrinho está vazio.</p>
+            <button onClick={() => setView("inicio")} className="mt-2 rounded-full bg-white/10 px-4 py-2 text-sm font-medium text-white">
+              Ver produtos
+            </button>
+          </div>
+        ) : (
+          <div className="space-y-3 px-4 pt-4 sm:px-6">
+            {storesInCart.map((m, mi) => {
+              const lines = cartByStore.get(m.store_id) ?? [];
+              const storeSubtotal = lines.reduce((s, l) => s + l.lineTotal, 0);
+              return (
+                <div
+                  key={m.store_id}
+                  className="animate-mm-fade-up rounded-2xl bg-white p-4 shadow-lg"
+                  style={{ animationDelay: `${mi * 80}ms`, boxShadow: `0 10px 24px -14px ${m.brand_color}99` }}
+                >
+                  <div className="flex items-center gap-2">
+                    <span
+                      className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[10px] font-bold"
+                      style={{ backgroundColor: m.brand_color, color: readableTextColor(m.brand_color) }}
+                    >
+                      {storeInitials(m.store_name)}
+                    </span>
+                    <p className="text-sm font-bold text-slate-900">{m.store_name}</p>
+                  </div>
+                  <div className="mt-3 space-y-2.5">
+                    {lines.map((l) => (
+                      <div key={l.key} className="flex items-center justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="truncate text-sm text-slate-700">{l.name}</p>
+                          <p className="text-xs text-slate-400">{formatCurrency(l.price)} cada</p>
+                        </div>
+                        <div className="flex shrink-0 items-center gap-2">
+                          <div className="flex items-center gap-1.5 rounded-full bg-slate-100 px-1 py-1">
+                            <button onClick={() => setQuantity(m.store_id, l.productId, l.quantity - 1)} className="flex h-6 w-6 items-center justify-center rounded-full bg-white text-slate-700 shadow-sm active:scale-90">
+                              <Minus size={12} />
+                            </button>
+                            <span className="w-4 text-center text-xs font-semibold">{l.quantity}</span>
+                            <button onClick={() => setQuantity(m.store_id, l.productId, l.quantity + 1)} className="flex h-6 w-6 items-center justify-center rounded-full bg-white text-slate-700 shadow-sm active:scale-90">
+                              <Plus size={12} />
+                            </button>
+                          </div>
+                          <span className="w-14 shrink-0 text-right text-sm font-semibold tabular-nums text-slate-900">{formatCurrency(l.lineTotal)}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="mt-3 flex justify-between border-t border-slate-100 pt-2.5 text-sm font-semibold text-slate-900">
+                    <span>Subtotal</span>
+                    <span className="tabular-nums">{formatCurrency(storeSubtotal)}</span>
+                  </p>
+                </div>
+              );
+            })}
+
+            <div className="rounded-2xl bg-white/10 p-4">
+              <p className="flex justify-between text-base font-bold text-white">
+                <span>Total geral</span>
+                <span className="tabular-nums">{formatCurrency(subtotal)}</span>
+              </p>
+            </div>
+          </div>
+        )}
+
+        {cartItems.length > 0 && (
+          <div className="fixed inset-x-0 bottom-16 z-30 px-4 pb-3 sm:bottom-0 sm:left-60 sm:px-6 sm:pb-4">
+            <button
+              onClick={goToDelivery}
+              className="mx-auto flex w-full max-w-2xl items-center justify-center rounded-2xl px-5 py-3.5 font-semibold shadow-xl shadow-black/30 active:scale-[0.99]"
+              style={{ backgroundColor: PLATFORM_ACCENT, color: PLATFORM_ACCENT_TEXT, ...FONT_DISPLAY }}
+            >
+              Continuar — {formatCurrency(subtotal)}
+            </button>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // ============================================================
+  // Tela: Entrega
+  // ============================================================
+  function DeliveryScreen() {
+    return (
+      <div className="flex flex-1 flex-col pb-24">
+        <div className="flex items-center gap-3 px-4 pb-4 pt-5 sm:px-6" style={{ backgroundColor: PLATFORM_SURFACE }}>
+          <button onClick={() => setView("carrinho")} className="rounded-full p-1 text-white/80 active:scale-90">
+            <ChevronLeft size={22} />
+          </button>
+          <h1 className="text-lg font-bold text-white" style={FONT_DISPLAY}>
+            Entrega
+          </h1>
+        </div>
+
+        <div className="space-y-3 px-4 pt-4 sm:px-6">
+          <div className="rounded-2xl bg-white p-4 shadow-sm">
+            <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500">Seu nome</label>
             <input
               required
               value={customerName}
               onChange={(e) => setCustomerName(e.target.value)}
-              className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-50"
+              className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm text-slate-900 outline-none focus:border-slate-400"
             />
-            <label className="mt-3 block text-xs font-medium text-slate-500 dark:text-slate-400">WhatsApp</label>
+            <label className="mt-3.5 block text-xs font-semibold uppercase tracking-wide text-slate-500">WhatsApp</label>
             <input
               required
               value={customerPhone}
               onChange={(e) => setCustomerPhone(e.target.value)}
               placeholder="(11) 91234-5678"
-              className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-50"
+              className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm text-slate-900 outline-none focus:border-slate-400"
             />
           </div>
 
+          <div className="rounded-2xl bg-white p-4 shadow-sm">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Resumo do pedido · {storesInCart.length} {storesInCart.length === 1 ? "loja" : "lojas"}</p>
+            <div className="mt-2 space-y-1.5 text-sm">
+              {storesInCart.map((m) => {
+                const storeSubtotal = (cartByStore.get(m.store_id) ?? []).reduce((s, l) => s + l.lineTotal, 0);
+                return (
+                  <p key={m.store_id} className="flex justify-between text-slate-600">
+                    <span>{m.store_name}</span>
+                    <span className="tabular-nums">{formatCurrency(storeSubtotal)}</span>
+                  </p>
+                );
+              })}
+              {deliveryFeeTotal > 0 && (
+                <p className="flex justify-between text-slate-600">
+                  <span>Taxa de entrega</span>
+                  <span className="tabular-nums">{formatCurrency(deliveryFeeTotal)}</span>
+                </p>
+              )}
+            </div>
+            <p className="mt-2 flex justify-between border-t border-slate-100 pt-2 text-base font-bold text-slate-900">
+              <span>Total</span>
+              <span className="tabular-nums">{formatCurrency(totalGeral)}</span>
+            </p>
+          </div>
+
           {storesInCart.map((m) => {
-            const lines = cartByStore.get(m.store_id) ?? [];
-            const storeSubtotal = lines.reduce((s, l) => s + l.lineTotal, 0);
             const choice = deliveryByStore[m.store_id] ?? { neighborhoodId: "retirada", address: "" };
             const neighborhoods = catalogs[m.store_id]?.neighborhoods ?? [];
+            if (neighborhoods.length === 0) {
+              return (
+                <div key={m.store_id} className="rounded-2xl bg-white p-4 shadow-sm">
+                  <p className="text-sm font-bold text-slate-900">{m.store_name}</p>
+                  <p className="mt-1 text-xs text-slate-400">Combine a entrega dessa loja direto com ela.</p>
+                </div>
+              );
+            }
             return (
-              <div key={m.store_id} className="rounded-2xl bg-white p-4 shadow-sm dark:bg-slate-900">
-                <p className="text-sm font-bold text-slate-900 dark:text-slate-50">{m.store_name}</p>
-                <ul className="mt-1 space-y-0.5 text-xs text-slate-500 dark:text-slate-400">
-                  {lines.map((l) => (
-                    <li key={l.key} className="flex justify-between">
-                      <span>{l.quantity}x {l.name}</span>
-                      <span>{formatCurrency(l.lineTotal)}</span>
-                    </li>
-                  ))}
-                </ul>
-                <p className="mt-1 flex justify-between text-xs font-medium text-slate-600 dark:text-slate-300">
-                  <span>Subtotal</span>
-                  <span>{formatCurrency(storeSubtotal)}</span>
-                </p>
-
-                {neighborhoods.length > 0 ? (
-                  <>
-                    <label className="mt-3 block text-xs font-medium text-slate-500 dark:text-slate-400">Entrega de {m.store_name}</label>
-                    <select
-                      value={choice.neighborhoodId}
-                      onChange={(e) =>
-                        setDeliveryByStore((prev) => ({ ...prev, [m.store_id]: { neighborhoodId: e.target.value, address: prev[m.store_id]?.address ?? "" } }))
-                      }
-                      className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-50"
-                    >
-                      <option value="retirada">Retirar no local</option>
-                      {neighborhoods.map((n) => (
-                        <option key={n.id} value={n.id}>
-                          {n.name} — {formatCurrency(n.fee)}
-                        </option>
-                      ))}
-                    </select>
-                    {choice.neighborhoodId !== "retirada" && (
+              <div key={m.store_id} className="rounded-2xl bg-white p-4 shadow-sm">
+                <p className="text-sm font-bold text-slate-900">{m.store_name}</p>
+                <p className="mt-0.5 text-xs text-slate-400">Como deseja receber?</p>
+                <div className="mt-2 space-y-2">
+                  <label
+                    className="flex items-center justify-between rounded-xl border px-3 py-2.5 text-sm transition"
+                    style={
+                      choice.neighborhoodId === "retirada"
+                        ? { borderColor: PLATFORM_ACCENT, backgroundColor: "#FFF8EB" }
+                        : { borderColor: "#e2e8f0" }
+                    }
+                  >
+                    <span className="flex items-center gap-2">
                       <input
-                        required
-                        value={choice.address}
-                        onChange={(e) => setDeliveryByStore((prev) => ({ ...prev, [m.store_id]: { ...choice, address: e.target.value } }))}
-                        placeholder="Endereço completo de entrega"
-                        className="mt-2 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-50"
+                        type="radio"
+                        checked={choice.neighborhoodId === "retirada"}
+                        onChange={() => setDeliveryByStore((prev) => ({ ...prev, [m.store_id]: { neighborhoodId: "retirada", address: prev[m.store_id]?.address ?? "" } }))}
                       />
-                    )}
-                  </>
-                ) : (
-                  <p className="mt-2 text-xs text-slate-400">Combine a entrega dessa loja direto com ela.</p>
-                )}
+                      Retirar no local
+                    </span>
+                  </label>
+                  {neighborhoods.map((n) => (
+                    <label
+                      key={n.id}
+                      className="flex items-center justify-between rounded-xl border px-3 py-2.5 text-sm transition"
+                      style={
+                        choice.neighborhoodId === n.id
+                          ? { borderColor: PLATFORM_ACCENT, backgroundColor: "#FFF8EB" }
+                          : { borderColor: "#e2e8f0" }
+                      }
+                    >
+                      <span className="flex items-center gap-2">
+                        <input
+                          type="radio"
+                          checked={choice.neighborhoodId === n.id}
+                          onChange={() => setDeliveryByStore((prev) => ({ ...prev, [m.store_id]: { neighborhoodId: n.id, address: prev[m.store_id]?.address ?? "" } }))}
+                        />
+                        Entrega — {n.name}
+                      </span>
+                      <span className="font-semibold tabular-nums text-slate-700">{formatCurrency(n.fee)}</span>
+                    </label>
+                  ))}
+                  {choice.neighborhoodId !== "retirada" && (
+                    <input
+                      required
+                      value={choice.address}
+                      onChange={(e) => setDeliveryByStore((prev) => ({ ...prev, [m.store_id]: { ...choice, address: e.target.value } }))}
+                      placeholder="Endereço completo de entrega"
+                      className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm text-slate-900 outline-none focus:border-slate-400"
+                    />
+                  )}
+                </div>
               </div>
             );
           })}
+        </div>
 
-          <div className="rounded-2xl bg-white p-4 shadow-sm dark:bg-slate-900">
-            <p className="text-xs font-medium text-slate-500 dark:text-slate-400">Forma de pagamento</p>
-            <div className="mt-2 space-y-1.5">
+        <div className="fixed inset-x-0 bottom-16 z-30 px-4 pb-3 sm:bottom-0 sm:left-60 sm:px-6 sm:pb-4">
+          <button
+            onClick={() => setView("pagamento")}
+            className="mx-auto flex w-full max-w-2xl items-center justify-center rounded-2xl px-5 py-3.5 font-semibold shadow-xl shadow-black/30 active:scale-[0.99]"
+            style={{ backgroundColor: PLATFORM_ACCENT, color: PLATFORM_ACCENT_TEXT, ...FONT_DISPLAY }}
+          >
+            Continuar para pagamento
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ============================================================
+  // Tela: Pagamento
+  // ============================================================
+  function PaymentScreen() {
+    return (
+      <div className="flex flex-1 flex-col pb-24">
+        <div className="flex items-center gap-3 px-4 pb-4 pt-5 sm:px-6" style={{ backgroundColor: PLATFORM_SURFACE }}>
+          <button onClick={() => setView("entrega")} className="rounded-full p-1 text-white/80 active:scale-90">
+            <ChevronLeft size={22} />
+          </button>
+          <h1 className="text-lg font-bold text-white" style={FONT_DISPLAY}>
+            Pagamento
+          </h1>
+        </div>
+
+        <form onSubmit={handleCheckout} className="space-y-3 px-4 pt-4 sm:px-6">
+          <div className="rounded-2xl bg-white p-4 shadow-sm">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Forma de pagamento</p>
+            <div className="mt-2.5 space-y-2">
               {(["combinar", "pix", "cartao"] as const).map((pm) => (
-                <label key={pm} className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200">
+                <label
+                  key={pm}
+                  className={`flex cursor-pointer items-center gap-2.5 rounded-xl border px-3.5 py-3 text-sm transition ${
+                    paymentMethod === pm ? "font-semibold text-slate-900" : "border-slate-200 text-slate-600"
+                  }`}
+                  style={paymentMethod === pm ? { borderColor: PLATFORM_ACCENT, backgroundColor: "#FFF8EB" } : undefined}
+                >
                   <input type="radio" name="paymentMethod" checked={paymentMethod === pm} onChange={() => setPaymentMethod(pm)} />
-                  {pm === "combinar" ? "Combinar direto com a loja" : pm === "pix" ? "Pix" : "Cartão"}
+                  {pm === "combinar" ? "Combinar direto com a loja" : pm === "pix" ? "Pix" : "Cartão de crédito"}
                 </label>
               ))}
             </div>
@@ -589,168 +1412,209 @@ export default function HubStorefrontClient({ hubStore, modules }: { hubStore: S
                 value={customerCpf}
                 onChange={(e) => setCustomerCpf(e.target.value)}
                 placeholder="Seu CPF"
-                className="mt-2 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-50"
+                className="mt-3 w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm text-slate-900 outline-none focus:border-slate-400"
               />
             )}
             {paymentMethod === "cartao" && (
               <div className="mt-2 grid grid-cols-2 gap-2">
-                <input required value={cardHolder} onChange={(e) => setCardHolder(e.target.value)} placeholder="Nome no cartão" className="col-span-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-slate-50" />
-                <input required value={cardNumber} onChange={(e) => setCardNumber(e.target.value)} placeholder="Número do cartão" className="col-span-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-slate-50" />
-                <input required value={cardExpiry} onChange={(e) => setCardExpiry(e.target.value)} placeholder="MM/AA" className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-slate-50" />
-                <input required value={cardCvv} onChange={(e) => setCardCvv(e.target.value)} placeholder="CVV" className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-950 dark:text-slate-50" />
+                <input required value={cardHolder} onChange={(e) => setCardHolder(e.target.value)} placeholder="Nome no cartão" className="col-span-2 rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm text-slate-900 outline-none focus:border-slate-400" />
+                <input required value={cardNumber} onChange={(e) => setCardNumber(e.target.value)} placeholder="Número do cartão" className="col-span-2 rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm text-slate-900 outline-none focus:border-slate-400" />
+                <input required value={cardExpiry} onChange={(e) => setCardExpiry(e.target.value)} placeholder="MM/AA" className="rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm text-slate-900 outline-none focus:border-slate-400" />
+                <input required value={cardCvv} onChange={(e) => setCardCvv(e.target.value)} placeholder="CVV" className="rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm text-slate-900 outline-none focus:border-slate-400" />
               </div>
             )}
           </div>
 
-          <div className="rounded-2xl bg-[var(--brand-text)]/10 p-4">
+          <div className="rounded-2xl bg-white/10 p-4">
             <p className="flex justify-between text-sm text-white/80">
               <span>Produtos</span>
-              <span>{formatCurrency(subtotal)}</span>
+              <span className="tabular-nums">{formatCurrency(subtotal)}</span>
             </p>
             {deliveryFeeTotal > 0 && (
-              <p className="flex justify-between text-sm text-white/80">
+              <p className="mt-1 flex justify-between text-sm text-white/80">
                 <span>Entrega</span>
-                <span>{formatCurrency(deliveryFeeTotal)}</span>
+                <span className="tabular-nums">{formatCurrency(deliveryFeeTotal)}</span>
               </p>
             )}
-            <p className="mt-1 flex justify-between border-t border-white/20 pt-1 text-lg font-bold text-white">
+            <p className="mt-2 flex justify-between border-t border-white/20 pt-2 text-lg font-bold tabular-nums text-white">
               <span>Total</span>
               <span>{formatCurrency(totalGeral)}</span>
             </p>
           </div>
 
-          {error && <p className="text-sm text-red-300">{error}</p>}
+          {error && <p className="text-sm font-medium text-red-400">{error}</p>}
 
           <button
             type="submit"
             disabled={saving}
-            className="w-full rounded-full bg-[var(--accent-bg)] px-4 py-3 font-semibold text-[var(--accent-text)] shadow-sm disabled:opacity-60"
+            className="w-full rounded-2xl px-4 py-3.5 font-semibold shadow-xl shadow-black/30 transition active:scale-[0.99] disabled:opacity-60"
+            style={{ backgroundColor: PLATFORM_ACCENT, color: PLATFORM_ACCENT_TEXT, ...FONT_DISPLAY }}
           >
-            {saving ? "Enviando…" : `Confirmar pedido — ${formatCurrency(totalGeral)}`}
+            {saving ? "Enviando…" : `Finalizar pedido — ${formatCurrency(totalGeral)}`}
           </button>
+
+          <p className="flex items-center justify-center gap-1.5 pt-1 text-center text-xs text-white/35">
+            <ShieldCheck size={14} /> Seus dados ficam só entre você e as lojas do pedido
+          </p>
         </form>
       </div>
     );
   }
 
-  return (
-    <div style={brandStyle} className="flex flex-1 flex-col bg-[var(--page-bg)] pb-28">
-      <header className="bg-[var(--brand-bg)] px-6 pb-8 pt-10 text-center text-[var(--brand-text)]">
-        <div className="mx-auto flex max-w-3xl flex-col items-center">
-          <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-[var(--brand-text)]/15 text-2xl font-bold ring-1 ring-inset ring-[var(--brand-text)]/25">
-            {storeInitials(hubStore.name)}
+  // ============================================================
+  // Tela: Confirmação
+  // ============================================================
+  function ConfirmationScreen() {
+    const receiptTotal = receipt?.reduce((s, r) => s + r.store_total, 0) ?? totalGeral;
+    return (
+      <div className="flex flex-1 flex-col items-center px-4 py-10 sm:px-6">
+        <div className="w-full max-w-md">
+          <div className="flex h-16 w-16 items-center justify-center rounded-full text-2xl font-bold shadow-lg" style={{ backgroundColor: PLATFORM_ACCENT, color: PLATFORM_ACCENT_TEXT }}>
+            ✓
           </div>
-          <h1 className="mt-4 text-2xl font-bold tracking-tight sm:text-4xl">{hubStore.name}</h1>
-          <p className="mt-2 text-sm opacity-80">Escolha uma loja abaixo pra ver os produtos</p>
-        </div>
-      </header>
+          <h1 className="mt-4 text-2xl font-bold tracking-tight text-white" style={FONT_DISPLAY}>
+            Pedido enviado!
+          </h1>
+          <p className="mt-1.5 text-sm text-white/70">
+            {receipt && receipt.length > 1 ? `Seu pedido foi dividido em ${receipt.length} lojas — cada uma vai preparar a parte dela.` : "Seu pedido foi enviado."}
+          </p>
 
-      {!storeStatus.open && storeStatus.message && (
-        <div className="bg-amber-100 px-4 py-2.5 text-center text-sm font-medium text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
-          🕒 {storeStatus.message}
-        </div>
-      )}
-
-      <div className="mx-auto w-full max-w-3xl space-y-3 px-4 pt-6 sm:px-6">
-        {allModules.map((m) => {
-          const isExpanded = expandedStoreId === m.store_id;
-          const catalog = catalogs[m.store_id];
-          const moduleStyle = {
-            "--mod-bg": m.brand_color,
-            "--mod-text": readableTextColor(m.brand_color),
-            "--mod-accent": m.accent_color,
-            "--mod-accent-text": readableTextColor(m.accent_color),
-          } as React.CSSProperties;
-          const storeCartCount = (cartByStore.get(m.store_id) ?? []).reduce((s, l) => s + l.quantity, 0);
-
-          return (
-            <div key={m.store_id} style={moduleStyle} className="overflow-hidden rounded-2xl shadow-sm">
-              <button
-                type="button"
-                onClick={() => toggleModule(m.store_id)}
-                className="flex w-full items-center justify-between gap-3 bg-[var(--mod-bg)] px-5 py-4 text-left text-[var(--mod-text)]"
-              >
-                <div>
-                  <p className="text-xs font-medium uppercase tracking-wide opacity-70">{m.category}</p>
-                  <p className="text-lg font-bold">{m.store_name}</p>
+          <div className="mt-6 space-y-3">
+            {(receipt ?? []).map((r) => (
+              <div key={r.order_id} className="rounded-2xl bg-white p-4 shadow-sm">
+                <div className="flex items-center gap-2.5">
+                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-bold" style={{ backgroundColor: r.store_brand_color, color: readableTextColor(r.store_brand_color) }}>
+                    {storeInitials(r.store_name)}
+                  </span>
+                  <p className="text-sm font-bold text-slate-900">{r.store_name}</p>
                 </div>
-                <div className="flex items-center gap-2">
-                  {storeCartCount > 0 && (
-                    <span className="rounded-full bg-[var(--mod-text)]/20 px-2 py-0.5 text-xs font-semibold">{storeCartCount} no carrinho</span>
-                  )}
-                  <span className="text-xl">{isExpanded ? "−" : "+"}</span>
-                </div>
-              </button>
+                <ul className="mt-3 space-y-1.5 text-sm text-slate-600">
+                  {r.items.map((item, i) => (
+                    <li key={i} className="flex justify-between gap-3">
+                      <span className="truncate">{item.quantity}x {item.name}</span>
+                      <span className="shrink-0 tabular-nums">{formatCurrency(item.line_total ?? item.price * item.quantity)}</span>
+                    </li>
+                  ))}
+                </ul>
+                <p className="mt-2.5 flex justify-between border-t border-slate-100 pt-2.5 text-sm font-semibold text-slate-900">
+                  <span>Subtotal dessa loja</span>
+                  <span className="tabular-nums">{formatCurrency(r.store_total)}</span>
+                </p>
+              </div>
+            ))}
+          </div>
 
-              {isExpanded && (
-                <div className="bg-white p-4 dark:bg-slate-900">
-                  {catalog?.loading && <p className="text-sm text-slate-500">Carregando produtos…</p>}
-                  {catalog?.error && <p className="text-sm text-red-600">{catalog.error}</p>}
-                  {catalog?.loaded && catalog.products.length === 0 && (
-                    <p className="text-sm text-slate-500">Essa loja ainda não cadastrou produtos.</p>
-                  )}
-                  {catalog?.loaded &&
-                    groupProductsByCategory(catalog.products).map(([category, products]) => (
-                      <div key={category} className="mb-4 last:mb-0">
-                        <h3 className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-400">{category}</h3>
-                        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                          {products.map((product) => {
-                            const key = cartKey(m.store_id, product.id);
-                            const quantity = cart[key] ?? 0;
-                            const price = effectivePrice(product);
-                            return (
-                              <div key={product.id} className="flex items-center justify-between gap-2 rounded-xl border border-slate-200 p-2.5 dark:border-slate-800">
-                                <div className="min-w-0">
-                                  <p className="truncate text-sm font-medium text-slate-900 dark:text-slate-50">{product.name}</p>
-                                  <p className="text-sm text-[var(--mod-bg)]">{formatCurrency(price)}</p>
-                                </div>
-                                {quantity === 0 ? (
-                                  <button
-                                    onClick={() => setQuantity(m.store_id, product.id, 1)}
-                                    disabled={product.stock <= 0}
-                                    className="shrink-0 rounded-full bg-[var(--mod-accent)] px-3 py-1.5 text-xs font-semibold text-[var(--mod-accent-text)] disabled:opacity-40"
-                                  >
-                                    {product.stock <= 0 ? "Sem estoque" : "Adicionar"}
-                                  </button>
-                                ) : (
-                                  <div className="flex shrink-0 items-center gap-2">
-                                    <button onClick={() => setQuantity(m.store_id, product.id, quantity - 1)} className="h-7 w-7 rounded-full border border-slate-300 text-sm dark:border-slate-700">
-                                      −
-                                    </button>
-                                    <span className="w-5 text-center text-sm font-semibold">{quantity}</span>
-                                    <button
-                                      onClick={() => setQuantity(m.store_id, product.id, quantity + 1)}
-                                      disabled={quantity >= product.stock}
-                                      className="h-7 w-7 rounded-full border border-slate-300 text-sm disabled:opacity-40 dark:border-slate-700"
-                                    >
-                                      +
-                                    </button>
-                                  </div>
-                                )}
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    ))}
-                </div>
+          <div className="mt-4 rounded-2xl bg-white/10 p-4 text-center">
+            <p className="text-xs font-medium uppercase tracking-wide text-white/60">Total combinado</p>
+            <p className="mt-0.5 text-2xl font-bold tabular-nums text-white">{formatCurrency(receiptTotal)}</p>
+          </div>
+
+          {paymentMethod === "pix" && (
+            <div className="mt-4 rounded-2xl bg-white p-4 text-center shadow-sm">
+              {pixLoading && <p className="text-sm text-slate-500">Gerando o Pix…</p>}
+              {pixError && <p className="text-sm text-red-600">{pixError}</p>}
+              {pixQrCodeImage && (
+                <>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={pixQrCodeImage} alt="QR Code Pix" className="mx-auto h-48 w-48" />
+                  <p className="mt-2 text-xs text-slate-500">Escaneie com o app do seu banco pra pagar.</p>
+                </>
               )}
             </div>
-          );
-        })}
-      </div>
+          )}
+          {paymentMethod === "cartao" && (
+            <div className="mt-4 rounded-2xl bg-white p-4 text-center shadow-sm">
+              {cardLoading && <p className="text-sm text-slate-500">Processando o cartão…</p>}
+              {cardError && <p className="text-sm text-red-600">{cardError}</p>}
+              {cardPaid && <p className="text-sm font-semibold text-green-600">✓ Pagamento aprovado!</p>}
+            </div>
+          )}
 
-      {cartCount > 0 && (
-        <div className="fixed inset-x-0 bottom-0 z-30 px-4 pb-4">
+          {confirmedHubOrderId && (
+            <a href={`/loja/${hubStore.slug}/pedido-hub/${confirmedHubOrderId}`} className="mt-6 block w-full rounded-full border border-white/25 px-4 py-3 text-center text-sm font-semibold text-white">
+              Ver recibo completo
+            </a>
+          )}
           <button
-            onClick={openCheckout}
-            className="mx-auto flex w-full max-w-3xl items-center justify-between rounded-2xl bg-[var(--accent-bg)] px-5 py-3.5 font-semibold text-[var(--accent-text)] shadow-xl"
+            onClick={() => setView("inicio")}
+            className="mt-3 block w-full rounded-full px-4 py-3 text-center font-semibold shadow-sm"
+            style={{ backgroundColor: PLATFORM_ACCENT, color: PLATFORM_ACCENT_TEXT, ...FONT_DISPLAY }}
           >
-            <span>🛒 {cartCount} {cartCount === 1 ? "item" : "itens"} · {storesInCart.length} {storesInCart.length === 1 ? "loja" : "lojas"}</span>
-            <span>{formatCurrency(subtotal)} →</span>
+            Voltar à loja
           </button>
         </div>
-      )}
+      </div>
+    );
+  }
+
+  // ============================================================
+  // Tela: Conta
+  // ============================================================
+  function AccountScreen() {
+    const whatsappUrl = hubStore.whatsapp ? `https://wa.me/55${hubStore.whatsapp.replace(/\D/g, "")}` : null;
+    return (
+      <div className="flex flex-1 flex-col pb-24">
+        <div className="px-4 pb-4 pt-5 sm:px-6" style={{ backgroundColor: PLATFORM_SURFACE }}>
+          <h1 className="text-lg font-bold text-white" style={FONT_DISPLAY}>
+            Conta
+          </h1>
+        </div>
+        <div className="space-y-2 px-4 pt-4 sm:px-6">
+          {lastOrderId && (
+            <a href={`/loja/${hubStore.slug}/pedido-hub/${lastOrderId}`} className="flex items-center gap-3 rounded-2xl bg-white p-4 shadow-sm">
+              <Package size={18} className="text-slate-400" />
+              <span className="text-sm font-medium text-slate-700">Meu último pedido</span>
+              <ChevronRight size={16} className="ml-auto text-slate-300" />
+            </a>
+          )}
+          {whatsappUrl && (
+            <a href={whatsappUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 rounded-2xl bg-white p-4 shadow-sm">
+              <MessageCircle size={18} className="text-slate-400" />
+              <span className="text-sm font-medium text-slate-700">Falar no WhatsApp</span>
+              <ChevronRight size={16} className="ml-auto text-slate-300" />
+            </a>
+          )}
+          <a href="/privacidade" className="flex items-center gap-3 rounded-2xl bg-white p-4 shadow-sm">
+            <span className="text-sm font-medium text-slate-700">Aviso de privacidade</span>
+            <ChevronRight size={16} className="ml-auto text-slate-300" />
+          </a>
+          <a href="/termos" className="flex items-center gap-3 rounded-2xl bg-white p-4 shadow-sm">
+            <span className="text-sm font-medium text-slate-700">Termo de uso</span>
+            <ChevronRight size={16} className="ml-auto text-slate-300" />
+          </a>
+        </div>
+      </div>
+    );
+  }
+
+  const screens: Record<View, () => React.ReactNode> = {
+    inicio: HomeScreen,
+    modulos: ModulePickerScreen,
+    modulo: ModuleCatalogScreen,
+    carrinho: CartScreen,
+    entrega: DeliveryScreen,
+    pagamento: PaymentScreen,
+    confirmado: ConfirmationScreen,
+    conta: AccountScreen,
+  };
+  // Chamada como função (não `<Screens[view] />`) de propósito: como essas
+  // funções são recriadas a cada render, usá-las como tipo de componente JSX
+  // faria o React desmontar e remontar a tela inteira a cada clique (até um
+  // +1 de quantidade recarregaria a tela, perdendo scroll e recarregando
+  // imagem). Chamando como função só o retorno (a árvore de elementos) é
+  // reconciliado normalmente. A troca de tela de verdade (para a transição)
+  // é sinalizada só pela `key` abaixo, amarrada à view + módulo ativo.
+  const viewKey = view === "modulo" ? `modulo-${activeModuleId}` : view;
+
+  return (
+    <div className="flex flex-1" style={{ backgroundColor: PLATFORM_BG, ...FONT_BODY }}>
+      <DesktopSidebar />
+      <div className="flex flex-1 flex-col">
+        <div key={viewKey} className="animate-mm-fade-up mx-auto flex w-full max-w-5xl flex-1 flex-col">
+          {screens[view]()}
+        </div>
+        <BottomNav />
+      </div>
     </div>
   );
 }

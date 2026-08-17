@@ -146,6 +146,35 @@ body {
   animation: mm-prize-pop 0.55s cubic-bezier(0.34, 1.56, 0.64, 1) backwards;
 }
 
+@keyframes mm-shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+@keyframes mm-badge-bump {
+  0% {
+    transform: scale(1);
+  }
+  35% {
+    transform: scale(1.35);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.animate-mm-shimmer {
+  background-image: linear-gradient(90deg, rgba(255, 255, 255, 0) 0%, rgba(255, 255, 255, 0.35) 50%, rgba(255, 255, 255, 0) 100%);
+  background-size: 200% 100%;
+  animation: mm-shimmer 1.6s ease-in-out infinite;
+}
+.animate-mm-badge-bump {
+  animation: mm-badge-bump 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
 @media (prefers-reduced-motion: reduce) {
   html {
     scroll-behavior: auto;
@@ -157,7 +186,9 @@ body {
   .animate-mm-check-pop,
   .animate-mm-scratch-spin,
   .animate-mm-sparkle,
-  .animate-mm-prize-pop {
+  .animate-mm-prize-pop,
+  .animate-mm-shimmer,
+  .animate-mm-badge-bump {
     animation: none;
   }
 }
