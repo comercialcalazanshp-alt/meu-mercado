@@ -11,11 +11,14 @@ export async function POST(request: Request) {
     return Response.json({ error: "Pagamento Pix não configurado" }, { status: 500 });
   }
 
-  const { order_id, customer_tax_id } = (await request.json()) as {
-    order_id: string;
+  const { order_id, hub_order_id, customer_tax_id } = (await request.json()) as {
+    order_id?: string;
+    hub_order_id?: string;
     customer_tax_id: string;
   };
-  if (!order_id) {
+  const table = hub_order_id ? "hub_orders" : "orders";
+  const id = hub_order_id ?? order_id;
+  if (!id) {
     return Response.json({ error: "order_id é obrigatório" }, { status: 400 });
   }
   if (!customer_tax_id || !isValidCPF(customer_tax_id)) {
@@ -25,9 +28,9 @@ export async function POST(request: Request) {
 
   const supabase = getSupabaseAdmin();
   const { data: order } = await supabase
-    .from("orders")
+    .from(table)
     .select("id, customer_name, customer_phone, total")
-    .eq("id", order_id)
+    .eq("id", id)
     .maybeSingle();
 
   if (!order) {
@@ -84,7 +87,7 @@ export async function POST(request: Request) {
   )?.href;
 
   await supabase
-    .from("orders")
+    .from(table)
     .update({
       pagbank_order_id: pagbankData.id,
       pix_qr_code_text: qrText,

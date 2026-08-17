@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { notFound } from "next/navigation";
 import { getSupabase } from "@/lib/supabase";
 import StorefrontClient from "./storefront-client";
+import HubStorefrontClient from "./hub-storefront-client";
 
 export const dynamic = "force-dynamic";
 
@@ -59,6 +60,7 @@ export default async function Loja({ params }: { params: Promise<{ slug: string 
   if (!store) notFound();
 
   const [
+    { data: hubModules },
     { data: products },
     { data: banners },
     { data: kits },
@@ -67,6 +69,7 @@ export default async function Loja({ params }: { params: Promise<{ slug: string 
     { data: storeReviews },
     { data: recipeRows },
   ] = await Promise.all([
+    supabase.rpc("get_hub_modules", { p_hub_store_id: store.id }),
     supabase
       .from("products")
       .select(
@@ -117,12 +120,20 @@ export default async function Loja({ params }: { params: Promise<{ slug: string 
     return startsOk && endsOk;
   });
 
+  // Loja com afiliados ativos vira uma vitrine em módulos (um card por
+  // afiliado, cores próprias, carrinho único) em vez do catálogo direto —
+  // loja sem afiliado nenhum continua com a vitrine de sempre, sem
+  // nenhuma mudança visual ou de comportamento.
+  if (hubModules && hubModules.length > 0) {
+    return <HubStorefrontClient hubStore={store} modules={hubModules} />;
+  }
+
   return (
     <StorefrontClient
       store={store}
       products={products ?? []}
       banners={banners ?? []}
-      kits={activeKits as unknown as import("./storefront-client").Kit[]}
+      kits={activeKits as unknown as import("@/lib/storefront-pricing").Kit[]}
       reviews={reviews ?? []}
       neighborhoods={neighborhoods ?? []}
       storeReviews={storeReviews ?? []}

@@ -4,163 +4,38 @@ import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { useSearchParams } from "next/navigation";
 import { getSupabase } from "@/lib/supabase";
 import { getCustomerSupabase } from "@/lib/supabase-customer";
-import { BannerOverlay, type BannerTextStyle } from "@/components/BannerOverlay";
+import { BannerOverlay } from "@/components/BannerOverlay";
+import {
+  type Product,
+  type Kit,
+  type Banner,
+  type Neighborhood,
+  type Store,
+  type PagSeguroSdk,
+  isNewProduct,
+  isOfferActive,
+  effectivePrice,
+  lineTotalFor,
+  kitMaxQuantity,
+  kitSavings,
+  etaLabel,
+  formatCurrency,
+  readableTextColor,
+  storeInitials,
+  darkenHex,
+  isStoreOpenNow,
+  groupProductsByCategory,
+  loadPagSeguroSdk,
+} from "@/lib/storefront-pricing";
 
 type BeforeInstallPromptEvent = Event & {
   prompt: () => Promise<void>;
   userChoice: Promise<{ outcome: "accepted" | "dismissed" }>;
 };
 
-type PagSeguroSdk = {
-  encryptCard: (params: {
-    publicKey: string;
-    holder: string;
-    number: string;
-    expMonth: string;
-    expYear: string;
-    securityCode: string;
-  }) => { encryptedCard: string | null; hasErrors: boolean; errors?: unknown[] };
-};
-
-type Product = {
-  id: string;
-  name: string;
-  category: string | null;
-  price: number;
-  image_url: string | null;
-  stock: number;
-  promo_buy_qty: number | null;
-  promo_pay_qty: number | null;
-  price_wholesale: number | null;
-  wholesale_min_qty: number | null;
-  on_offer: boolean;
-  offer_price: number | null;
-  offer_ends_at: string | null;
-  created_at: string;
-  barcode: string | null;
-};
-
-function isNewProduct(createdAt: string) {
-  return Date.now() - new Date(createdAt).getTime() < 7 * 86400000;
-}
-
-// "Ofertas do dia" tem prazo opcional (offer_ends_at) — depois de vencido,
-// o preço/selo de oferta some da vitrine sozinho, sem o dono precisar
-// lembrar de desmarcar. checkout() já trata o mesmo prazo do lado do banco.
-function isOfferActive(product: Product) {
-  return (
-    product.on_offer &&
-    product.offer_price !== null &&
-    (!product.offer_ends_at || new Date(product.offer_ends_at) > new Date())
-  );
-}
-
-function effectivePrice(product: Product) {
-  return isOfferActive(product) ? product.offer_price! : product.price;
-}
-
-function lineTotalFor(
-  price: number,
-  quantity: number,
-  buyQty: number | null,
-  payQty: number | null,
-  wholesalePrice: number | null,
-  wholesaleMinQty: number | null,
-) {
-  if (wholesalePrice !== null && wholesaleMinQty !== null && quantity >= wholesaleMinQty) {
-    return wholesalePrice * quantity;
-  }
-  if (!buyQty || !payQty || quantity < buyQty) return price * quantity;
-  const fullGroups = Math.floor(quantity / buyQty);
-  const remainder = quantity % buyQty;
-  return (fullGroups * payQty + remainder) * price;
-}
-
-type Store = {
-  id: string;
-  slug: string;
-  name: string;
-  whatsapp: string | null;
-  cashback_percent: number;
-  business_hours_enabled: boolean;
-  opens_at: string | null;
-  closes_at: string | null;
-  open_days: number[];
-  manually_closed: boolean;
-  scratch_enabled: boolean;
-  brand_color: string;
-  accent_color: string;
-};
-
-function isStoreOpenNow(store: Store): { open: boolean; message: string | null } {
-  if (!store.business_hours_enabled) return { open: true, message: null };
-  if (store.manually_closed) return { open: false, message: "Loja fechada no momento." };
-  if (!store.opens_at || !store.closes_at) return { open: true, message: null };
-
-  const now = new Date();
-  const day = now.getDay();
-  if (!store.open_days.includes(day)) {
-    return { open: false, message: `Loja fechada hoje. Abre às ${store.opens_at.slice(0, 5)}.` };
-  }
-
-  const [openH, openM] = store.opens_at.split(":").map(Number);
-  const [closeH, closeM] = store.closes_at.split(":").map(Number);
-  const nowMinutes = now.getHours() * 60 + now.getMinutes();
-  const openMinutes = openH * 60 + openM;
-  const closeMinutes = closeH * 60 + closeM;
-
-  if (nowMinutes < openMinutes) {
-    return { open: false, message: `Loja fechada. Abre às ${store.opens_at.slice(0, 5)}.` };
-  }
-  if (nowMinutes >= closeMinutes) {
-    return { open: false, message: `Loja fechada. Volta a abrir às ${store.opens_at.slice(0, 5)}.` };
-  }
-  return { open: true, message: null };
-}
-
-type Banner = {
-  id: string;
-  title: string;
-  image_url: string;
-  link_url: string | null;
-  focal_x: number;
-  focal_y: number;
-  text_style: BannerTextStyle | null;
-  overlay_text: string | null;
-};
-
-type Neighborhood = {
-  id: string;
-  name: string;
-  fee: number;
-  eta_min_minutes: number | null;
-  eta_max_minutes: number | null;
-};
-
-function etaLabel(min: number | null, max: number | null): string | null {
-  if (min && max) return min === max ? `${min} min` : `${min}-${max} min`;
-  if (min) return `a partir de ${min} min`;
-  if (max) return `até ${max} min`;
-  return null;
-}
-
 type StoreReviewSummary = {
   id: string;
   rating: number;
-};
-
-type KitComponent = {
-  quantity: number;
-  product_id: string;
-  products: { name: string; price: number; stock: number } | null;
-};
-
-export type Kit = {
-  id: string;
-  name: string;
-  image_url: string | null;
-  price: number;
-  kit_items: KitComponent[];
 };
 
 export type Review = {
@@ -191,69 +66,6 @@ type CartLine = {
   quantity: number;
   lineTotal: number;
 };
-
-function formatCurrency(value: number) {
-  return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-}
-
-function readableTextColor(hex: string) {
-  const clean = hex.replace("#", "");
-  if (clean.length !== 6) return "#fbbf24";
-  const r = parseInt(clean.slice(0, 2), 16) / 255;
-  const g = parseInt(clean.slice(2, 4), 16) / 255;
-  const b = parseInt(clean.slice(4, 6), 16) / 255;
-  const toLinear = (c: number) => (c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4));
-  const luminance = 0.2126 * toLinear(r) + 0.7152 * toLinear(g) + 0.0722 * toLinear(b);
-  return luminance > 0.4 ? "#000000" : "#fbbf24";
-}
-
-function storeInitials(name: string) {
-  const words = name.trim().split(/\s+/).filter(Boolean);
-  if (words.length >= 2) return (words[0][0] + words[1][0]).toUpperCase();
-  return name.slice(0, 2).toUpperCase();
-}
-
-// Escurece a cor da marca da loja pra usar como fundo da página — assim cada
-// loja ganha um fundo escuro "premium" derivado da própria cor dela, em vez
-// de uma cor fixa que não combinaria com lojas de cores diferentes.
-function darkenHex(hex: string, amount: number) {
-  const clean = hex.replace("#", "");
-  if (clean.length !== 6) return hex;
-  const r = parseInt(clean.slice(0, 2), 16);
-  const g = parseInt(clean.slice(2, 4), 16);
-  const b = parseInt(clean.slice(4, 6), 16);
-  const mix = (c: number) => Math.round(c * (1 - amount));
-  return `#${[mix(r), mix(g), mix(b)].map((c) => c.toString(16).padStart(2, "0")).join("")}`;
-}
-
-let pagSeguroSdkPromise: Promise<void> | null = null;
-function loadPagSeguroSdk(): Promise<void> {
-  if (typeof window !== "undefined" && (window as unknown as { PagSeguro?: unknown }).PagSeguro) {
-    return Promise.resolve();
-  }
-  if (!pagSeguroSdkPromise) {
-    pagSeguroSdkPromise = new Promise((resolve, reject) => {
-      const script = document.createElement("script");
-      script.src = "https://assets.pagseguro.com.br/checkout-sdk-js/rc/dist/browser/pagseguro.min.js";
-      script.onload = () => resolve();
-      script.onerror = () => reject(new Error("Falha ao carregar o pagamento com cartão"));
-      document.body.appendChild(script);
-    });
-  }
-  return pagSeguroSdkPromise;
-}
-
-function kitMaxQuantity(kit: Kit) {
-  if (kit.kit_items.length === 0) return 0;
-  return Math.min(
-    ...kit.kit_items.map((item) => Math.floor((item.products?.stock ?? 0) / item.quantity)),
-  );
-}
-
-function kitSavings(kit: Kit) {
-  const separateTotal = kit.kit_items.reduce((sum, item) => sum + item.quantity * (item.products?.price ?? 0), 0);
-  return separateTotal - kit.price;
-}
 
 const ORDER_STATUS_LABELS: Record<string, string> = {
   pendente: "Pendente",
@@ -588,15 +400,7 @@ export default function StorefrontClient({
     return products.filter((p) => p.name.toLowerCase().includes(q));
   }, [products, searchQuery]);
 
-  const categories = useMemo(() => {
-    const groups = new Map<string, Product[]>();
-    for (const product of visibleProducts) {
-      const key = product.category || "Outros";
-      if (!groups.has(key)) groups.set(key, []);
-      groups.get(key)!.push(product);
-    }
-    return Array.from(groups.entries());
-  }, [visibleProducts]);
+  const categories = useMemo(() => groupProductsByCategory(visibleProducts), [visibleProducts]);
 
   function setQuantity(key: string, quantity: number) {
     setCart((prev) => ({ ...prev, [key]: Math.max(0, quantity) }));

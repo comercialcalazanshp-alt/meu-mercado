@@ -34,8 +34,13 @@ export async function POST(request: Request) {
 
   if (orderId && paid) {
     const supabase = getSupabaseAdmin();
+    // reference_id pode ser tanto um pedido de loja única (orders) quanto
+    // um pedido combinado do hub (hub_orders) — checa qual dos dois é essa
+    // referência antes de marcar como pago.
+    const { data: hubOrder } = await supabase.from("hub_orders").select("id").eq("id", orderId).maybeSingle();
+    const table = hubOrder ? "hub_orders" : "orders";
     await supabase
-      .from("orders")
+      .from(table)
       .update({ pix_paid_at: new Date().toISOString() })
       .eq("id", orderId)
       .is("pix_paid_at", null);

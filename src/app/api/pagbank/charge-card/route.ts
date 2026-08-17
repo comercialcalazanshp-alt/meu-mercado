@@ -11,14 +11,17 @@ export async function POST(request: Request) {
     return Response.json({ error: "Pagamento não configurado" }, { status: 500 });
   }
 
-  const { order_id, encrypted_card, holder_name, holder_cpf } = (await request.json()) as {
-    order_id: string;
+  const { order_id, hub_order_id, encrypted_card, holder_name, holder_cpf } = (await request.json()) as {
+    order_id?: string;
+    hub_order_id?: string;
     encrypted_card: string;
     holder_name: string;
     holder_cpf: string;
   };
+  const table = hub_order_id ? "hub_orders" : "orders";
+  const id = hub_order_id ?? order_id;
 
-  if (!order_id || !encrypted_card || !holder_name || !holder_cpf) {
+  if (!id || !encrypted_card || !holder_name || !holder_cpf) {
     return Response.json({ error: "Dados do cartão incompletos" }, { status: 400 });
   }
 
@@ -28,9 +31,9 @@ export async function POST(request: Request) {
 
   const supabase = getSupabaseAdmin();
   const { data: order } = await supabase
-    .from("orders")
+    .from(table)
     .select("id, customer_name, customer_phone, total, card_paid_at")
-    .eq("id", order_id)
+    .eq("id", id)
     .maybeSingle();
 
   if (!order) {
@@ -109,7 +112,7 @@ export async function POST(request: Request) {
   }
 
   await supabase
-    .from("orders")
+    .from(table)
     .update({
       pagbank_order_id: pagbankData.id,
       payment_method: "cartao",
