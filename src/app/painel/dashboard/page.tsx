@@ -75,24 +75,24 @@ function shortDay(key: string) {
   const [, m, d] = key.split("-");
   return `${d}/${m}`;
 }
-function periodRange(period: PeriodKey): { since: Date; until: Date; prevSince: Date; prevUntil: Date; days: number } {
+function periodRange(period: PeriodKey): { since: Date; until: Date; prevSince: Date; prevUntil: Date } {
   const now = new Date();
   if (period === "hoje") {
     const since = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const until = new Date(since.getTime() + 24 * 3600 * 1000);
     const prevSince = new Date(since.getTime() - 24 * 3600 * 1000);
-    return { since, until, prevSince, prevUntil: since, days: 1 };
+    return { since, until, prevSince, prevUntil: since };
   }
   if (period === "mes") {
     const since = new Date(now.getFullYear(), now.getMonth(), 1);
     const until = new Date(now.getFullYear(), now.getMonth() + 1, 1);
     const prevSince = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-    return { since, until, prevSince, prevUntil: since, days: since.getDate() === 1 ? 30 : 30 };
+    return { since, until, prevSince, prevUntil: since };
   }
   const days = period === "7d" ? 7 : 30;
   const since = new Date(now.getTime() - days * 24 * 3600 * 1000);
   const prevSince = new Date(since.getTime() - days * 24 * 3600 * 1000);
-  return { since, until: now, prevSince, prevUntil: since, days };
+  return { since, until: now, prevSince, prevUntil: since };
 }
 
 function pctDelta(current: number, previous: number): number | null {
@@ -354,6 +354,15 @@ export default function Dashboard() {
     return Array.from(map.entries());
   }, [orders, dailyBuckets]);
 
+  const ordersCountSeries = useMemo(() => {
+    const map = new Map(dailyBuckets);
+    for (const o of orders) {
+      const k = dayKey(o.created_at);
+      if (map.has(k)) map.set(k, (map.get(k) ?? 0) + 1);
+    }
+    return Array.from(map.entries());
+  }, [orders, dailyBuckets]);
+
   const afiliadosSeries = useMemo(() => {
     const map = new Map(dailyBuckets);
     for (const s of settlements) {
@@ -521,7 +530,7 @@ export default function Dashboard() {
               value={orders.length.toLocaleString("pt-BR")}
               delta={pctDelta(orders.length, prevOrders.length)}
               ctx="vs. período anterior"
-              spark={mercadoSeries.map(([, v]) => v || 0.01)}
+              spark={ordersCountSeries.map(([, v]) => v || 0.01)}
               colorClass="text-emerald-600 dark:text-emerald-400"
               bgClass="bg-emerald-50 dark:bg-emerald-900/30"
             />

@@ -223,8 +223,18 @@ export default function Pedidos() {
   }, []);
 
   async function updateStatus(id: string, status: string) {
+    // "entregando"/"entregue" também precisam gravar out_for_delivery_at
+    // (v75/v77) e delivered_at (v73) — é dessa hora que a previsão de
+    // chegada no recibo do cliente é calculada e que "entregas hoje/semana"
+    // conta em painel/entregas. A tela de Entregas já faz isso pro fluxo
+    // dela; esse select genérico é o outro lugar que muda esses status,
+    // então precisa do mesmo cuidado, senão o pedido avança sem deixar
+    // rastro nenhum de quando isso aconteceu.
+    const patch: { status: string; out_for_delivery_at?: string; delivered_at?: string } = { status };
+    if (status === "entregando") patch.out_for_delivery_at = new Date().toISOString();
+    if (status === "entregue") patch.delivered_at = new Date().toISOString();
     setOrders((prev) => prev.map((o) => (o.id === id ? { ...o, status } : o)));
-    await getSupabase().from("orders").update({ status }).eq("id", id);
+    await getSupabase().from("orders").update(patch).eq("id", id);
   }
 
   async function markSeen(order: Order) {
