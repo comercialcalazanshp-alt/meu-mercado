@@ -21,6 +21,8 @@ type Partnership = {
   active: boolean;
   balance: number;
   commission_percent: number;
+  subscription_price: number | null;
+  subscription_due_at: string | null;
 };
 
 function formatCurrency(v: number) {
@@ -61,6 +63,7 @@ export default function PainelInicio() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [partnerships, setPartnerships] = useState<Partnership[]>([]);
   const [visits, setVisits] = useState(0);
+  const [extraSales, setExtraSales] = useState<{ price: number; paid_at: string }[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -77,18 +80,23 @@ export default function PainelInicio() {
       // os próprios dados, sem diferença — mas pra Hub soma o marketplace
       // inteiro (a própria loja, se ainda vender algo, + cada afiliado
       // ativo), já que a Hub não tem mais pedido nenhum só dela.
-      const [ordersRes, partnershipsRes, visitsRes] = await Promise.all([
+      const [ordersRes, partnershipsRes, visitsRes, extraSalesRes] = await Promise.all([
         supabase.rpc("get_hub_orders", { p_hub_store_id: store.id, p_since: sinceIso }),
         supabase
           .from("affiliate_partnerships")
-          .select("id, module_store_id, category, owner_name, active, balance, commission_percent")
+          .select("id, module_store_id, category, owner_name, active, balance, commission_percent, subscription_price, subscription_due_at")
           .eq("hub_store_id", store.id),
         supabase.rpc("get_hub_visits_count", { p_hub_store_id: store.id, p_since: sinceIso }),
+        // Venda avulsa (pacote extra de imagem por IA) é dinheiro que entra
+        // direto pra Hub — RLS já filtra sozinho pra só as parcerias dessa
+        // Hub (affiliate_ai_purchases é ligado por partnership_id).
+        supabase.from("affiliate_ai_purchases").select("price, paid_at").not("paid_at", "is", null).gte("paid_at", sinceIso),
       ]);
       if (cancelled) return;
       setOrders((ordersRes.data as Order[]) ?? []);
       setPartnerships((partnershipsRes.data as Partnership[]) ?? []);
       setVisits((visitsRes.data as number) ?? 0);
+      setExtraSales((extraSalesRes.data as { price: number; paid_at: string }[]) ?? []);
       setLoading(false);
     }
     load();
@@ -126,6 +134,12 @@ export default function PainelInicio() {
       const k = dayKey(o.created_at);
       map.set(k, (map.get(k) ?? 0) + hubShare(o));
     }
+    // Venda avulsa (pacote extra de IA etc.) é receita direta da Hub — entra
+    // no mesmo total do dia, junto da comissão.
+    for (const sale of extraSales) {
+      const k = dayKey(sale.paid_at);
+      map.set(k, (map.get(k) ?? 0) + sale.price);
+    }
     const days: { key: string; total: number }[] = [];
     for (let i = 13; i >= 0; i--) {
       const d = new Date();
@@ -135,7 +149,7 @@ export default function PainelInicio() {
     }
     return days;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [validOrders, commissionPercentByStore]);
+  }, [validOrders, commissionPercentByStore, extraSales]);
 
   const revenueToday = revenueByDay[revenueByDay.length - 1]?.total ?? 0;
   const revenueYesterday = useMemo(
@@ -150,12 +164,17 @@ export default function PainelInicio() {
   const pending = ordersToday.filter((o) => o.status === "pendente").length;
   const donutTotal = Math.max(delivered + enRoute + pending, 1);
 
-  // Só a fatia de comissão de hoje (exclui venda própria da Hub, se houver
-  // — isso não é "comissão", é faturamento direto, já contado à parte).
+  // Comissão sobre venda de afiliado + venda avulsa (pacote extra de IA
+  // etc.) de hoje — exclui venda própria da Hub, que já é faturamento
+  // direto contado à parte.
   const commissionToday = useMemo(
     () => ordersToday.filter((o) => o.store_id !== store.id).reduce((s, o) => s + hubShare(o), 0),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [ordersToday, commissionPercentByStore, store.id],
+  );
+  const extraSalesToday = useMemo(
+    () => extraSales.filter((s) => dayKey(s.paid_at) === todayKey).reduce((sum, s) => sum + s.price, 0),
+    [extraSales, todayKey],
   );
 
   const activePartnerships = useMemo(() => partnerships.filter((p) => p.active), [partnerships]);
@@ -163,6 +182,22 @@ export default function PainelInicio() {
   const uniqueCustomers = useMemo(
     () => new Set(validOrders.map((o) => o.customer_phone).filter(Boolean)).size,
     [validOrders],
+  );
+
+  // MRR: soma da mensalidade de todo afiliado ativo com plano pago — é o
+  // que a Hub deveria receber por mês se todo mundo pagasse em dia (ainda
+  // não cobra sozinho, é só a expectativa pra planejar).
+  const mrr = useMemo(
+    () => activePartnerships.reduce((s, p) => s + (p.subscription_price ?? 0), 0),
+    [activePartnerships],
+  );
+  const overduePartnerships = useMemo(
+    () => activePartnerships.filter((p) => p.subscription_due_at && new Date(p.subscription_due_at) < new Date()),
+    [activePartnerships],
+  );
+  const overdueAmount = useMemo(
+    () => overduePartnerships.reduce((s, p) => s + (p.subscription_price ?? 0), 0),
+    [overduePartnerships],
   );
 
   // Contagem de pedidos por dia — separado do faturamento de propósito:
@@ -269,12 +304,12 @@ export default function PainelInicio() {
 
         <div className="mb-3 grid grid-cols-2 gap-2.5">
           <div className="rounded-2xl border border-white/[0.09] bg-white/[0.035] p-4 backdrop-blur-xl">
-            <p className="text-[10.5px] font-bold uppercase tracking-wide text-white/30">Comissão da plataforma</p>
+            <p className="text-[10.5px] font-bold uppercase tracking-wide text-white/30">Comissão + vendas avulsas</p>
             <p className="mt-1.5 text-[21px] font-extrabold tabular-nums text-[#5CACFF]">
-              {formatCurrency(commissionToday)}
+              {formatCurrency(commissionToday + extraSalesToday)}
             </p>
             <p className="mt-0.5 text-[11.5px] font-semibold text-white/30">
-              {activePartnerships.length > 0 ? `${activePartnerships.length} afiliado(s) ativo(s)` : "Nenhum afiliado ainda"}
+              {formatCurrency(commissionToday)} comissão · {formatCurrency(extraSalesToday)} avulsa
             </p>
           </div>
           <div className="rounded-2xl border border-white/[0.09] bg-white/[0.035] p-4 backdrop-blur-xl">
@@ -380,21 +415,48 @@ export default function PainelInicio() {
           </svg>
         </div>
 
+        <div className="mb-2.5 grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+          <div className="rounded-2xl border border-white/[0.09] bg-white/[0.035] p-4 backdrop-blur-xl">
+            <p className="text-[10.5px] font-bold uppercase tracking-wide text-white/30">Mensalidades — MRR</p>
+            <p className="mt-1.5 text-[21px] font-extrabold tabular-nums text-[#F5F3EF]">{formatCurrency(mrr)}</p>
+            <p className="mt-0.5 text-[11.5px] font-semibold text-white/30">
+              se todo mundo pagar em dia · {activePartnerships.length} afiliado(s)
+            </p>
+          </div>
+          <div className="rounded-2xl border border-white/[0.09] bg-white/[0.035] p-4 backdrop-blur-xl">
+            <p className="text-[10.5px] font-bold uppercase tracking-wide text-white/30">Mensalidade atrasada</p>
+            <p className={`mt-1.5 text-[21px] font-extrabold tabular-nums ${overduePartnerships.length > 0 ? "text-[#FF5C68]" : "text-[#F5F3EF]"}`}>
+              {formatCurrency(overdueAmount)}
+            </p>
+            <p className={`mt-0.5 text-[11.5px] font-semibold ${overduePartnerships.length > 0 ? "text-[#FF5C68]/85" : "text-white/30"}`}>
+              {overduePartnerships.length > 0 ? `${overduePartnerships.length} afiliado(s) atrasado(s)` : "tudo em dia"}
+            </p>
+          </div>
+        </div>
+
         <div className="rounded-2xl border border-white/[0.09] bg-white/[0.035] p-5 backdrop-blur-xl">
           <h2 className="mb-3 text-[12.5px] font-bold uppercase tracking-wide text-white/45">Afiliados</h2>
           {partnerships.length === 0 ? (
             <p className="text-[13px] text-white/35">Nenhum afiliado cadastrado ainda.</p>
           ) : (
             <div className="flex flex-col gap-3">
-              {partnerships.map((p) => (
-                <div key={p.id} className="flex items-center gap-2.5">
-                  <span className="w-24 flex-shrink-0 truncate text-[12.5px] text-white/55">{p.owner_name}</span>
-                  <span className="flex-1" />
-                  <span className={`text-[11.5px] font-semibold ${p.active ? "text-[#34E88C]" : "text-white/30"}`}>
-                    {p.active ? "Ativo" : "Inativo"}
-                  </span>
-                </div>
-              ))}
+              {partnerships.map((p) => {
+                const isOverdue = p.active && p.subscription_due_at && new Date(p.subscription_due_at) < new Date();
+                return (
+                  <div key={p.id} className="flex items-center gap-2.5">
+                    <span className="w-24 flex-shrink-0 truncate text-[12.5px] text-white/55">{p.owner_name}</span>
+                    <span className="flex-1" />
+                    {isOverdue && (
+                      <span className="rounded-full bg-[#FF5C68]/12 px-2 py-0.5 text-[10.5px] font-bold text-[#FF5C68]">
+                        mensalidade atrasada
+                      </span>
+                    )}
+                    <span className={`text-[11.5px] font-semibold ${p.active ? "text-[#34E88C]" : "text-white/30"}`}>
+                      {p.active ? "Ativo" : "Inativo"}
+                    </span>
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>
