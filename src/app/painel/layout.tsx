@@ -110,12 +110,10 @@ export default function PainelLayout({ children }: { children: ReactNode }) {
   const [store, setStore] = useState<Store | null>(null);
   const [status, setStatus] = useState<"loading" | "ready" | "sem-loja">("loading");
   const [role, setRole] = useState<"completo" | "caixa" | "entregador">("completo");
-  // Toda loja pode virar um Hub (ligar afiliados) — por isso o item
-  // "Afiliados" no menu fica sempre visível, mesmo pra quem ainda não
-  // configurou nada: é a própria tela de Afiliados que oferece o botão de
-  // "virar Hub" pra primeira vez. isHub só serve pra decidir se os módulos
-  // operacionais (PDV, Produtos etc.) somem — isso sim só depois que a loja
-  // já é um Hub de verdade (existe uma linha em affiliate_settings).
+  // Só quem já é Hub (existe uma linha em affiliate_settings) vê o item
+  // "Afiliados" no menu — uma loja comum não gerencia parceiros. Virar Hub
+  // pela primeira vez é feito por trás (setup direto), não por um botão
+  // self-service no menu de qualquer loja.
   const [isHub, setIsHub] = useState(false);
   const [memberId, setMemberId] = useState<string | null>(null);
   const [notifications, setNotifications] = useState<OrderNotification[]>([]);
@@ -482,7 +480,7 @@ export default function PainelLayout({ children }: { children: ReactNode }) {
               ? NAV_ITEMS.filter((item) => ENTREGADOR_ALLOWED_PATHS.has(item.href))
               : isHub
                 ? NAV_ITEMS.filter((item) => !HUB_HIDDEN_PATHS.has(item.href))
-                : NAV_ITEMS
+                : NAV_ITEMS.filter((item) => item.href !== "/painel/afiliados")
           ).map((item) => {
             const isActive = pathname === item.href;
             return (
