@@ -316,6 +316,10 @@ export default function Dashboard() {
   const [period, setPeriod] = useState<PeriodKey>("30d");
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<"mercado" | "afiliados" | "assinaturas" | "entregadores">("mercado");
+  // A aba/série "Afiliados" (comissão ganha de parceiros) só faz sentido pra
+  // quem é Hub — pra um afiliado comum ela ficaria sempre zerada e sem
+  // sentido, então essa tela vira "vendas da loja dele" nesse caso.
+  const [isHub, setIsHub] = useState(false);
 
   const [orders, setOrders] = useState<Order[]>([]);
   const [prevOrders, setPrevOrders] = useState<Order[]>([]);
@@ -405,6 +409,14 @@ export default function Dashboard() {
       }
       if (!profitRes.error && profitRes.data?.length) setProfit(profitRes.data[0]);
       if (!prevProfitRes.error && prevProfitRes.data?.length) setPrevProfit(prevProfitRes.data[0]);
+
+      const { data: hubRow } = await supabase
+        .from("affiliate_settings")
+        .select("id")
+        .eq("hub_store_id", store.id)
+        .maybeSingle();
+      if (!cancelled) setIsHub(!!hubRow);
+
       setLoading(false);
     }
     load();
@@ -671,8 +683,10 @@ export default function Dashboard() {
               />
             </div>
             <p className="mt-2 text-[11.5px] text-white/25">
-              Faturamento = Mercado ({formatCurrency(revenue)}) + comissão ganha com afiliados ({formatCurrency(commissionRevenue)}). A receita de
-              assinaturas (MRR) não entra aqui — é recorrente, não uma venda do período — veja o total na aba Assinaturas.
+              {isHub
+                ? `Faturamento = Mercado (${formatCurrency(revenue)}) + comissão ganha com afiliados (${formatCurrency(commissionRevenue)}). `
+                : ""}
+              A receita de assinaturas (MRR) não entra aqui — é recorrente, não uma venda do período — veja o total na aba Assinaturas.
             </p>
             {profit?.missing_cost && (
               <p className="mt-1 text-[11.5px] text-[#F0BB5E]/80">
@@ -693,10 +707,12 @@ export default function Dashboard() {
                     <span className="text-white/55">Vendas do Mercado (PDV + vitrine)</span>
                     <span className="font-bold tabular-nums">{formatCurrency(revenue)}</span>
                   </div>
-                  <div className="flex items-center justify-between border-b border-white/[0.06] py-2 text-sm">
-                    <span className="text-white/55">Comissão de vendas de afiliados</span>
-                    <span className="font-bold tabular-nums">{formatCurrency(commissionRevenue)}</span>
-                  </div>
+                  {isHub && (
+                    <div className="flex items-center justify-between border-b border-white/[0.06] py-2 text-sm">
+                      <span className="text-white/55">Comissão de vendas de afiliados</span>
+                      <span className="font-bold tabular-nums">{formatCurrency(commissionRevenue)}</span>
+                    </div>
+                  )}
                   <div className="flex items-center justify-between py-2 text-sm font-bold">
                     <span>= Faturamento total</span>
                     <span className="tabular-nums" style={{ color: COLOR_HEX.positive }}>
@@ -747,33 +763,41 @@ export default function Dashboard() {
               <div className="mb-1 flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <h2 className="text-[13px] font-bold">Faturamento por dia</h2>
-                  <p className="text-[11.5px] text-white/30">Mercado + comissão de vendas via Hub de Afiliados</p>
+                  <p className="text-[11.5px] text-white/30">
+                    {isHub ? "Mercado + comissão de vendas via Hub de Afiliados" : "Vendas da loja"}
+                  </p>
                 </div>
-                <div className="flex gap-4">
-                  <button
-                    onClick={() => setLayersActive((s) => ({ ...s, mercado: !s.mercado }))}
-                    className="flex items-center gap-1.5 text-xs font-semibold"
-                    style={{ color: layersActive.mercado ? "rgba(255,255,255,0.7)" : "rgba(255,255,255,0.2)" }}
-                  >
-                    <span className="h-2 w-2 rounded-sm" style={{ background: COLOR_HEX.accent }} />
-                    Mercado
-                  </button>
-                  <button
-                    onClick={() => setLayersActive((s) => ({ ...s, afiliados: !s.afiliados }))}
-                    className="flex items-center gap-1.5 text-xs font-semibold"
-                    style={{ color: layersActive.afiliados ? "rgba(255,255,255,0.7)" : "rgba(255,255,255,0.2)" }}
-                  >
-                    <span className="h-2 w-2 rounded-sm" style={{ background: COLOR_HEX.afil }} />
-                    Afiliados
-                  </button>
-                </div>
+                {isHub && (
+                  <div className="flex gap-4">
+                    <button
+                      onClick={() => setLayersActive((s) => ({ ...s, mercado: !s.mercado }))}
+                      className="flex items-center gap-1.5 text-xs font-semibold"
+                      style={{ color: layersActive.mercado ? "rgba(255,255,255,0.7)" : "rgba(255,255,255,0.2)" }}
+                    >
+                      <span className="h-2 w-2 rounded-sm" style={{ background: COLOR_HEX.accent }} />
+                      Mercado
+                    </button>
+                    <button
+                      onClick={() => setLayersActive((s) => ({ ...s, afiliados: !s.afiliados }))}
+                      className="flex items-center gap-1.5 text-xs font-semibold"
+                      style={{ color: layersActive.afiliados ? "rgba(255,255,255,0.7)" : "rgba(255,255,255,0.2)" }}
+                    >
+                      <span className="h-2 w-2 rounded-sm" style={{ background: COLOR_HEX.afil }} />
+                      Afiliados
+                    </button>
+                  </div>
+                )}
               </div>
               <StackedAreaChart
                 labels={chartLabels}
-                series={[
-                  { key: "mercado", label: "Mercado", values: mercadoSeries.map(([, v]) => v), hex: COLOR_HEX.accent, active: layersActive.mercado },
-                  { key: "afiliados", label: "Afiliados", values: afiliadosSeries.map(([, v]) => v), hex: COLOR_HEX.afil, active: layersActive.afiliados },
-                ]}
+                series={
+                  isHub
+                    ? [
+                        { key: "mercado", label: "Mercado", values: mercadoSeries.map(([, v]) => v), hex: COLOR_HEX.accent, active: layersActive.mercado },
+                        { key: "afiliados", label: "Afiliados", values: afiliadosSeries.map(([, v]) => v), hex: COLOR_HEX.afil, active: layersActive.afiliados },
+                      ]
+                    : [{ key: "mercado", label: "Vendas", values: mercadoSeries.map(([, v]) => v), hex: COLOR_HEX.accent, active: true }]
+                }
               />
               <div className="mt-1 flex justify-between px-1 text-[10px] text-white/25">
                 {chartLabels
@@ -788,7 +812,7 @@ export default function Dashboard() {
             <div className="mt-5 flex gap-2 overflow-x-auto pb-1">
               {[
                 { key: "mercado", label: "Mercado", hex: COLOR_HEX.accent },
-                { key: "afiliados", label: "Afiliados", hex: COLOR_HEX.afil },
+                ...(isHub ? [{ key: "afiliados", label: "Afiliados", hex: COLOR_HEX.afil }] : []),
                 { key: "assinaturas", label: "Assinaturas", hex: COLOR_HEX.assin },
                 { key: "entregadores", label: "Entregadores", hex: COLOR_HEX.entr },
               ].map((t) => (
