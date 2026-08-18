@@ -102,6 +102,7 @@ const NAV_ITEMS = [
   { href: "/painel/pedidos", label: "Pedidos" },
   { href: "/painel/entregas", label: "Entregas" },
   { href: "/painel/afiliados", label: "Afiliados" },
+  { href: "/painel/financas", label: "Finanças" },
   { href: "/painel/relatorios", label: "Relatórios" },
   { href: "/painel/avaliacoes", label: "Avaliações" },
   { href: "/painel/reclamacoes", label: "Reclamações" },
@@ -210,6 +211,8 @@ export default function PainelLayout({ children }: { children: ReactNode }) {
     } else if (role === "entregador" && !ENTREGADOR_ALLOWED_PATHS.has(pathname)) {
       router.replace("/painel/entregas");
     } else if (role === "completo" && isHub && HUB_HIDDEN_PATHS.has(pathname)) {
+      router.replace("/painel");
+    } else if (role === "completo" && !isHub && (pathname === "/painel/financas" || pathname === "/painel/afiliados")) {
       router.replace("/painel");
     }
   }, [status, role, isHub, pathname, router]);
@@ -489,7 +492,7 @@ export default function PainelLayout({ children }: { children: ReactNode }) {
               ? NAV_ITEMS.filter((item) => ENTREGADOR_ALLOWED_PATHS.has(item.href))
               : isHub
                 ? NAV_ITEMS.filter((item) => !HUB_HIDDEN_PATHS.has(item.href))
-                : NAV_ITEMS.filter((item) => item.href !== "/painel/afiliados")
+                : NAV_ITEMS.filter((item) => item.href !== "/painel/afiliados" && item.href !== "/painel/financas")
           ).map((item) => {
             const isActive = pathname === item.href;
             return (
