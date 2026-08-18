@@ -102,61 +102,93 @@ function pctDelta(current: number, previous: number): number | null {
 
 // ---------- small chart primitives (sem dependência externa) ----------
 
-function Sparkline({ values, colorClass }: { values: number[]; colorClass: string }) {
-  const w = 100, h = 28;
-  const min = Math.min(...values), max = Math.max(...values);
+function Sparkline({ values, hex }: { values: number[]; hex: string }) {
+  const w = 100,
+    h = 28;
+  const min = Math.min(...values),
+    max = Math.max(...values);
   const range = max - min || 1;
-  const pts = values.map((v, i) => [
-    (i / Math.max(1, values.length - 1)) * w,
-    h - ((v - min) / range) * (h - 4) - 2,
-  ]);
+  const pts = values.map((v, i) => [(i / Math.max(1, values.length - 1)) * w, h - ((v - min) / range) * (h - 4) - 2]);
   const d = pts.map((p, i) => `${i === 0 ? "M" : "L"}${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(" ");
   return (
     <svg viewBox={`0 0 ${w} ${h}`} className="mt-3 h-7 w-full" preserveAspectRatio="none">
-      <path d={d} fill="none" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className={colorClass} stroke="currentColor" />
+      <path
+        d={d}
+        fill="none"
+        strokeWidth={2}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        stroke={hex}
+        className="animate-mm-draw-line"
+        style={{ filter: `drop-shadow(0 0 4px ${hex}99)` }}
+      />
     </svg>
   );
 }
 
 function KpiCard({
-  label, value, delta, ctx, spark, colorClass, bgClass,
+  label,
+  value,
+  delta,
+  ctx,
+  spark,
+  hex,
+  delay,
 }: {
-  label: string; value: string; delta: number | null; ctx: string; spark: number[]; colorClass: string; bgClass: string;
+  label: string;
+  value: string;
+  delta: number | null;
+  ctx: string;
+  spark: number[];
+  hex: string;
+  delay: number;
 }) {
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+    <div
+      className="animate-mm-fade-up rounded-2xl border border-white/[0.09] bg-white/[0.035] p-4 backdrop-blur-xl"
+      style={{ animationDelay: `${delay}ms` }}
+    >
       <div className="flex items-start justify-between">
-        <span className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">{label}</span>
-        <span className={`flex h-7 w-7 items-center justify-center rounded-lg ${bgClass} ${colorClass}`}>●</span>
+        <span className="text-[10.5px] font-bold uppercase tracking-wide text-white/35">{label}</span>
+        <span
+          className="flex h-6 w-6 items-center justify-center rounded-lg text-[10px]"
+          style={{ background: `${hex}22`, color: hex }}
+        >
+          ●
+        </span>
       </div>
-      <div className="mt-2 text-2xl font-bold tracking-tight text-slate-900 tabular-nums dark:text-slate-50">{value}</div>
+      <div className="mt-2 text-[21px] font-extrabold tracking-tight text-[#F5F3EF] tabular-nums">{value}</div>
       <div className="mt-2 flex items-center gap-2">
         {delta !== null && (
           <span
-            className={`rounded-full px-2 py-0.5 text-xs font-bold ${
+            className="rounded-full px-2 py-0.5 text-[11px] font-bold"
+            style={
               delta >= 0
-                ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400"
-                : "bg-rose-50 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400"
-            }`}
+                ? { background: "rgba(52,232,140,0.12)", color: "#34E88C" }
+                : { background: "rgba(255,92,104,0.12)", color: "#FF5C68" }
+            }
           >
             {delta >= 0 ? "+" : ""}
             {delta}%
           </span>
         )}
-        <span className="text-xs text-slate-400 dark:text-slate-500">{ctx}</span>
+        <span className="text-[11px] text-white/30">{ctx}</span>
       </div>
-      <Sparkline values={spark.length > 1 ? spark : [0, ...spark]} colorClass={colorClass} />
+      <Sparkline values={spark.length > 1 ? spark : [0, ...spark]} hex={hex} />
     </div>
   );
 }
 
 function StackedAreaChart({
-  labels, series,
+  labels,
+  series,
 }: {
   labels: string[];
-  series: { key: string; label: string; values: number[]; colorClass: string; strokeHex: string; active: boolean }[];
+  series: { key: string; label: string; values: number[]; hex: string; active: boolean }[];
 }) {
-  const W = 1000, H = 220, pad = 6;
+  const W = 1000,
+    H = 220,
+    pad = 6;
   const active = series.filter((s) => s.active);
   const totals = labels.map((_, i) => active.reduce((sum, s) => sum + s.values[i], 0));
   const max = Math.max(1, ...totals) * 1.15;
@@ -168,35 +200,52 @@ function StackedAreaChart({
     .map((s) => {
       const top = labels.map((_, i) => cum[i] + s.values[i]);
       const pts = top.map((v, i) => [(i / Math.max(1, labels.length - 1)) * W, H - pad - (v / max) * (H - 2 * pad)]);
-      const base = cum
-        .map((v, i) => [(i / Math.max(1, labels.length - 1)) * W, H - pad - (v / max) * (H - 2 * pad)])
-        .reverse();
-      const area = "M" + pts.map((p) => `${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(" L") + " L" + base.map((p) => `${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(" L") + " Z";
+      const base = cum.map((v, i) => [(i / Math.max(1, labels.length - 1)) * W, H - pad - (v / max) * (H - 2 * pad)]).reverse();
+      const area =
+        "M" +
+        pts.map((p) => `${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(" L") +
+        " L" +
+        base.map((p) => `${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(" L") +
+        " Z";
       const line = "M" + pts.map((p) => `${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(" L");
       cum = top;
-      return { key: s.key, area, line, strokeHex: s.strokeHex };
+      return { key: s.key, area, line, hex: s.hex };
     });
 
   return (
     <svg viewBox={`0 0 ${W} ${H}`} className="h-56 w-full" preserveAspectRatio="none">
       {[0, 1, 2, 3].map((g) => (
-        <line key={g} x1={0} y1={pad + ((H - 2 * pad) * g) / 3} x2={W} y2={pad + ((H - 2 * pad) * g) / 3} className="stroke-slate-100 dark:stroke-slate-800" strokeWidth={1} />
+        <line key={g} x1={0} y1={pad + ((H - 2 * pad) * g) / 3} x2={W} y2={pad + ((H - 2 * pad) * g) / 3} stroke="rgba(255,255,255,0.05)" strokeWidth={1} />
       ))}
-      {paths.map((p) => (
-        <path key={p.key} d={p.area} fill={p.strokeHex} opacity={0.14} />
+      {paths.map((p, i) => (
+        <path key={p.key} d={p.area} fill={p.hex} opacity={0.16} className="animate-mm-fade-in" style={{ animationDelay: `${400 + i * 150}ms` }} />
       ))}
-      {paths.map((p) => (
-        <path key={p.key + "-line"} d={p.line} fill="none" stroke={p.strokeHex} strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round" />
+      {paths.map((p, i) => (
+        <path
+          key={p.key + "-line"}
+          d={p.line}
+          fill="none"
+          stroke={p.hex}
+          strokeWidth={2.4}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className="animate-mm-draw-line"
+          style={{ animationDelay: `${i * 150}ms`, filter: `drop-shadow(0 0 5px ${p.hex}80)` }}
+        />
       ))}
     </svg>
   );
 }
 
 function Donut({ segments, size = 128 }: { segments: { pct: number; hex: string }[]; size?: number }) {
-  const r = size / 2 - 12, c = 2 * Math.PI * r, cx = size / 2, cy = size / 2;
+  const r = size / 2 - 12,
+    c = 2 * Math.PI * r,
+    cx = size / 2,
+    cy = size / 2;
   let offset = 0;
   return (
     <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+      <circle cx={cx} cy={cy} r={r} fill="none" stroke="rgba(255,255,255,0.05)" strokeWidth={15} />
       {segments.map((s, i) => {
         const len = (s.pct / 100) * c;
         const el = (
@@ -208,9 +257,12 @@ function Donut({ segments, size = 128 }: { segments: { pct: number; hex: string 
             fill="none"
             stroke={s.hex}
             strokeWidth={15}
+            strokeLinecap="round"
             strokeDasharray={`${len} ${c - len}`}
             strokeDashoffset={-offset}
             transform={`rotate(-90 ${cx} ${cy})`}
+            className="animate-mm-fade-in"
+            style={{ animationDelay: `${300 + i * 200}ms`, filter: `drop-shadow(0 0 4px ${s.hex}80)` }}
           />
         );
         offset += len;
@@ -222,20 +274,42 @@ function Donut({ segments, size = 128 }: { segments: { pct: number; hex: string 
 
 function RankRow({ rank, name, pct, value, hex }: { rank?: number; name: string; pct: number; value: string; hex: string }) {
   return (
-    <div className="flex items-center gap-3 border-b border-slate-100 py-2.5 last:border-0 dark:border-slate-800">
-      {rank !== undefined && <div className="w-5 flex-shrink-0 text-xs font-bold text-slate-400 dark:text-slate-500">{rank}</div>}
+    <div className="flex items-center gap-3 border-b border-white/[0.06] py-2.5 last:border-0">
+      {rank !== undefined && <div className="w-5 flex-shrink-0 text-xs font-bold text-white/30">{rank}</div>}
       <div className="min-w-0 flex-1">
-        <div className="truncate text-sm font-semibold text-slate-800 dark:text-slate-100">{name}</div>
-        <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
-          <div className="h-full rounded-full transition-all duration-700" style={{ width: `${Math.max(4, pct)}%`, background: hex }} />
+        <div className="truncate text-sm font-semibold text-white/85">{name}</div>
+        <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-white/[0.06]">
+          <div
+            className="animate-mm-grow-w h-full rounded-full"
+            style={{ "--w": `${Math.max(4, pct)}%`, background: hex, boxShadow: `0 0 6px ${hex}80` } as React.CSSProperties}
+          />
         </div>
       </div>
-      <div className="w-24 flex-shrink-0 text-right text-sm font-bold tabular-nums text-slate-700 dark:text-slate-200">{value}</div>
+      <div className="w-24 flex-shrink-0 text-right text-sm font-bold tabular-nums text-white/75">{value}</div>
     </div>
   );
 }
 
-const COLOR_HEX = { accent: "#2563eb", positive: "#059669", warning: "#d97706", afil: "#7c3aed", assin: "#0d9488", entr: "#ea580c", negative: "#e11d48" };
+const COLOR_HEX = {
+  accent: "#5CACFF",
+  positive: "#34E88C",
+  warning: "#F0BB5E",
+  afil: "#B37FE8",
+  assin: "#34D9C4",
+  entr: "#FF9F5C",
+  negative: "#FF5C68",
+};
+
+function Card({ children, className = "", delay = 0 }: { children: React.ReactNode; className?: string; delay?: number }) {
+  return (
+    <div
+      className={`animate-mm-fade-up rounded-2xl border border-white/[0.09] bg-white/[0.035] p-5 backdrop-blur-xl ${className}`}
+      style={{ animationDelay: `${delay}ms` }}
+    >
+      {children}
+    </div>
+  );
+}
 
 export default function Dashboard() {
   const store = useStore();
@@ -397,7 +471,15 @@ export default function Dashboard() {
       const key = o.payment_method ?? "não informado";
       map.set(key, (map.get(key) ?? 0) + o.total);
     }
-    const labels: Record<string, string> = { pix: "Pix", cartao: "Cartão", dinheiro: "Dinheiro", fiado: "Fiado" };
+    const labels: Record<string, string> = {
+      pix: "Pix",
+      cartao: "Cartão",
+      cartao_entrega: "Cartão na entrega",
+      cartao_credito: "Cartão de crédito online",
+      cartao_debito: "Cartão de débito online",
+      dinheiro: "Dinheiro",
+      fiado: "Fiado",
+    };
     return Array.from(map.entries())
       .map(([k, v]) => ({ name: labels[k] ?? k, value: v }))
       .sort((a, b) => b.value - a.value);
@@ -504,391 +586,434 @@ export default function Dashboard() {
   const maxRank = (arr: { value: number }[]) => Math.max(1, ...arr.map((a) => a.value));
 
   return (
-    <div className="mx-auto max-w-6xl px-4 pb-16 pt-5">
-      <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-bold text-slate-900 dark:text-slate-50">Dashboard</h1>
-          <p className="text-sm text-slate-500 dark:text-slate-400">Visão financeira de {store.name}</p>
-        </div>
-        <div className="flex gap-1 rounded-xl border border-slate-200 bg-white p-1 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-          {PERIODS.map((p) => (
-            <button
-              key={p.key}
-              onClick={() => setPeriod(p.key)}
-              className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
-                period === p.key ? "bg-blue-600 text-white" : "text-slate-500 hover:bg-slate-50 dark:text-slate-400 dark:hover:bg-slate-800"
-              }`}
-            >
-              {p.label}
-            </button>
-          ))}
-        </div>
-      </div>
+    <div className="relative overflow-hidden rounded-[22px] bg-black">
+      <div
+        aria-hidden
+        className="pointer-events-none absolute left-1/2 -top-44 h-[520px] w-[520px] -translate-x-1/2 rounded-full opacity-40 blur-[90px]"
+        style={{ background: "radial-gradient(circle, rgba(92,172,255,0.20), transparent 65%)" }}
+      />
+      <div
+        aria-hidden
+        className="pointer-events-none absolute -right-36 top-96 h-[420px] w-[420px] rounded-full opacity-35 blur-[90px]"
+        style={{ background: "radial-gradient(circle, rgba(179,127,232,0.16), transparent 65%)" }}
+      />
+      <div
+        aria-hidden
+        className="pointer-events-none absolute -left-36 -bottom-16 h-[380px] w-[380px] rounded-full opacity-25 blur-[90px]"
+        style={{ background: "radial-gradient(circle, rgba(52,232,140,0.14), transparent 65%)" }}
+      />
 
-      {loading ? (
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          {[0, 1, 2, 3].map((i) => (
-            <div key={i} className="h-32 animate-pulse rounded-2xl bg-slate-100 dark:bg-slate-800" />
-          ))}
-        </div>
-      ) : (
-        <>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <KpiCard
-              label="Faturamento"
-              value={formatCurrency(faturamentoTotal)}
-              delta={pctDelta(faturamentoTotal, prevFaturamentoTotal)}
-              ctx="vs. período anterior"
-              spark={chartSpark}
-              colorClass="text-blue-600 dark:text-blue-400"
-              bgClass="bg-blue-50 dark:bg-blue-900/30"
-            />
-            <KpiCard
-              label="Pedidos"
-              value={orders.length.toLocaleString("pt-BR")}
-              delta={pctDelta(orders.length, prevOrders.length)}
-              ctx="vs. período anterior"
-              spark={ordersCountSeries.map(([, v]) => v || 0.01)}
-              colorClass="text-emerald-600 dark:text-emerald-400"
-              bgClass="bg-emerald-50 dark:bg-emerald-900/30"
-            />
-            <KpiCard
-              label="Ticket médio"
-              value={formatCurrency(ticketMedio)}
-              delta={pctDelta(ticketMedio, prevTicketMedio)}
-              ctx="vs. período anterior"
-              spark={chartSpark}
-              colorClass="text-amber-600 dark:text-amber-400"
-              bgClass="bg-amber-50 dark:bg-amber-900/30"
-            />
-            <KpiCard
-              label="Lucro líquido"
-              value={formatCurrency(lucroLiquido)}
-              delta={pctDelta(lucroLiquido, prevLucroLiquido)}
-              ctx="faturamento − custo − despesas − entregadores"
-              spark={chartSpark}
-              colorClass={lucroLiquido >= 0 ? "text-violet-600 dark:text-violet-400" : "text-rose-600 dark:text-rose-400"}
-              bgClass={lucroLiquido >= 0 ? "bg-violet-50 dark:bg-violet-900/30" : "bg-rose-50 dark:bg-rose-900/30"}
-            />
+      <div className="relative mx-auto max-w-6xl px-4 pb-16 pt-6 text-[#F5F3EF] sm:px-6">
+        <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h1 className="text-xl font-extrabold">Dashboard</h1>
+            <p className="text-[13px] text-white/35">Visão financeira de {store.name}</p>
           </div>
-          <p className="mt-2 text-xs text-slate-400 dark:text-slate-500">
-            Faturamento = Mercado ({formatCurrency(revenue)}) + comissão ganha com afiliados ({formatCurrency(commissionRevenue)}). A receita de assinaturas (MRR) não entra aqui — é recorrente, não uma venda do período — veja o total na aba Assinaturas.
-          </p>
-          {profit?.missing_cost && (
-            <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
-              Alguns produtos vendidos não têm preço de custo cadastrado — o custo de produtos abaixo pode estar um pouco menor que o real.
-            </p>
-          )}
-
-          {/* de onde vem, pra onde vai — nada fica escondido */}
-          <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-            <h2 className="text-sm font-bold text-slate-900 dark:text-slate-50">De onde vem, pra onde vai</h2>
-            <p className="mb-4 text-xs text-slate-400 dark:text-slate-500">Todo real que entrou e todo centavo de custo do período, sem esconder nada</p>
-            <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
-              <div>
-                <h3 className="mb-2 text-xs font-bold uppercase tracking-wide text-emerald-600 dark:text-emerald-400">Receita</h3>
-                <div className="flex items-center justify-between border-b border-slate-100 py-2 text-sm dark:border-slate-800">
-                  <span className="text-slate-600 dark:text-slate-300">Vendas do Mercado (PDV + vitrine)</span>
-                  <span className="font-bold tabular-nums text-slate-900 dark:text-slate-50">{formatCurrency(revenue)}</span>
-                </div>
-                <div className="flex items-center justify-between border-b border-slate-100 py-2 text-sm dark:border-slate-800">
-                  <span className="text-slate-600 dark:text-slate-300">Comissão de vendas de afiliados</span>
-                  <span className="font-bold tabular-nums text-slate-900 dark:text-slate-50">{formatCurrency(commissionRevenue)}</span>
-                </div>
-                <div className="flex items-center justify-between py-2 text-sm font-bold">
-                  <span className="text-slate-900 dark:text-slate-50">= Faturamento total</span>
-                  <span className="tabular-nums text-emerald-600 dark:text-emerald-400">{formatCurrency(faturamentoTotal)}</span>
-                </div>
-              </div>
-              <div>
-                <h3 className="mb-2 text-xs font-bold uppercase tracking-wide text-rose-600 dark:text-rose-400">Custos</h3>
-                <div className="flex items-center justify-between border-b border-slate-100 py-2 text-sm dark:border-slate-800">
-                  <span className="text-slate-600 dark:text-slate-300">Custo dos produtos vendidos</span>
-                  <span className="font-bold tabular-nums text-slate-900 dark:text-slate-50">{formatCurrency(custoProdutos)}</span>
-                </div>
-                <div className="border-b border-slate-100 py-2 text-sm dark:border-slate-800">
-                  <div className="flex items-center justify-between">
-                    <span className="text-slate-600 dark:text-slate-300">Despesas cadastradas</span>
-                    <span className="font-bold tabular-nums text-slate-900 dark:text-slate-50">{formatCurrency(totalDespesas)}</span>
-                  </div>
-                  {despesasPorCategoria.length > 0 && (
-                    <div className="mt-1.5 space-y-1 border-l-2 border-slate-100 pl-2.5 dark:border-slate-800">
-                      {despesasPorCategoria.map((d) => (
-                        <div key={d.name} className="flex items-center justify-between text-xs text-slate-400 dark:text-slate-500">
-                          <span className="capitalize">{d.name}</span>
-                          <span className="tabular-nums">{formatCurrencyCompact(d.value)}</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-                <div className="flex items-center justify-between border-b border-slate-100 py-2 text-sm dark:border-slate-800">
-                  <span className="text-slate-600 dark:text-slate-300">Pagamento a entregadores (pago + a pagar)</span>
-                  <span className="font-bold tabular-nums text-slate-900 dark:text-slate-50">{formatCurrency(custoEntregadoresTotal)}</span>
-                </div>
-                <div className="flex items-center justify-between py-2 text-sm font-bold">
-                  <span className="text-slate-900 dark:text-slate-50">= Lucro líquido</span>
-                  <span className="tabular-nums text-violet-600 dark:text-violet-400">{formatCurrency(lucroLiquido)}</span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* gráfico consolidado */}
-          <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-            <div className="mb-1 flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <h2 className="text-sm font-bold text-slate-900 dark:text-slate-50">Faturamento por dia</h2>
-                <p className="text-xs text-slate-400 dark:text-slate-500">Mercado + comissão de vendas via Hub de Afiliados</p>
-              </div>
-              <div className="flex gap-4">
-                <button
-                  onClick={() => setLayersActive((s) => ({ ...s, mercado: !s.mercado }))}
-                  className={`flex items-center gap-1.5 text-xs font-semibold ${layersActive.mercado ? "text-slate-600 dark:text-slate-300" : "text-slate-300 dark:text-slate-600"}`}
-                >
-                  <span className="h-2 w-2 rounded-sm" style={{ background: COLOR_HEX.accent }} />
-                  Mercado
-                </button>
-                <button
-                  onClick={() => setLayersActive((s) => ({ ...s, afiliados: !s.afiliados }))}
-                  className={`flex items-center gap-1.5 text-xs font-semibold ${layersActive.afiliados ? "text-slate-600 dark:text-slate-300" : "text-slate-300 dark:text-slate-600"}`}
-                >
-                  <span className="h-2 w-2 rounded-sm" style={{ background: COLOR_HEX.afil }} />
-                  Afiliados
-                </button>
-              </div>
-            </div>
-            <StackedAreaChart
-              labels={chartLabels}
-              series={[
-                { key: "mercado", label: "Mercado", values: mercadoSeries.map(([, v]) => v), colorClass: "", strokeHex: COLOR_HEX.accent, active: layersActive.mercado },
-                { key: "afiliados", label: "Afiliados", values: afiliadosSeries.map(([, v]) => v), colorClass: "", strokeHex: COLOR_HEX.afil, active: layersActive.afiliados },
-              ]}
-            />
-            <div className="mt-1 flex justify-between px-1 text-[10px] text-slate-400 dark:text-slate-500">
-              {chartLabels
-                .filter((_, i) => i % Math.max(1, Math.ceil(chartLabels.length / 8)) === 0)
-                .map((k) => (
-                  <span key={k}>{shortDay(k)}</span>
-                ))}
-            </div>
-          </div>
-
-          {/* tabs */}
-          <div className="mt-5 flex gap-2 overflow-x-auto pb-1">
-            {[
-              { key: "mercado", label: "Mercado", hex: COLOR_HEX.accent },
-              { key: "afiliados", label: "Afiliados", hex: COLOR_HEX.afil },
-              { key: "assinaturas", label: "Assinaturas", hex: COLOR_HEX.assin },
-              { key: "entregadores", label: "Entregadores", hex: COLOR_HEX.entr },
-            ].map((t) => (
+          <div className="flex gap-1 rounded-xl border border-white/[0.09] bg-white/[0.035] p-1 backdrop-blur-xl">
+            {PERIODS.map((p) => (
               <button
-                key={t.key}
-                onClick={() => setTab(t.key as typeof tab)}
-                className={`flex flex-shrink-0 items-center gap-2 rounded-xl border px-4 py-2 text-sm font-semibold shadow-sm transition ${
-                  tab === t.key
-                    ? "border-slate-900 bg-slate-900 text-white dark:border-slate-100 dark:bg-slate-100 dark:text-slate-900"
-                    : "border-slate-200 bg-white text-slate-500 hover:border-slate-300 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400"
+                key={p.key}
+                onClick={() => setPeriod(p.key)}
+                className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
+                  period === p.key ? "bg-[#5CACFF] text-[#0A1A2E]" : "text-white/45 hover:bg-white/[0.06]"
                 }`}
               >
-                <span className="h-2 w-2 rounded-full" style={{ background: t.hex }} />
-                {t.label}
+                {p.label}
               </button>
             ))}
           </div>
+        </div>
 
-          {/* ---------- painel Mercado ---------- */}
-          {tab === "mercado" && (
-            <div className="mt-4 space-y-4">
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-                  <h3 className="text-sm font-bold text-slate-900 dark:text-slate-50">PDV vs. vitrine online</h3>
-                  <p className="mb-4 text-xs text-slate-400 dark:text-slate-500">Participação no faturamento do período</p>
-                  {revenue > 0 ? (
-                    <div className="flex items-center gap-5">
-                      <Donut segments={[{ pct: (pdvTotal / revenue) * 100, hex: COLOR_HEX.accent }, { pct: (siteTotal / revenue) * 100, hex: COLOR_HEX.assin }]} />
-                      <div className="flex-1 space-y-2">
-                        <div className="flex items-center gap-2 text-sm">
-                          <span className="h-2.5 w-2.5 rounded-sm" style={{ background: COLOR_HEX.accent }} />
-                          <span className="flex-1 text-slate-500 dark:text-slate-400">PDV (balcão)</span>
-                          <span className="font-bold tabular-nums">{formatCurrencyCompact(pdvTotal)}</span>
-                        </div>
-                        <div className="flex items-center gap-2 text-sm">
-                          <span className="h-2.5 w-2.5 rounded-sm" style={{ background: COLOR_HEX.assin }} />
-                          <span className="flex-1 text-slate-500 dark:text-slate-400">Vitrine online</span>
-                          <span className="font-bold tabular-nums">{formatCurrencyCompact(siteTotal)}</span>
-                        </div>
-                      </div>
+        {loading ? (
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {[0, 1, 2, 3].map((i) => (
+              <div key={i} className="h-32 animate-pulse rounded-2xl border border-white/[0.06] bg-white/[0.03]" />
+            ))}
+          </div>
+        ) : (
+          <>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <KpiCard
+                label="Faturamento"
+                value={formatCurrency(faturamentoTotal)}
+                delta={pctDelta(faturamentoTotal, prevFaturamentoTotal)}
+                ctx="vs. período anterior"
+                spark={chartSpark}
+                hex={COLOR_HEX.accent}
+                delay={0}
+              />
+              <KpiCard
+                label="Pedidos"
+                value={orders.length.toLocaleString("pt-BR")}
+                delta={pctDelta(orders.length, prevOrders.length)}
+                ctx="vs. período anterior"
+                spark={ordersCountSeries.map(([, v]) => v || 0.01)}
+                hex={COLOR_HEX.positive}
+                delay={80}
+              />
+              <KpiCard
+                label="Ticket médio"
+                value={formatCurrency(ticketMedio)}
+                delta={pctDelta(ticketMedio, prevTicketMedio)}
+                ctx="vs. período anterior"
+                spark={chartSpark}
+                hex={COLOR_HEX.warning}
+                delay={160}
+              />
+              <KpiCard
+                label="Lucro líquido"
+                value={formatCurrency(lucroLiquido)}
+                delta={pctDelta(lucroLiquido, prevLucroLiquido)}
+                ctx="faturamento − custo − despesas − entregadores"
+                spark={chartSpark}
+                hex={lucroLiquido >= 0 ? COLOR_HEX.afil : COLOR_HEX.negative}
+                delay={240}
+              />
+            </div>
+            <p className="mt-2 text-[11.5px] text-white/25">
+              Faturamento = Mercado ({formatCurrency(revenue)}) + comissão ganha com afiliados ({formatCurrency(commissionRevenue)}). A receita de
+              assinaturas (MRR) não entra aqui — é recorrente, não uma venda do período — veja o total na aba Assinaturas.
+            </p>
+            {profit?.missing_cost && (
+              <p className="mt-1 text-[11.5px] text-[#F0BB5E]/80">
+                Alguns produtos vendidos não têm preço de custo cadastrado — o custo de produtos abaixo pode estar um pouco menor que o real.
+              </p>
+            )}
+
+            {/* de onde vem, pra onde vai — nada fica escondido */}
+            <Card className="mt-4" delay={320}>
+              <h2 className="text-[13px] font-bold">De onde vem, pra onde vai</h2>
+              <p className="mb-4 text-[11.5px] text-white/30">Todo real que entrou e todo centavo de custo do período, sem esconder nada</p>
+              <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+                <div>
+                  <h3 className="mb-2 text-[11px] font-bold uppercase tracking-wide" style={{ color: COLOR_HEX.positive }}>
+                    Receita
+                  </h3>
+                  <div className="flex items-center justify-between border-b border-white/[0.06] py-2 text-sm">
+                    <span className="text-white/55">Vendas do Mercado (PDV + vitrine)</span>
+                    <span className="font-bold tabular-nums">{formatCurrency(revenue)}</span>
+                  </div>
+                  <div className="flex items-center justify-between border-b border-white/[0.06] py-2 text-sm">
+                    <span className="text-white/55">Comissão de vendas de afiliados</span>
+                    <span className="font-bold tabular-nums">{formatCurrency(commissionRevenue)}</span>
+                  </div>
+                  <div className="flex items-center justify-between py-2 text-sm font-bold">
+                    <span>= Faturamento total</span>
+                    <span className="tabular-nums" style={{ color: COLOR_HEX.positive }}>
+                      {formatCurrency(faturamentoTotal)}
+                    </span>
+                  </div>
+                </div>
+                <div>
+                  <h3 className="mb-2 text-[11px] font-bold uppercase tracking-wide" style={{ color: COLOR_HEX.negative }}>
+                    Custos
+                  </h3>
+                  <div className="flex items-center justify-between border-b border-white/[0.06] py-2 text-sm">
+                    <span className="text-white/55">Custo dos produtos vendidos</span>
+                    <span className="font-bold tabular-nums">{formatCurrency(custoProdutos)}</span>
+                  </div>
+                  <div className="border-b border-white/[0.06] py-2 text-sm">
+                    <div className="flex items-center justify-between">
+                      <span className="text-white/55">Despesas cadastradas</span>
+                      <span className="font-bold tabular-nums">{formatCurrency(totalDespesas)}</span>
                     </div>
-                  ) : (
-                    <p className="text-sm text-slate-400">Sem vendas no período.</p>
-                  )}
-                </div>
-                <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-                  <h3 className="text-sm font-bold text-slate-900 dark:text-slate-50">Formas de pagamento</h3>
-                  <p className="mb-2 text-xs text-slate-400 dark:text-slate-500">Participação no faturamento</p>
-                  {payWays.length ? (
-                    payWays.map((p, i) => (
-                      <RankRow key={p.name} name={p.name} pct={(p.value / maxRank(payWays)) * 100} value={formatCurrencyCompact(p.value)} hex={[COLOR_HEX.positive, COLOR_HEX.accent, COLOR_HEX.warning, COLOR_HEX.negative][i % 4]} />
-                    ))
-                  ) : (
-                    <p className="text-sm text-slate-400">Sem vendas no período.</p>
-                  )}
-                </div>
-              </div>
-              <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-                <h3 className="text-sm font-bold text-slate-900 dark:text-slate-50">Produtos mais vendidos</h3>
-                <p className="mb-2 text-xs text-slate-400 dark:text-slate-500">Por faturamento no período</p>
-                {topProducts.length ? (
-                  topProducts.map((p, i) => (
-                    <RankRow key={p.name} rank={i + 1} name={p.name} pct={(p.value / maxRank(topProducts)) * 100} value={formatCurrencyCompact(p.value)} hex={COLOR_HEX.accent} />
-                  ))
-                ) : (
-                  <p className="text-sm text-slate-400">Sem vendas no período.</p>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* ---------- painel Afiliados ---------- */}
-          {tab === "afiliados" && (
-            <div className="mt-4 space-y-4">
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-                  <h3 className="text-sm font-bold text-slate-900 dark:text-slate-50">Comissão de vendas</h3>
-                  <p className="text-xs text-slate-400 dark:text-slate-500">O que o Hub ganhou com vendas de afiliados</p>
-                  <div className="mt-3 text-2xl font-bold tabular-nums text-emerald-600 dark:text-emerald-400">{formatCurrency(commissionRevenue)}</div>
-                </div>
-                <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-                  <h3 className="text-sm font-bold text-slate-900 dark:text-slate-50">Afiliados ativos</h3>
-                  <p className="text-xs text-slate-400 dark:text-slate-500">Parcerias no Hub</p>
-                  <div className="mt-3 text-2xl font-bold tabular-nums text-slate-900 dark:text-slate-50">{activePartnerships.length}</div>
-                </div>
-                <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-                  <h3 className="text-sm font-bold text-slate-900 dark:text-slate-50">A repassar</h3>
-                  <p className="text-xs text-slate-400 dark:text-slate-500">Saldo devido aos afiliados</p>
-                  <div className="mt-3 text-2xl font-bold tabular-nums text-amber-600 dark:text-amber-400">
-                    {formatCurrency(activePartnerships.reduce((s, p) => s + Math.max(0, p.balance), 0))}
-                  </div>
-                </div>
-              </div>
-              {commissionRevenue === 0 && (
-                <p className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-3 text-xs text-slate-500 dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-400">
-                  Ainda não há vendas de afiliados registradas — isso depende do checkout multi-loja, que ainda não foi construído.
-                </p>
-              )}
-              <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-                <h3 className="text-sm font-bold text-slate-900 dark:text-slate-50">Ranking de afiliados</h3>
-                <p className="mb-2 text-xs text-slate-400 dark:text-slate-500">Por vendas geradas no período</p>
-                {afiliadoRanking.length ? (
-                  afiliadoRanking.map((p, i) => (
-                    <RankRow key={p.name + i} rank={i + 1} name={p.name} pct={(p.value / maxRank(afiliadoRanking)) * 100} value={formatCurrencyCompact(p.value)} hex={COLOR_HEX.afil} />
-                  ))
-                ) : (
-                  <p className="text-sm text-slate-400">Nenhuma venda de afiliado no período.</p>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* ---------- painel Assinaturas ---------- */}
-          {tab === "assinaturas" && (
-            <div className="mt-4 space-y-4">
-              <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-                <h3 className="text-sm font-bold text-slate-900 dark:text-slate-50">Receita recorrente mensal (MRR)</h3>
-                <p className="mb-3 text-xs text-slate-400 dark:text-slate-500">Clube de assinatura + mensalidade dos afiliados no Hub</p>
-                <div className="grid grid-cols-1 gap-4 border-t border-slate-100 pt-3 sm:grid-cols-3 dark:border-slate-800">
-                  <div>
-                    <div className="text-xl font-bold tabular-nums text-slate-900 dark:text-slate-50">{formatCurrency(mrrTotal)}</div>
-                    <div className="text-xs text-slate-400 dark:text-slate-500">MRR total</div>
-                  </div>
-                  <div>
-                    <div className="text-xl font-bold tabular-nums text-teal-600 dark:text-teal-400">{formatCurrency(mrrClube)}</div>
-                    <div className="text-xs text-slate-400 dark:text-slate-500">clube de clientes · {clubActive.length} assinantes</div>
-                  </div>
-                  <div>
-                    <div className="text-xl font-bold tabular-nums text-violet-600 dark:text-violet-400">{formatCurrency(mrrAfiliados)}</div>
-                    <div className="text-xs text-slate-400 dark:text-slate-500">mensalidade dos afiliados · {activePartnerships.filter((p) => p.subscription_price).length} planos</div>
-                  </div>
-                </div>
-              </div>
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-                  <h3 className="text-sm font-bold text-slate-900 dark:text-slate-50">Clube de clientes</h3>
-                  <p className="mb-2 text-xs text-slate-400 dark:text-slate-500">Assinantes ativos</p>
-                  {clubActive.length ? (
-                    clubActive.slice(0, 6).map((c) => (
-                      <div key={c.id} className="flex items-center justify-between border-b border-slate-100 py-2 text-sm last:border-0 dark:border-slate-800">
-                        <span className="text-slate-700 dark:text-slate-200">{c.customer_name || c.customer_phone}</span>
-                        <span className="font-bold tabular-nums text-slate-900 dark:text-slate-50">{formatCurrency(c.monthly_amount)}/mês</span>
+                    {despesasPorCategoria.length > 0 && (
+                      <div className="mt-1.5 space-y-1 border-l-2 border-white/[0.08] pl-2.5">
+                        {despesasPorCategoria.map((d) => (
+                          <div key={d.name} className="flex items-center justify-between text-xs text-white/30">
+                            <span className="capitalize">{d.name}</span>
+                            <span className="tabular-nums">{formatCurrencyCompact(d.value)}</span>
+                          </div>
+                        ))}
                       </div>
-                    ))
-                  ) : (
-                    <p className="text-sm text-slate-400">Nenhum assinante ativo ainda.</p>
-                  )}
-                </div>
-                <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-                  <h3 className="text-sm font-bold text-slate-900 dark:text-slate-50">Próximos vencimentos (afiliados)</h3>
-                  <p className="mb-2 text-xs text-slate-400 dark:text-slate-500">Nos próximos 7 dias</p>
-                  {upcomingAfiliadoRenewals.length ? (
-                    upcomingAfiliadoRenewals.map((p) => (
-                      <div key={p.id} className="flex items-center justify-between border-b border-slate-100 py-2 text-sm last:border-0 dark:border-slate-800">
-                        <span className="text-slate-700 dark:text-slate-200">{p.owner_name}</span>
-                        <span className="rounded-full bg-amber-50 px-2 py-0.5 text-xs font-bold text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
-                          {new Date(p.subscription_due_at!).toLocaleDateString("pt-BR")}
-                        </span>
-                      </div>
-                    ))
-                  ) : (
-                    <p className="text-sm text-slate-400">Nenhum vencimento nos próximos 7 dias.</p>
-                  )}
+                    )}
+                  </div>
+                  <div className="flex items-center justify-between border-b border-white/[0.06] py-2 text-sm">
+                    <span className="text-white/55">Pagamento a entregadores (pago + a pagar)</span>
+                    <span className="font-bold tabular-nums">{formatCurrency(custoEntregadoresTotal)}</span>
+                  </div>
+                  <div className="flex items-center justify-between py-2 text-sm font-bold">
+                    <span>= Lucro líquido</span>
+                    <span className="tabular-nums" style={{ color: COLOR_HEX.afil }}>
+                      {formatCurrency(lucroLiquido)}
+                    </span>
+                  </div>
                 </div>
               </div>
-            </div>
-          )}
+            </Card>
 
-          {/* ---------- painel Entregadores ---------- */}
-          {tab === "entregadores" && (
-            <div className="mt-4 space-y-4">
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-                  <h3 className="text-sm font-bold text-slate-900 dark:text-slate-50">Pago no período</h3>
-                  <div className="mt-2 text-2xl font-bold tabular-nums text-rose-600 dark:text-rose-400">{formatCurrency(totalPagoEntregas)}</div>
+            {/* gráfico consolidado */}
+            <Card className="mt-4" delay={380}>
+              <div className="mb-1 flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-[13px] font-bold">Faturamento por dia</h2>
+                  <p className="text-[11.5px] text-white/30">Mercado + comissão de vendas via Hub de Afiliados</p>
                 </div>
-                <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-                  <h3 className="text-sm font-bold text-slate-900 dark:text-slate-50">A pagar</h3>
-                  <div className="mt-2 text-2xl font-bold tabular-nums text-amber-600 dark:text-amber-400">{formatCurrency(totalAPagarEntregas)}</div>
-                </div>
-                <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-                  <h3 className="text-sm font-bold text-slate-900 dark:text-slate-50">Custo médio por entrega</h3>
-                  <div className="mt-2 text-2xl font-bold tabular-nums text-slate-900 dark:text-slate-50">{formatCurrency(custoMedioEntrega)}</div>
+                <div className="flex gap-4">
+                  <button
+                    onClick={() => setLayersActive((s) => ({ ...s, mercado: !s.mercado }))}
+                    className="flex items-center gap-1.5 text-xs font-semibold"
+                    style={{ color: layersActive.mercado ? "rgba(255,255,255,0.7)" : "rgba(255,255,255,0.2)" }}
+                  >
+                    <span className="h-2 w-2 rounded-sm" style={{ background: COLOR_HEX.accent }} />
+                    Mercado
+                  </button>
+                  <button
+                    onClick={() => setLayersActive((s) => ({ ...s, afiliados: !s.afiliados }))}
+                    className="flex items-center gap-1.5 text-xs font-semibold"
+                    style={{ color: layersActive.afiliados ? "rgba(255,255,255,0.7)" : "rgba(255,255,255,0.2)" }}
+                  >
+                    <span className="h-2 w-2 rounded-sm" style={{ background: COLOR_HEX.afil }} />
+                    Afiliados
+                  </button>
                 </div>
               </div>
-              <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
-                <h3 className="text-sm font-bold text-slate-900 dark:text-slate-50">Entregas por entregador</h3>
-                <p className="mb-2 text-xs text-slate-400 dark:text-slate-500">Pago + a pagar no período</p>
-                {entregaEntries.length ? (
-                  entregaEntries
-                    .slice()
-                    .sort((a, b) => b.totalCount - a.totalCount)
-                    .map((e, i) => (
-                      <RankRow
-                        key={e.id}
-                        rank={i + 1}
-                        name={e.name}
-                        pct={(e.totalCount / maxEntregas) * 100}
-                        value={`${e.totalCount} · ${formatCurrencyCompact(e.paidValue + e.pendingValue)}`}
-                        hex={COLOR_HEX.entr}
-                      />
-                    ))
-                ) : (
-                  <p className="text-sm text-slate-400">Nenhum entregador cadastrado ainda.</p>
-                )}
+              <StackedAreaChart
+                labels={chartLabels}
+                series={[
+                  { key: "mercado", label: "Mercado", values: mercadoSeries.map(([, v]) => v), hex: COLOR_HEX.accent, active: layersActive.mercado },
+                  { key: "afiliados", label: "Afiliados", values: afiliadosSeries.map(([, v]) => v), hex: COLOR_HEX.afil, active: layersActive.afiliados },
+                ]}
+              />
+              <div className="mt-1 flex justify-between px-1 text-[10px] text-white/25">
+                {chartLabels
+                  .filter((_, i) => i % Math.max(1, Math.ceil(chartLabels.length / 8)) === 0)
+                  .map((k) => (
+                    <span key={k}>{shortDay(k)}</span>
+                  ))}
               </div>
+            </Card>
+
+            {/* tabs */}
+            <div className="mt-5 flex gap-2 overflow-x-auto pb-1">
+              {[
+                { key: "mercado", label: "Mercado", hex: COLOR_HEX.accent },
+                { key: "afiliados", label: "Afiliados", hex: COLOR_HEX.afil },
+                { key: "assinaturas", label: "Assinaturas", hex: COLOR_HEX.assin },
+                { key: "entregadores", label: "Entregadores", hex: COLOR_HEX.entr },
+              ].map((t) => (
+                <button
+                  key={t.key}
+                  onClick={() => setTab(t.key as typeof tab)}
+                  className={`flex flex-shrink-0 items-center gap-2 rounded-xl border px-4 py-2 text-sm font-semibold transition ${
+                    tab === t.key ? "border-white bg-white text-black" : "border-white/[0.09] bg-white/[0.035] text-white/45 hover:border-white/20"
+                  }`}
+                >
+                  <span className="h-2 w-2 rounded-full" style={{ background: t.hex }} />
+                  {t.label}
+                </button>
+              ))}
             </div>
-          )}
-        </>
-      )}
+
+            {/* ---------- painel Mercado ---------- */}
+            {tab === "mercado" && (
+              <div className="mt-4 space-y-4">
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                  <Card>
+                    <h3 className="text-sm font-bold">PDV vs. vitrine online</h3>
+                    <p className="mb-4 text-[11.5px] text-white/30">Participação no faturamento do período</p>
+                    {revenue > 0 ? (
+                      <div className="flex items-center gap-5">
+                        <Donut segments={[{ pct: (pdvTotal / revenue) * 100, hex: COLOR_HEX.accent }, { pct: (siteTotal / revenue) * 100, hex: COLOR_HEX.assin }]} />
+                        <div className="flex-1 space-y-2">
+                          <div className="flex items-center gap-2 text-sm">
+                            <span className="h-2.5 w-2.5 rounded-sm" style={{ background: COLOR_HEX.accent }} />
+                            <span className="flex-1 text-white/50">PDV (balcão)</span>
+                            <span className="font-bold tabular-nums">{formatCurrencyCompact(pdvTotal)}</span>
+                          </div>
+                          <div className="flex items-center gap-2 text-sm">
+                            <span className="h-2.5 w-2.5 rounded-sm" style={{ background: COLOR_HEX.assin }} />
+                            <span className="flex-1 text-white/50">Vitrine online</span>
+                            <span className="font-bold tabular-nums">{formatCurrencyCompact(siteTotal)}</span>
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="text-sm text-white/25">Sem vendas no período.</p>
+                    )}
+                  </Card>
+                  <Card>
+                    <h3 className="text-sm font-bold">Formas de pagamento</h3>
+                    <p className="mb-2 text-[11.5px] text-white/30">Participação no faturamento</p>
+                    {payWays.length ? (
+                      payWays.map((p, i) => (
+                        <RankRow
+                          key={p.name}
+                          name={p.name}
+                          pct={(p.value / maxRank(payWays)) * 100}
+                          value={formatCurrencyCompact(p.value)}
+                          hex={[COLOR_HEX.positive, COLOR_HEX.accent, COLOR_HEX.warning, COLOR_HEX.negative][i % 4]}
+                        />
+                      ))
+                    ) : (
+                      <p className="text-sm text-white/25">Sem vendas no período.</p>
+                    )}
+                  </Card>
+                </div>
+                <Card>
+                  <h3 className="text-sm font-bold">Produtos mais vendidos</h3>
+                  <p className="mb-2 text-[11.5px] text-white/30">Por faturamento no período</p>
+                  {topProducts.length ? (
+                    topProducts.map((p, i) => (
+                      <RankRow key={p.name} rank={i + 1} name={p.name} pct={(p.value / maxRank(topProducts)) * 100} value={formatCurrencyCompact(p.value)} hex={COLOR_HEX.accent} />
+                    ))
+                  ) : (
+                    <p className="text-sm text-white/25">Sem vendas no período.</p>
+                  )}
+                </Card>
+              </div>
+            )}
+
+            {/* ---------- painel Afiliados ---------- */}
+            {tab === "afiliados" && (
+              <div className="mt-4 space-y-4">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                  <Card>
+                    <h3 className="text-sm font-bold">Comissão de vendas</h3>
+                    <p className="text-[11.5px] text-white/30">O que o Hub ganhou com vendas de afiliados</p>
+                    <div className="mt-3 text-2xl font-bold tabular-nums" style={{ color: COLOR_HEX.positive }}>
+                      {formatCurrency(commissionRevenue)}
+                    </div>
+                  </Card>
+                  <Card>
+                    <h3 className="text-sm font-bold">Afiliados ativos</h3>
+                    <p className="text-[11.5px] text-white/30">Parcerias no Hub</p>
+                    <div className="mt-3 text-2xl font-bold tabular-nums">{activePartnerships.length}</div>
+                  </Card>
+                  <Card>
+                    <h3 className="text-sm font-bold">A repassar</h3>
+                    <p className="text-[11.5px] text-white/30">Saldo devido aos afiliados</p>
+                    <div className="mt-3 text-2xl font-bold tabular-nums" style={{ color: COLOR_HEX.warning }}>
+                      {formatCurrency(activePartnerships.reduce((s, p) => s + Math.max(0, p.balance), 0))}
+                    </div>
+                  </Card>
+                </div>
+                {commissionRevenue === 0 && (
+                  <p className="rounded-xl border border-dashed border-white/15 bg-white/[0.02] px-4 py-3 text-xs text-white/40">
+                    Ainda não há vendas de afiliados registradas nesse período.
+                  </p>
+                )}
+                <Card>
+                  <h3 className="text-sm font-bold">Ranking de afiliados</h3>
+                  <p className="mb-2 text-[11.5px] text-white/30">Por vendas geradas no período</p>
+                  {afiliadoRanking.length ? (
+                    afiliadoRanking.map((p, i) => (
+                      <RankRow key={p.name + i} rank={i + 1} name={p.name} pct={(p.value / maxRank(afiliadoRanking)) * 100} value={formatCurrencyCompact(p.value)} hex={COLOR_HEX.afil} />
+                    ))
+                  ) : (
+                    <p className="text-sm text-white/25">Nenhuma venda de afiliado no período.</p>
+                  )}
+                </Card>
+              </div>
+            )}
+
+            {/* ---------- painel Assinaturas ---------- */}
+            {tab === "assinaturas" && (
+              <div className="mt-4 space-y-4">
+                <Card>
+                  <h3 className="text-sm font-bold">Receita recorrente mensal (MRR)</h3>
+                  <p className="mb-3 text-[11.5px] text-white/30">Clube de assinatura + mensalidade dos afiliados no Hub</p>
+                  <div className="grid grid-cols-1 gap-4 border-t border-white/[0.06] pt-3 sm:grid-cols-3">
+                    <div>
+                      <div className="text-xl font-bold tabular-nums">{formatCurrency(mrrTotal)}</div>
+                      <div className="text-[11.5px] text-white/30">MRR total</div>
+                    </div>
+                    <div>
+                      <div className="text-xl font-bold tabular-nums" style={{ color: COLOR_HEX.assin }}>
+                        {formatCurrency(mrrClube)}
+                      </div>
+                      <div className="text-[11.5px] text-white/30">clube de clientes · {clubActive.length} assinantes</div>
+                    </div>
+                    <div>
+                      <div className="text-xl font-bold tabular-nums" style={{ color: COLOR_HEX.afil }}>
+                        {formatCurrency(mrrAfiliados)}
+                      </div>
+                      <div className="text-[11.5px] text-white/30">mensalidade dos afiliados · {activePartnerships.filter((p) => p.subscription_price).length} planos</div>
+                    </div>
+                  </div>
+                </Card>
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                  <Card>
+                    <h3 className="text-sm font-bold">Clube de clientes</h3>
+                    <p className="mb-2 text-[11.5px] text-white/30">Assinantes ativos</p>
+                    {clubActive.length ? (
+                      clubActive.slice(0, 6).map((c) => (
+                        <div key={c.id} className="flex items-center justify-between border-b border-white/[0.06] py-2 text-sm last:border-0">
+                          <span className="text-white/70">{c.customer_name || c.customer_phone}</span>
+                          <span className="font-bold tabular-nums">{formatCurrency(c.monthly_amount)}/mês</span>
+                        </div>
+                      ))
+                    ) : (
+                      <p className="text-sm text-white/25">Nenhum assinante ativo ainda.</p>
+                    )}
+                  </Card>
+                  <Card>
+                    <h3 className="text-sm font-bold">Próximos vencimentos (afiliados)</h3>
+                    <p className="mb-2 text-[11.5px] text-white/30">Nos próximos 7 dias</p>
+                    {upcomingAfiliadoRenewals.length ? (
+                      upcomingAfiliadoRenewals.map((p) => (
+                        <div key={p.id} className="flex items-center justify-between border-b border-white/[0.06] py-2 text-sm last:border-0">
+                          <span className="text-white/70">{p.owner_name}</span>
+                          <span className="rounded-full px-2 py-0.5 text-xs font-bold" style={{ background: "rgba(240,187,94,0.14)", color: COLOR_HEX.warning }}>
+                            {new Date(p.subscription_due_at!).toLocaleDateString("pt-BR")}
+                          </span>
+                        </div>
+                      ))
+                    ) : (
+                      <p className="text-sm text-white/25">Nenhum vencimento nos próximos 7 dias.</p>
+                    )}
+                  </Card>
+                </div>
+              </div>
+            )}
+
+            {/* ---------- painel Entregadores ---------- */}
+            {tab === "entregadores" && (
+              <div className="mt-4 space-y-4">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                  <Card>
+                    <h3 className="text-sm font-bold">Pago no período</h3>
+                    <div className="mt-2 text-2xl font-bold tabular-nums" style={{ color: COLOR_HEX.negative }}>
+                      {formatCurrency(totalPagoEntregas)}
+                    </div>
+                  </Card>
+                  <Card>
+                    <h3 className="text-sm font-bold">A pagar</h3>
+                    <div className="mt-2 text-2xl font-bold tabular-nums" style={{ color: COLOR_HEX.warning }}>
+                      {formatCurrency(totalAPagarEntregas)}
+                    </div>
+                  </Card>
+                  <Card>
+                    <h3 className="text-sm font-bold">Custo médio por entrega</h3>
+                    <div className="mt-2 text-2xl font-bold tabular-nums">{formatCurrency(custoMedioEntrega)}</div>
+                  </Card>
+                </div>
+                <Card>
+                  <h3 className="text-sm font-bold">Entregas por entregador</h3>
+                  <p className="mb-2 text-[11.5px] text-white/30">Pago + a pagar no período</p>
+                  {entregaEntries.length ? (
+                    entregaEntries
+                      .slice()
+                      .sort((a, b) => b.totalCount - a.totalCount)
+                      .map((e, i) => (
+                        <RankRow
+                          key={e.id}
+                          rank={i + 1}
+                          name={e.name}
+                          pct={(e.totalCount / maxEntregas) * 100}
+                          value={`${e.totalCount} · ${formatCurrencyCompact(e.paidValue + e.pendingValue)}`}
+                          hex={COLOR_HEX.entr}
+                        />
+                      ))
+                  ) : (
+                    <p className="text-sm text-white/25">Nenhum entregador cadastrado ainda.</p>
+                  )}
+                </Card>
+              </div>
+            )}
+          </>
+        )}
+      </div>
     </div>
   );
 }
