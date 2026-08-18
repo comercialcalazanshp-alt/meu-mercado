@@ -68,6 +68,15 @@ const HUB_HIDDEN_PATHS = new Set([
   "/painel/despesas",
   "/painel/avaliacoes",
   "/painel/reclamacoes",
+  "/painel/bairros",
+  "/painel/clientes",
+  "/painel/fiado",
+  "/painel/campanhas",
+  "/painel/pedidos",
+  "/painel/entregas",
+  "/painel/catalogo",
+  "/painel/relatorios",
+  "/painel/trafego",
 ]);
 
 const NAV_ITEMS = [
