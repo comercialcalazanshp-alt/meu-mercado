@@ -78,6 +78,7 @@ export default function Afiliados() {
     payout_speed: PayoutSpeed;
     billing_cycle: BillingCycle;
     subscription_price: number;
+    ai_quota_monthly: number | null;
   } | null>(null);
   const [savingDetail, setSavingDetail] = useState(false);
 
@@ -187,6 +188,7 @@ export default function Afiliados() {
       payout_speed: p.payout_speed ?? "72h",
       billing_cycle: p.billing_cycle,
       subscription_price: p.subscription_price ?? 0,
+      ai_quota_monthly: p.ai_quota_monthly,
     });
     setView("detail");
 
@@ -236,6 +238,7 @@ export default function Afiliados() {
         payout_speed: draft.payout_method === "manual" ? draft.payout_speed : null,
         billing_cycle: draft.billing_cycle,
         subscription_price: draft.subscription_price,
+        ai_quota_monthly: draft.ai_quota_monthly,
       })
       .eq("id", selected.id);
     setSavingDetail(false);
@@ -713,6 +716,27 @@ export default function Afiliados() {
 
           <div className="mt-3 rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
             <p className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-400">Gerador de imagem por IA</p>
+            {fieldRow(
+              "Cota mensal desse afiliado",
+              <div className="flex items-center gap-1.5">
+                <input
+                  type="number"
+                  min={0}
+                  placeholder={String(settings?.ai_quota_monthly_default ?? 5)}
+                  value={draft.ai_quota_monthly ?? ""}
+                  onChange={(e) => setDraft({ ...draft, ai_quota_monthly: e.target.value === "" ? null : Number(e.target.value) })}
+                  className={inputClass() + " w-20"}
+                />
+                <button
+                  type="button"
+                  onClick={() => setDraft({ ...draft, ai_quota_monthly: 999999 })}
+                  className="rounded-lg border border-slate-300 px-2 py-1 text-xs font-medium text-slate-500 hover:text-slate-700 dark:border-slate-700 dark:text-slate-400"
+                >
+                  Sem limite
+                </button>
+              </div>,
+            )}
+            <p className="-mt-1 mb-2 text-xs text-slate-400">Em branco usa o padrão do plano ({settings?.ai_quota_monthly_default ?? 5}/mês). Salve pra aplicar.</p>
             {(() => {
               const quota = selected.ai_quota_monthly ?? settings?.ai_quota_monthly_default ?? 5;
               const now = new Date();
