@@ -157,14 +157,19 @@ export default function PainelLayout({ children }: { children: ReactNode }) {
       }
 
       setStore(storeRow);
-      setStatus("ready");
 
+      // Busca isHub ANTES de marcar status "ready" — senão o efeito que
+      // redireciona pra fora de /painel/afiliados e /painel/financas
+      // dispara com isHub ainda no valor padrão (false) e manda embora até
+      // quem é Hub de verdade, antes da consulta acima terminar.
       const { data: hubRow } = await supabase
         .from("affiliate_settings")
         .select("id")
         .eq("hub_store_id", storeRow.id)
         .maybeSingle();
       if (active) setIsHub(!!hubRow);
+
+      setStatus("ready");
 
       const { data: roleData } = await supabase.rpc("get_my_role", { p_store_id: storeRow.id });
       if (active && (roleData === "caixa" || roleData === "entregador")) setRole(roleData);
