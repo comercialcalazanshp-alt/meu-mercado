@@ -4,189 +4,305 @@ import { useEffect, useMemo, useState } from "react";
 import { getSupabase } from "@/lib/supabase";
 import { useStore } from "@/lib/store-context";
 
-function formatCurrency(value: number) {
-  return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+type Order = {
+  id: string;
+  total: number;
+  status: string;
+  created_at: string;
+};
+
+type Partnership = {
+  id: string;
+  category: string;
+  owner_name: string;
+  active: boolean;
+  balance: number;
+  commission_percent: number;
+};
+
+function formatCurrency(v: number) {
+  return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
-type Achievement = { emoji: string; label: string; unlocked: boolean };
+function dayKey(iso: string) {
+  return iso.slice(0, 10);
+}
+
+// Constrói uma curva suave (quadrática, passando pelos pontos médios) a
+// partir de uma lista de valores — mesma técnica usada na prévia aprovada,
+// só que agora com números de verdade em vez de fixos.
+function buildSmoothPath(values: number[], width: number, height: number, padTop: number, padBottom: number) {
+  const max = Math.max(...values, 1);
+  const min = Math.min(...values, 0);
+  const range = max - min || 1;
+  const points = values.map((v, i) => ({
+    x: (i / (values.length - 1)) * width,
+    y: padTop + (1 - (v - min) / range) * (height - padTop - padBottom),
+  }));
+  if (points.length < 2) return { line: "", area: "", last: points[0] ?? { x: 0, y: height } };
+  let line = `M${points[0].x},${points[0].y}`;
+  for (let i = 0; i < points.length - 1; i++) {
+    const p = points[i];
+    const next = points[i + 1];
+    const mid = { x: (p.x + next.x) / 2, y: (p.y + next.y) / 2 };
+    line += ` Q${p.x},${p.y} ${mid.x},${mid.y}`;
+  }
+  const last = points[points.length - 1];
+  line += ` Q${last.x},${last.y} ${last.x},${last.y}`;
+  const area = `${line} L${width},${height} L0,${height} Z`;
+  return { line, area, last };
+}
 
 export default function PainelInicio() {
   const store = useStore();
-  const [productCount, setProductCount] = useState<number | null>(null);
-  const [pendingCount, setPendingCount] = useState<number | null>(null);
-  const [storeUrl, setStoreUrl] = useState("");
-  const [orderCount, setOrderCount] = useState(0);
-  const [totalRevenue, setTotalRevenue] = useState(0);
-  const [storeAgeDays, setStoreAgeDays] = useState(0);
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [partnerships, setPartnerships] = useState<Partnership[]>([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    setStoreUrl(`${window.location.origin}/loja/${store.slug}`);
+    let cancelled = false;
+    async function load() {
+      const supabase = getSupabase();
+      const since = new Date();
+      since.setDate(since.getDate() - 13);
+      since.setHours(0, 0, 0, 0);
 
-    const supabase = getSupabase();
+      const [ordersRes, partnershipsRes] = await Promise.all([
+        supabase
+          .from("orders")
+          .select("id, total, status, created_at")
+          .eq("store_id", store.id)
+          .gte("created_at", since.toISOString())
+          .order("created_at", { ascending: true }),
+        supabase
+          .from("affiliate_partnerships")
+          .select("id, category, owner_name, active, balance, commission_percent")
+          .eq("hub_store_id", store.id),
+      ]);
+      if (cancelled) return;
+      setOrders((ordersRes.data as Order[]) ?? []);
+      setPartnerships((partnershipsRes.data as Partnership[]) ?? []);
+      setLoading(false);
+    }
+    load();
+    const interval = setInterval(load, 30000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [store.id]);
 
-    supabase
-      .from("products")
-      .select("*", { count: "exact", head: true })
-      .eq("store_id", store.id)
-      .then(({ count }) => setProductCount(count ?? 0));
+  const todayKey = dayKey(new Date().toISOString());
+  const yesterdayKey = dayKey(new Date(Date.now() - 86400000).toISOString());
 
-    supabase
-      .from("orders")
-      .select("*", { count: "exact", head: true })
-      .eq("store_id", store.id)
-      .eq("status", "pendente")
-      .then(({ count }) => setPendingCount(count ?? 0));
+  const validOrders = useMemo(() => orders.filter((o) => o.status !== "cancelado"), [orders]);
 
-    supabase
-      .from("orders")
-      .select("total, status")
-      .eq("store_id", store.id)
-      .then(({ data }) => {
-        const valid = (data ?? []).filter((o) => o.status !== "cancelado");
-        setOrderCount(valid.length);
-        setTotalRevenue(valid.reduce((sum, o) => sum + o.total, 0));
-      });
+  const revenueByDay = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const o of validOrders) {
+      const k = dayKey(o.created_at);
+      map.set(k, (map.get(k) ?? 0) + o.total);
+    }
+    const days: { key: string; total: number }[] = [];
+    for (let i = 13; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      const k = dayKey(d.toISOString());
+      days.push({ key: k, total: map.get(k) ?? 0 });
+    }
+    return days;
+  }, [validOrders]);
 
-    supabase
-      .from("stores")
-      .select("created_at")
-      .eq("id", store.id)
-      .single()
-      .then(({ data }) => {
-        if (data) {
-          const days = (Date.now() - new Date(data.created_at).getTime()) / (1000 * 60 * 60 * 24);
-          setStoreAgeDays(days);
-        }
-      });
-  }, [store.id, store.slug]);
-
-  const achievements: Achievement[] = useMemo(
-    () => [
-      { emoji: "🎉", label: "Primeira venda", unlocked: orderCount >= 1 },
-      { emoji: "🔥", label: "10 pedidos", unlocked: orderCount >= 10 },
-      { emoji: "🚀", label: "50 pedidos", unlocked: orderCount >= 50 },
-      { emoji: "🏆", label: "100 pedidos", unlocked: orderCount >= 100 },
-      { emoji: "💰", label: `${formatCurrency(500)} em vendas`, unlocked: totalRevenue >= 500 },
-      { emoji: "💰", label: `${formatCurrency(1000)} em vendas`, unlocked: totalRevenue >= 1000 },
-      { emoji: "💎", label: `${formatCurrency(5000)} em vendas`, unlocked: totalRevenue >= 5000 },
-      { emoji: "📦", label: "10 produtos no catálogo", unlocked: (productCount ?? 0) >= 10 },
-      { emoji: "🎂", label: "1 mês de loja", unlocked: storeAgeDays >= 30 },
-      { emoji: "🎂", label: "6 meses de loja", unlocked: storeAgeDays >= 182 },
-      { emoji: "🎂", label: "1 ano de loja", unlocked: storeAgeDays >= 365 },
-    ],
-    [orderCount, totalRevenue, productCount, storeAgeDays],
+  const revenueToday = revenueByDay[revenueByDay.length - 1]?.total ?? 0;
+  const revenueYesterday = useMemo(
+    () => revenueByDay.find((d) => d.key === yesterdayKey)?.total ?? 0,
+    [revenueByDay, yesterdayKey],
   );
-  const unlockedCount = achievements.filter((a) => a.unlocked).length;
+  const deltaPercent = revenueYesterday > 0 ? Math.round(((revenueToday - revenueYesterday) / revenueYesterday) * 100) : null;
+
+  const ordersToday = useMemo(() => validOrders.filter((o) => dayKey(o.created_at) === todayKey), [validOrders, todayKey]);
+  const delivered = ordersToday.filter((o) => o.status === "entregue").length;
+  const enRoute = ordersToday.filter((o) => o.status === "confirmado" || o.status === "entregando").length;
+  const pending = ordersToday.filter((o) => o.status === "pendente").length;
+  const donutTotal = Math.max(delivered + enRoute + pending, 1);
+
+  const activePartnerships = useMemo(() => partnerships.filter((p) => p.active), [partnerships]);
+  const pendingPayout = useMemo(() => activePartnerships.reduce((s, p) => s + (p.balance > 0 ? p.balance : 0), 0), [activePartnerships]);
+
+  const chart = useMemo(
+    () => buildSmoothPath(revenueByDay.map((d) => d.total), 400, 150, 8, 20),
+    [revenueByDay],
+  );
+
+  const donutCirc = 251;
+  const deliveredOffset = donutCirc - (delivered / donutTotal) * donutCirc;
+  const enRouteOffset = donutCirc - ((delivered + enRoute) / donutTotal) * donutCirc;
+  const pendingOffset = donutCirc - ((delivered + enRoute + pending) / donutTotal) * donutCirc;
+
+  if (loading) {
+    return (
+      <div className="flex min-h-[60vh] items-center justify-center text-sm text-white/40">
+        Carregando…
+      </div>
+    );
+  }
 
   return (
-    <div className="max-w-2xl">
-      <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-50">Olá, {store.name}</h1>
+    <div className="relative overflow-hidden rounded-[22px] bg-black">
+      <div
+        aria-hidden
+        className="pointer-events-none absolute left-1/2 -top-44 h-[520px] w-[520px] -translate-x-1/2 rounded-full opacity-50 blur-[90px]"
+        style={{ background: "radial-gradient(circle, rgba(52,232,140,0.20), transparent 65%)" }}
+      />
+      <div
+        aria-hidden
+        className="pointer-events-none absolute -right-36 top-56 h-[420px] w-[420px] rounded-full opacity-50 blur-[90px]"
+        style={{ background: "radial-gradient(circle, rgba(92,172,255,0.14), transparent 65%)" }}
+      />
+      <div
+        aria-hidden
+        className="pointer-events-none absolute -left-36 -bottom-16 h-[380px] w-[380px] rounded-full opacity-30 blur-[90px]"
+        style={{ background: "radial-gradient(circle, rgba(255,92,104,0.10), transparent 65%)" }}
+      />
 
-      <div className="mt-4 rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
-        <p className="text-sm text-slate-600 dark:text-slate-400">Link público da sua loja</p>
-        <a
-          href={storeUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="mt-1 block truncate text-sm font-medium text-blue-900 underline dark:text-blue-400"
-        >
-          {storeUrl || "carregando…"}
-        </a>
-      </div>
-
-      <div className="mt-4 grid grid-cols-2 gap-4">
-        <a
-          href="/painel/produtos"
-          className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900"
-        >
-          <p className="text-2xl font-bold text-slate-900 dark:text-slate-50">
-            {productCount ?? "–"}
-          </p>
-          <p className="text-sm text-slate-600 dark:text-slate-400">produtos cadastrados</p>
-        </a>
-        <a
-          href="/painel/pedidos"
-          className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900"
-        >
-          <p className="text-2xl font-bold text-slate-900 dark:text-slate-50">
-            {pendingCount ?? "–"}
-          </p>
-          <p className="text-sm text-slate-600 dark:text-slate-400">pedidos pendentes</p>
-        </a>
-      </div>
-
-      <div className="mt-4 rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
-        <div className="flex items-center justify-between">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-            Conquistas
-          </h2>
-          <span className="text-xs text-slate-400 dark:text-slate-500">
-            {unlockedCount} de {achievements.length}
+      <div className="relative max-w-3xl px-4 py-8 text-[#F5F3EF] sm:px-6">
+        <div className="mb-6 flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <span className="flex h-8 w-8 items-center justify-center rounded-[9px] bg-[#F0BB5E] text-[11px] font-extrabold text-[#241705]">
+              MM
+            </span>
+            <div>
+              <h1 className="text-base font-extrabold">{store.name}</h1>
+              <p className="mt-0.5 text-[11.5px] text-white/35">Visão do marketplace · hoje</p>
+            </div>
+          </div>
+          <span className="flex items-center gap-1.5 rounded-full border border-[#34E88C]/25 bg-[#34E88C]/10 px-2.5 py-1.5 text-[10.5px] font-bold uppercase tracking-wide text-[#34E88C]">
+            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[#34E88C]" />
+            Ao vivo
           </span>
         </div>
-        <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
-          {achievements.map((a) => (
-            <div
-              key={a.label}
-              className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-sm ${
-                a.unlocked
-                  ? "border-amber-200 bg-amber-50 dark:border-amber-900/50 dark:bg-amber-950/30"
-                  : "border-slate-200 bg-slate-50 text-slate-400 dark:border-slate-800 dark:bg-slate-800/50 dark:text-slate-500"
-              }`}
-            >
-              <span className={a.unlocked ? "" : "opacity-30 grayscale"}>{a.emoji}</span>
-              <span
-                className={
-                  a.unlocked
-                    ? "text-slate-800 dark:text-slate-200"
-                    : "text-slate-400 dark:text-slate-500"
-                }
-              >
-                {a.label}
-              </span>
+
+        <div className="py-4 text-center">
+          <p className="text-[12px] font-bold uppercase tracking-[0.1em] text-white/30">Faturamento de hoje</p>
+          <p
+            className="my-1.5 text-[46px] font-black tracking-tight sm:text-[60px]"
+            style={{
+              backgroundImage: "linear-gradient(180deg, #EFFFF6 0%, #34E88C 120%)",
+              WebkitBackgroundClip: "text",
+              backgroundClip: "text",
+              color: "transparent",
+              textShadow: "0 0 60px rgba(52,232,140,0.35)",
+            }}
+          >
+            {formatCurrency(revenueToday)}
+          </p>
+          {deltaPercent !== null ? (
+            <span className="inline-flex items-center gap-1 rounded-full border border-[#34E88C]/22 bg-[#34E88C]/10 px-3 py-1.5 text-[13px] font-bold text-[#34E88C]">
+              {deltaPercent >= 0 ? "↑" : "↓"} {Math.abs(deltaPercent)}% em relação a ontem
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-[13px] font-medium text-white/40">
+              Sem venda ontem pra comparar
+            </span>
+          )}
+        </div>
+
+        <div className="mb-3 grid grid-cols-2 gap-2.5">
+          <div className="rounded-2xl border border-white/[0.09] bg-white/[0.035] p-4 backdrop-blur-xl">
+            <p className="text-[10.5px] font-bold uppercase tracking-wide text-white/30">Comissão da plataforma</p>
+            <p className="mt-1.5 text-[21px] font-extrabold tabular-nums text-[#5CACFF]">
+              {formatCurrency(activePartnerships.reduce((s, p) => s + revenueToday * (p.commission_percent / 100), 0))}
+            </p>
+            <p className="mt-0.5 text-[11.5px] font-semibold text-white/30">
+              {activePartnerships.length > 0 ? `${activePartnerships.length} afiliado(s) ativo(s)` : "Nenhum afiliado ainda"}
+            </p>
+          </div>
+          <div className="rounded-2xl border border-white/[0.09] bg-white/[0.035] p-4 backdrop-blur-xl">
+            <p className="text-[10.5px] font-bold uppercase tracking-wide text-white/30">A repassar</p>
+            <p className="mt-1.5 text-[21px] font-extrabold tabular-nums text-[#FF5C68]">{formatCurrency(pendingPayout)}</p>
+            <p className="mt-0.5 text-[11.5px] font-semibold text-[#FF5C68]/85">
+              {pendingPayout > 0 ? "repasse pendente" : "tudo em dia"}
+            </p>
+          </div>
+        </div>
+
+        <div className="mb-2.5 grid grid-cols-1 gap-2.5 sm:grid-cols-[1.6fr,1fr]">
+          <div className="rounded-2xl border border-white/[0.09] bg-white/[0.035] p-5 backdrop-blur-xl">
+            <h2 className="mb-3 text-[12.5px] font-bold uppercase tracking-wide text-white/45">Faturamento — últimos 14 dias</h2>
+            <svg viewBox="0 0 400 150" width="100%" height="150" preserveAspectRatio="none">
+              <defs>
+                <linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#34E88C" stopOpacity="0.32" />
+                  <stop offset="100%" stopColor="#34E88C" stopOpacity="0" />
+                </linearGradient>
+              </defs>
+              <line x1="0" y1="37.5" x2="400" y2="37.5" stroke="rgba(255,255,255,0.05)" />
+              <line x1="0" y1="75" x2="400" y2="75" stroke="rgba(255,255,255,0.05)" />
+              <line x1="0" y1="112.5" x2="400" y2="112.5" stroke="rgba(255,255,255,0.05)" />
+              {chart.area && <path d={chart.area} fill="url(#areaGrad)" />}
+              {chart.line && (
+                <path
+                  d={chart.line}
+                  fill="none"
+                  stroke="#34E88C"
+                  strokeWidth="2.5"
+                  style={{ filter: "drop-shadow(0 0 8px rgba(52,232,140,0.6))" }}
+                />
+              )}
+              {chart.last && <circle cx={chart.last.x} cy={chart.last.y} r="4.5" fill="#EFFFF6" style={{ filter: "drop-shadow(0 0 6px rgba(52,232,140,0.9))" }} />}
+            </svg>
+          </div>
+
+          <div className="rounded-2xl border border-white/[0.09] bg-white/[0.035] p-5 backdrop-blur-xl">
+            <h2 className="mb-3 text-[12.5px] font-bold uppercase tracking-wide text-white/45">Pedidos hoje</h2>
+            <div className="flex items-center gap-4">
+              <svg width="100" height="100" viewBox="0 0 110 110" style={{ transform: "rotate(-90deg)" }}>
+                <circle cx="55" cy="55" r="40" fill="none" stroke="rgba(255,255,255,0.05)" strokeWidth="12" />
+                <circle
+                  cx="55" cy="55" r="40" fill="none" stroke="#34E88C" strokeWidth="12" strokeLinecap="round"
+                  pathLength={donutCirc} strokeDasharray={donutCirc} strokeDashoffset={deliveredOffset}
+                  style={{ filter: "drop-shadow(0 0 5px rgba(52,232,140,0.6))" }}
+                />
+                <circle
+                  cx="55" cy="55" r="40" fill="none" stroke="#5CACFF" strokeWidth="12" strokeLinecap="round"
+                  pathLength={donutCirc} strokeDasharray={donutCirc} strokeDashoffset={enRouteOffset}
+                  style={{ filter: "drop-shadow(0 0 5px rgba(92,172,255,0.6))" }}
+                />
+                <circle
+                  cx="55" cy="55" r="40" fill="none" stroke="#FF5C68" strokeWidth="12" strokeLinecap="round"
+                  pathLength={donutCirc} strokeDasharray={donutCirc} strokeDashoffset={pendingOffset}
+                  style={{ filter: "drop-shadow(0 0 5px rgba(255,92,104,0.6))" }}
+                />
+              </svg>
+              <div className="flex flex-col gap-2 text-[12.5px]">
+                <span className="flex items-center gap-1.5 text-white/55"><span className="h-2 w-2 rounded-full bg-[#34E88C]" />Entregues<b className="ml-1 tabular-nums text-[#F5F3EF]">{delivered}</b></span>
+                <span className="flex items-center gap-1.5 text-white/55"><span className="h-2 w-2 rounded-full bg-[#5CACFF]" />Em rota<b className="ml-1 tabular-nums text-[#F5F3EF]">{enRoute}</b></span>
+                <span className="flex items-center gap-1.5 text-white/55"><span className="h-2 w-2 rounded-full bg-[#FF5C68]" />Pendentes<b className="ml-1 tabular-nums text-[#F5F3EF]">{pending}</b></span>
+              </div>
             </div>
-          ))}
+          </div>
+        </div>
+
+        <div className="rounded-2xl border border-white/[0.09] bg-white/[0.035] p-5 backdrop-blur-xl">
+          <h2 className="mb-3 text-[12.5px] font-bold uppercase tracking-wide text-white/45">Afiliados</h2>
+          {partnerships.length === 0 ? (
+            <p className="text-[13px] text-white/35">Nenhum afiliado cadastrado ainda.</p>
+          ) : (
+            <div className="flex flex-col gap-3">
+              {partnerships.map((p) => (
+                <div key={p.id} className="flex items-center gap-2.5">
+                  <span className="w-24 flex-shrink-0 truncate text-[12.5px] text-white/55">{p.owner_name}</span>
+                  <span className="flex-1" />
+                  <span className={`text-[11.5px] font-semibold ${p.active ? "text-[#34E88C]" : "text-white/30"}`}>
+                    {p.active ? "Ativo" : "Inativo"}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </div>
-
-      {productCount === 0 && (
-        <div className="mt-6 rounded-xl border border-blue-200 bg-blue-50 p-4 dark:border-blue-900/50 dark:bg-blue-950/30">
-          <h2 className="font-semibold text-blue-900 dark:text-blue-300">
-            Primeiros passos pra começar a vender
-          </h2>
-          <ul className="mt-3 space-y-2 text-sm">
-            <li className="flex items-center gap-2">
-              <span>{productCount && productCount > 0 ? "✅" : "⬜"}</span>
-              <a href="/painel/produtos" className="text-blue-900 underline dark:text-blue-400">
-                Adicione seu primeiro produto
-              </a>
-            </li>
-            <li className="flex items-center gap-2">
-              <span>{store.whatsapp ? "✅" : "⬜"}</span>
-              <a href="/painel/configuracoes" className="text-blue-900 underline dark:text-blue-400">
-                Confirme o WhatsApp da loja
-              </a>
-            </li>
-            <li className="flex items-center gap-2">
-              <span>⬜</span>
-              <a href="/painel/cartaz" className="text-blue-900 underline dark:text-blue-400">
-                Gere o cartaz com QR code da loja
-              </a>
-            </li>
-            <li className="flex items-center gap-2">
-              <span>⬜</span>
-              <a
-                href={storeUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-blue-900 underline dark:text-blue-400"
-              >
-                Veja como sua vitrine está ficando
-              </a>
-            </li>
-          </ul>
-        </div>
-      )}
     </div>
   );
 }
