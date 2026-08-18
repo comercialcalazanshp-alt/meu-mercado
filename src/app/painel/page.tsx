@@ -9,6 +9,7 @@ type Order = {
   total: number;
   status: string;
   created_at: string;
+  customer_phone: string | null;
 };
 
 type Partnership = {
@@ -57,6 +58,7 @@ export default function PainelInicio() {
   const store = useStore();
   const [orders, setOrders] = useState<Order[]>([]);
   const [partnerships, setPartnerships] = useState<Partnership[]>([]);
+  const [visits, setVisits] = useState(0);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -66,22 +68,25 @@ export default function PainelInicio() {
       const since = new Date();
       since.setDate(since.getDate() - 13);
       since.setHours(0, 0, 0, 0);
+      const sinceIso = since.toISOString();
 
-      const [ordersRes, partnershipsRes] = await Promise.all([
-        supabase
-          .from("orders")
-          .select("id, total, status, created_at")
-          .eq("store_id", store.id)
-          .gte("created_at", since.toISOString())
-          .order("created_at", { ascending: true }),
+      // Usa get_hub_orders/get_hub_visits_count em vez de filtrar direto por
+      // store_id: pra uma loja comum (ou afiliado) isso devolve exatamente
+      // os próprios dados, sem diferença — mas pra Hub soma o marketplace
+      // inteiro (a própria loja, se ainda vender algo, + cada afiliado
+      // ativo), já que a Hub não tem mais pedido nenhum só dela.
+      const [ordersRes, partnershipsRes, visitsRes] = await Promise.all([
+        supabase.rpc("get_hub_orders", { p_hub_store_id: store.id, p_since: sinceIso }),
         supabase
           .from("affiliate_partnerships")
           .select("id, category, owner_name, active, balance, commission_percent")
           .eq("hub_store_id", store.id),
+        supabase.rpc("get_hub_visits_count", { p_hub_store_id: store.id, p_since: sinceIso }),
       ]);
       if (cancelled) return;
       setOrders((ordersRes.data as Order[]) ?? []);
       setPartnerships((partnershipsRes.data as Partnership[]) ?? []);
+      setVisits((visitsRes.data as number) ?? 0);
       setLoading(false);
     }
     load();
@@ -129,6 +134,10 @@ export default function PainelInicio() {
 
   const activePartnerships = useMemo(() => partnerships.filter((p) => p.active), [partnerships]);
   const pendingPayout = useMemo(() => activePartnerships.reduce((s, p) => s + (p.balance > 0 ? p.balance : 0), 0), [activePartnerships]);
+  const uniqueCustomers = useMemo(
+    () => new Set(validOrders.map((o) => o.customer_phone).filter(Boolean)).size,
+    [validOrders],
+  );
 
   const chart = useMemo(
     () => buildSmoothPath(revenueByDay.map((d) => d.total), 400, 150, 8, 20),
@@ -224,6 +233,16 @@ export default function PainelInicio() {
             <p className="mt-0.5 text-[11.5px] font-semibold text-[#FF5C68]/85">
               {pendingPayout > 0 ? "repasse pendente" : "tudo em dia"}
             </p>
+          </div>
+          <div className="rounded-2xl border border-white/[0.09] bg-white/[0.035] p-4 backdrop-blur-xl">
+            <p className="text-[10.5px] font-bold uppercase tracking-wide text-white/30">Clientes atendidos</p>
+            <p className="mt-1.5 text-[21px] font-extrabold tabular-nums text-[#F5F3EF]">{uniqueCustomers}</p>
+            <p className="mt-0.5 text-[11.5px] font-semibold text-white/30">últimos 14 dias</p>
+          </div>
+          <div className="rounded-2xl border border-white/[0.09] bg-white/[0.035] p-4 backdrop-blur-xl">
+            <p className="text-[10.5px] font-bold uppercase tracking-wide text-white/30">Visitas no site</p>
+            <p className="mt-1.5 text-[21px] font-extrabold tabular-nums text-[#F5F3EF]">{visits}</p>
+            <p className="mt-0.5 text-[11.5px] font-semibold text-white/30">últimos 14 dias</p>
           </div>
         </div>
 
