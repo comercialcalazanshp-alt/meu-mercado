@@ -23,6 +23,7 @@ type Partnership = {
   commission_percent: number;
   subscription_price: number | null;
   subscription_due_at: string | null;
+  payout_method: string;
 };
 
 function formatCurrency(v: number) {
@@ -84,7 +85,7 @@ export default function PainelInicio() {
         supabase.rpc("get_hub_orders", { p_hub_store_id: store.id, p_since: sinceIso }),
         supabase
           .from("affiliate_partnerships")
-          .select("id, module_store_id, category, owner_name, active, balance, commission_percent, subscription_price, subscription_due_at")
+          .select("id, module_store_id, category, owner_name, active, balance, commission_percent, subscription_price, subscription_due_at, payout_method")
           .eq("hub_store_id", store.id),
         supabase.rpc("get_hub_visits_count", { p_hub_store_id: store.id, p_since: sinceIso }),
         // Venda avulsa (pacote extra de imagem por IA) é dinheiro que entra
@@ -178,7 +179,13 @@ export default function PainelInicio() {
   );
 
   const activePartnerships = useMemo(() => partnerships.filter((p) => p.active), [partnerships]);
-  const pendingPayout = useMemo(() => activePartnerships.reduce((s, p) => s + (p.balance > 0 ? p.balance : 0), 0), [activePartnerships]);
+  // Só "manual" acumula saldo pra repassar de verdade — quem está em split
+  // automático já recebe na hora da venda, então o saldo dele não é uma
+  // dívida pendente (mostrar isso como "a repassar" seria enganoso).
+  const pendingPayout = useMemo(
+    () => activePartnerships.filter((p) => p.payout_method === "manual").reduce((s, p) => s + Math.max(0, p.balance), 0),
+    [activePartnerships],
+  );
   const uniqueCustomers = useMemo(
     () => new Set(validOrders.map((o) => o.customer_phone).filter(Boolean)).size,
     [validOrders],

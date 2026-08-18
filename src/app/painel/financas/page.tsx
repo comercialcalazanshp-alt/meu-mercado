@@ -114,7 +114,42 @@ export default function Financas() {
     [activePartnerships],
   );
   const overdueAmount = useMemo(() => overdue.reduce((s, p) => s + (p.subscription_price ?? 0), 0), [overdue]);
-  const toRepassar = useMemo(() => activePartnerships.reduce((s, p) => s + Math.max(0, p.balance), 0), [activePartnerships]);
+  // Só "manual" acumula saldo pra repassar de verdade — split automático já
+  // recebe na hora da venda, então o saldo dele não é dívida pendente.
+  const manualPartnerships = useMemo(() => activePartnerships.filter((p) => p.payout_method === "manual"), [activePartnerships]);
+  const toRepassar = useMemo(() => manualPartnerships.reduce((s, p) => s + Math.max(0, p.balance), 0), [manualPartnerships]);
+
+  const [payingId, setPayingId] = useState<string | null>(null);
+  async function marcarComoPago(p: AffiliatePartnership) {
+    if (p.balance <= 0) return;
+    if (!confirm(`Confirma que já pagou ${formatCurrency(p.balance)} pra ${p.owner_name} por fora (Pix, transferência etc.)?`)) return;
+    setPayingId(p.id);
+    const supabase = getSupabase();
+    const { error } = await supabase.from("affiliate_settlement_transactions").insert({
+      partnership_id: p.id,
+      type: "repasse",
+      amount: p.balance,
+      note: "Marcado como pago manualmente no painel",
+    });
+    setPayingId(null);
+    if (error) {
+      alert("Não deu pra registrar: " + error.message);
+      return;
+    }
+    setPartnerships((prev) => prev.map((row) => (row.id === p.id ? { ...row, balance: 0 } : row)));
+    setSettlements((prev) => [
+      {
+        id: crypto.randomUUID(),
+        partnership_id: p.id,
+        type: "repasse",
+        amount: p.balance,
+        order_id: null,
+        note: "Marcado como pago manualmente no painel",
+        created_at: new Date().toISOString(),
+      },
+      ...prev,
+    ]);
+  }
 
   const extrato: ExtratoRow[] = useMemo(() => {
     const rows: ExtratoRow[] = [
@@ -220,11 +255,13 @@ export default function Financas() {
                     <th className="pb-2 font-bold">Vencimento</th>
                     <th className="pb-2 font-bold">Saldo a repassar</th>
                     <th className="pb-2 font-bold">Recebimento</th>
+                    <th className="pb-2 font-bold" />
                   </tr>
                 </thead>
                 <tbody>
                   {partnerships.map((p) => {
                     const isOverdue = p.active && p.subscription_due_at && new Date(p.subscription_due_at) < now;
+                    const owesManualPayout = p.payout_method === "manual" && p.balance > 0;
                     return (
                       <tr key={p.id} className="border-t border-white/[0.06]">
                         <td className="py-2.5 pr-2">
@@ -245,8 +282,24 @@ export default function Financas() {
                             <span className="text-white/30">—</span>
                           )}
                         </td>
-                        <td className="py-2.5 pr-2 tabular-nums text-[#34E88C]">{formatCurrency(Math.max(0, p.balance))}</td>
+                        <td className="py-2.5 pr-2 tabular-nums text-[#34E88C]">
+                          {p.payout_method === "manual" ? formatCurrency(Math.max(0, p.balance)) : "—"}
+                          {p.payout_method !== "manual" && (
+                            <span className="ml-1 text-[10px] text-white/25">(split automático)</span>
+                          )}
+                        </td>
                         <td className="py-2.5 pr-2 text-white/55">{PAYOUT_LABEL[p.payout_method] ?? p.payout_method}</td>
+                        <td className="py-2.5 pr-2">
+                          {owesManualPayout && (
+                            <button
+                              onClick={() => marcarComoPago(p)}
+                              disabled={payingId === p.id}
+                              className="rounded-lg border border-[#34E88C]/30 bg-[#34E88C]/10 px-2.5 py-1 text-[11px] font-semibold text-[#34E88C] disabled:opacity-50"
+                            >
+                              {payingId === p.id ? "Registrando…" : "Marcar como pago"}
+                            </button>
+                          )}
+                        </td>
                       </tr>
                     );
                   })}
