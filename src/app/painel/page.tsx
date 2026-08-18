@@ -6,6 +6,7 @@ import { useStore } from "@/lib/store-context";
 
 type Order = {
   id: string;
+  store_id: string;
   total: number;
   status: string;
   created_at: string;
@@ -14,6 +15,7 @@ type Order = {
 
 type Partnership = {
   id: string;
+  module_store_id: string;
   category: string;
   owner_name: string;
   active: boolean;
@@ -79,7 +81,7 @@ export default function PainelInicio() {
         supabase.rpc("get_hub_orders", { p_hub_store_id: store.id, p_since: sinceIso }),
         supabase
           .from("affiliate_partnerships")
-          .select("id, category, owner_name, active, balance, commission_percent")
+          .select("id, module_store_id, category, owner_name, active, balance, commission_percent")
           .eq("hub_store_id", store.id),
         supabase.rpc("get_hub_visits_count", { p_hub_store_id: store.id, p_since: sinceIso }),
       ]);
@@ -103,11 +105,26 @@ export default function PainelInicio() {
 
   const validOrders = useMemo(() => orders.filter((o) => o.status !== "cancelado"), [orders]);
 
+  // Pra pedido de afiliado, a Hub só ganha a comissão — não o valor cheio
+  // do pedido (esse dinheiro é do afiliado). Pedido da própria loja da Hub
+  // (se ela ainda vender algo) conta o valor inteiro.
+  const commissionPercentByStore = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const p of partnerships) if (p.active) map.set(p.module_store_id, p.commission_percent);
+    return map;
+  }, [partnerships]);
+
+  function hubShare(o: Order): number {
+    if (o.store_id === store.id) return o.total;
+    const pct = commissionPercentByStore.get(o.store_id);
+    return pct ? o.total * (pct / 100) : 0;
+  }
+
   const revenueByDay = useMemo(() => {
     const map = new Map<string, number>();
     for (const o of validOrders) {
       const k = dayKey(o.created_at);
-      map.set(k, (map.get(k) ?? 0) + o.total);
+      map.set(k, (map.get(k) ?? 0) + hubShare(o));
     }
     const days: { key: string; total: number }[] = [];
     for (let i = 13; i >= 0; i--) {
@@ -117,7 +134,8 @@ export default function PainelInicio() {
       days.push({ key: k, total: map.get(k) ?? 0 });
     }
     return days;
-  }, [validOrders]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [validOrders, commissionPercentByStore]);
 
   const revenueToday = revenueByDay[revenueByDay.length - 1]?.total ?? 0;
   const revenueYesterday = useMemo(
@@ -132,11 +150,43 @@ export default function PainelInicio() {
   const pending = ordersToday.filter((o) => o.status === "pendente").length;
   const donutTotal = Math.max(delivered + enRoute + pending, 1);
 
+  // Só a fatia de comissão de hoje (exclui venda própria da Hub, se houver
+  // — isso não é "comissão", é faturamento direto, já contado à parte).
+  const commissionToday = useMemo(
+    () => ordersToday.filter((o) => o.store_id !== store.id).reduce((s, o) => s + hubShare(o), 0),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [ordersToday, commissionPercentByStore, store.id],
+  );
+
   const activePartnerships = useMemo(() => partnerships.filter((p) => p.active), [partnerships]);
   const pendingPayout = useMemo(() => activePartnerships.reduce((s, p) => s + (p.balance > 0 ? p.balance : 0), 0), [activePartnerships]);
   const uniqueCustomers = useMemo(
     () => new Set(validOrders.map((o) => o.customer_phone).filter(Boolean)).size,
     [validOrders],
+  );
+
+  // Contagem de pedidos por dia — separado do faturamento de propósito:
+  // isso conta TODO pedido do marketplace (inclui o valor cheio que é do
+  // afiliado), então não pode virar dinheiro na mesma conta do faturamento.
+  const ordersCountByDay = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const o of validOrders) {
+      const k = dayKey(o.created_at);
+      map.set(k, (map.get(k) ?? 0) + 1);
+    }
+    const days: { key: string; total: number }[] = [];
+    for (let i = 13; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      const k = dayKey(d.toISOString());
+      days.push({ key: k, total: map.get(k) ?? 0 });
+    }
+    return days;
+  }, [validOrders]);
+
+  const ordersChart = useMemo(
+    () => buildSmoothPath(ordersCountByDay.map((d) => d.total), 400, 90, 8, 12),
+    [ordersCountByDay],
   );
 
   const chart = useMemo(
@@ -221,7 +271,7 @@ export default function PainelInicio() {
           <div className="rounded-2xl border border-white/[0.09] bg-white/[0.035] p-4 backdrop-blur-xl">
             <p className="text-[10.5px] font-bold uppercase tracking-wide text-white/30">Comissão da plataforma</p>
             <p className="mt-1.5 text-[21px] font-extrabold tabular-nums text-[#5CACFF]">
-              {formatCurrency(activePartnerships.reduce((s, p) => s + revenueToday * (p.commission_percent / 100), 0))}
+              {formatCurrency(commissionToday)}
             </p>
             <p className="mt-0.5 text-[11.5px] font-semibold text-white/30">
               {activePartnerships.length > 0 ? `${activePartnerships.length} afiliado(s) ativo(s)` : "Nenhum afiliado ainda"}
@@ -301,6 +351,33 @@ export default function PainelInicio() {
               </div>
             </div>
           </div>
+        </div>
+
+        <div className="mb-2.5 rounded-2xl border border-white/[0.09] bg-white/[0.035] p-5 backdrop-blur-xl">
+          <h2 className="mb-1 text-[12.5px] font-bold uppercase tracking-wide text-white/45">Pedidos — últimos 14 dias</h2>
+          <p className="mb-3 text-[11px] text-white/25">Volume de pedidos do marketplace (não é dinheiro seu — cada um é do afiliado que vendeu)</p>
+          <svg viewBox="0 0 400 90" width="100%" height="90" preserveAspectRatio="none">
+            <defs>
+              <linearGradient id="ordersAreaGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#5CACFF" stopOpacity="0.28" />
+                <stop offset="100%" stopColor="#5CACFF" stopOpacity="0" />
+              </linearGradient>
+            </defs>
+            <line x1="0" y1="45" x2="400" y2="45" stroke="rgba(255,255,255,0.05)" />
+            {ordersChart.area && <path d={ordersChart.area} fill="url(#ordersAreaGrad)" />}
+            {ordersChart.line && (
+              <path
+                d={ordersChart.line}
+                fill="none"
+                stroke="#5CACFF"
+                strokeWidth="2.5"
+                style={{ filter: "drop-shadow(0 0 8px rgba(92,172,255,0.6))" }}
+              />
+            )}
+            {ordersChart.last && (
+              <circle cx={ordersChart.last.x} cy={ordersChart.last.y} r="4" fill="#EAF3FF" style={{ filter: "drop-shadow(0 0 6px rgba(92,172,255,0.9))" }} />
+            )}
+          </svg>
         </div>
 
         <div className="rounded-2xl border border-white/[0.09] bg-white/[0.035] p-5 backdrop-blur-xl">
