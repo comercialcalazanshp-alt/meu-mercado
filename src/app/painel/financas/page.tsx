@@ -114,10 +114,11 @@ export default function Financas() {
     [activePartnerships],
   );
   const overdueAmount = useMemo(() => overdue.reduce((s, p) => s + (p.subscription_price ?? 0), 0), [overdue]);
-  // Só "manual" acumula saldo pra repassar de verdade — split automático já
-  // recebe na hora da venda, então o saldo dele não é dívida pendente.
-  const manualPartnerships = useMemo(() => activePartnerships.filter((p) => p.payout_method === "manual"), [activePartnerships]);
-  const toRepassar = useMemo(() => manualPartnerships.reduce((s, p) => s + Math.max(0, p.balance), 0), [manualPartnerships]);
+  // "Split automático" ainda não tem integração de verdade com o PagBank —
+  // é só um rótulo hoje, nenhuma rota de pagamento divide dinheiro sozinha.
+  // Por isso TODO saldo conta como "a repassar", de qualquer método, senão
+  // dinheiro real fica escondido achando que já foi pago.
+  const toRepassar = useMemo(() => activePartnerships.reduce((s, p) => s + Math.max(0, p.balance), 0), [activePartnerships]);
 
   const [payingId, setPayingId] = useState<string | null>(null);
   async function marcarComoPago(p: AffiliatePartnership) {
@@ -261,7 +262,7 @@ export default function Financas() {
                 <tbody>
                   {partnerships.map((p) => {
                     const isOverdue = p.active && p.subscription_due_at && new Date(p.subscription_due_at) < now;
-                    const owesManualPayout = p.payout_method === "manual" && p.balance > 0;
+                    const owesPayout = p.balance > 0;
                     return (
                       <tr key={p.id} className="border-t border-white/[0.06]">
                         <td className="py-2.5 pr-2">
@@ -282,15 +283,15 @@ export default function Financas() {
                             <span className="text-white/30">—</span>
                           )}
                         </td>
-                        <td className="py-2.5 pr-2 tabular-nums text-[#34E88C]">
-                          {p.payout_method === "manual" ? formatCurrency(Math.max(0, p.balance)) : "—"}
-                          {p.payout_method !== "manual" && (
-                            <span className="ml-1 text-[10px] text-white/25">(split automático)</span>
+                        <td className="py-2.5 pr-2 tabular-nums text-[#34E88C]">{formatCurrency(Math.max(0, p.balance))}</td>
+                        <td className="py-2.5 pr-2 text-white/55">
+                          {PAYOUT_LABEL[p.payout_method] ?? p.payout_method}
+                          {p.payout_method === "split_automatico" && (
+                            <span className="ml-1 text-[10px] text-[#F0BB5E]">(ainda não integrado)</span>
                           )}
                         </td>
-                        <td className="py-2.5 pr-2 text-white/55">{PAYOUT_LABEL[p.payout_method] ?? p.payout_method}</td>
                         <td className="py-2.5 pr-2">
-                          {owesManualPayout && (
+                          {owesPayout && (
                             <button
                               onClick={() => marcarComoPago(p)}
                               disabled={payingId === p.id}

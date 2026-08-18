@@ -453,9 +453,11 @@ export default function Afiliados() {
   }
 
   const activeCount = partnerships.filter((p) => p.active).length;
-  const toRepassar = partnerships
-    .filter((p) => p.payout_method === "manual")
-    .reduce((sum, p) => sum + Math.max(0, Number(p.balance)), 0);
+  // "Split automático" ainda não tem integração de verdade com o PagBank —
+  // nenhuma rota de pagamento divide dinheiro sozinha, é só um rótulo na
+  // tela. Por isso TODO saldo conta aqui, de qualquer método, senão
+  // dinheiro real fica escondido achando que já foi pago automaticamente.
+  const toRepassar = partnerships.reduce((sum, p) => sum + Math.max(0, Number(p.balance)), 0);
 
   return (
     <div className="max-w-2xl">
@@ -666,6 +668,12 @@ export default function Afiliados() {
                   Split automático
                 </button>
               </div>,
+            )}
+            {draft.payout_method === "split_automatico" && (
+              <p className="pb-2.5 text-xs text-amber-600 dark:text-amber-400">
+                ⚠ O split automático ainda não está integrado com o PagBank — hoje o dinheiro cai inteiro na sua conta
+                mesmo assim. O saldo continua contando como "a repassar" até essa integração existir de verdade.
+              </p>
             )}
             {draft.payout_method === "manual" &&
               fieldRow(

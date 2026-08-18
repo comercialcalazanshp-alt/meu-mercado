@@ -179,11 +179,13 @@ export default function PainelInicio() {
   );
 
   const activePartnerships = useMemo(() => partnerships.filter((p) => p.active), [partnerships]);
-  // Só "manual" acumula saldo pra repassar de verdade — quem está em split
-  // automático já recebe na hora da venda, então o saldo dele não é uma
-  // dívida pendente (mostrar isso como "a repassar" seria enganoso).
+  // "Split automático" ainda não tem integração de verdade com o PagBank
+  // (nenhuma rota de pagamento configura conta de recebimento nem divide
+  // dinheiro) — é só um rótulo na tela hoje. Então TODO saldo, de qualquer
+  // método, conta como "a repassar" de verdade, senão dinheiro real fica
+  // escondido achando que já foi pago sozinho.
   const pendingPayout = useMemo(
-    () => activePartnerships.filter((p) => p.payout_method === "manual").reduce((s, p) => s + Math.max(0, p.balance), 0),
+    () => activePartnerships.reduce((s, p) => s + Math.max(0, p.balance), 0),
     [activePartnerships],
   );
   const uniqueCustomers = useMemo(
