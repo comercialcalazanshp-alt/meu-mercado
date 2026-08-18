@@ -77,6 +77,7 @@ export default function Afiliados() {
     payout_method: PayoutMethod;
     payout_speed: PayoutSpeed;
     billing_cycle: BillingCycle;
+    subscription_price: number;
   } | null>(null);
   const [savingDetail, setSavingDetail] = useState(false);
 
@@ -185,6 +186,7 @@ export default function Afiliados() {
       payout_method: p.payout_method,
       payout_speed: p.payout_speed ?? "72h",
       billing_cycle: p.billing_cycle,
+      subscription_price: p.subscription_price ?? 0,
     });
     setView("detail");
 
@@ -233,6 +235,7 @@ export default function Afiliados() {
         payout_method: draft.payout_method,
         payout_speed: draft.payout_method === "manual" ? draft.payout_speed : null,
         billing_cycle: draft.billing_cycle,
+        subscription_price: draft.subscription_price,
       })
       .eq("id", selected.id);
     setSavingDetail(false);
@@ -691,6 +694,20 @@ export default function Afiliados() {
                   </option>
                 ))}
               </select>,
+            )}
+            {fieldRow(
+              `Mensalidade (${BILLING_LABEL[draft.billing_cycle]})`,
+              <div className="flex items-center gap-1">
+                <span className="text-sm text-slate-500">R$</span>
+                <input
+                  type="number"
+                  min={0}
+                  step={0.01}
+                  value={draft.subscription_price}
+                  onChange={(e) => setDraft({ ...draft, subscription_price: Number(e.target.value) })}
+                  className={inputClass() + " w-24"}
+                />
+              </div>,
             )}
           </div>
 
