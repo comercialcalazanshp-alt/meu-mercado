@@ -89,6 +89,12 @@ export default function PainelLayout({ children }: { children: ReactNode }) {
   const [store, setStore] = useState<Store | null>(null);
   const [status, setStatus] = useState<"loading" | "ready" | "sem-loja">("loading");
   const [role, setRole] = useState<"completo" | "caixa" | "entregador">("completo");
+  // Toda loja pode virar um Hub (ligar afiliados) — mas só faz sentido
+  // mostrar o item "Afiliados" no menu depois que a loja de fato configurou
+  // isso (existe uma linha em affiliate_settings). Sem essa checagem, o
+  // menu de uma loja comum (ou de um afiliado, que também é só "uma loja")
+  // mostraria um item de gestão que não significa nada pra ela.
+  const [isHub, setIsHub] = useState(false);
   const [memberId, setMemberId] = useState<string | null>(null);
   const [notifications, setNotifications] = useState<OrderNotification[]>([]);
   const [soundMuted, setSoundMuted] = useState(false);
@@ -122,6 +128,13 @@ export default function PainelLayout({ children }: { children: ReactNode }) {
 
       setStore(storeRow);
       setStatus("ready");
+
+      const { data: hubRow } = await supabase
+        .from("affiliate_settings")
+        .select("id")
+        .eq("hub_store_id", storeRow.id)
+        .maybeSingle();
+      if (active) setIsHub(!!hubRow);
 
       const { data: roleData } = await supabase.rpc("get_my_role", { p_store_id: storeRow.id });
       if (active && (roleData === "caixa" || roleData === "entregador")) setRole(roleData);
@@ -443,7 +456,9 @@ export default function PainelLayout({ children }: { children: ReactNode }) {
             ? NAV_ITEMS.filter((item) => CAIXA_ALLOWED_PATHS.has(item.href))
             : role === "entregador"
               ? NAV_ITEMS.filter((item) => ENTREGADOR_ALLOWED_PATHS.has(item.href))
-              : NAV_ITEMS
+              : isHub
+                ? NAV_ITEMS
+                : NAV_ITEMS.filter((item) => item.href !== "/painel/afiliados")
           ).map((item) => {
             const isActive = pathname === item.href;
             return (
