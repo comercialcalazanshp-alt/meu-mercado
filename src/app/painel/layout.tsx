@@ -48,6 +48,27 @@ function playNewOrderChime() {
 
 const CAIXA_ALLOWED_PATHS = new Set(["/painel/pdv", "/painel/caixa"]);
 const ENTREGADOR_ALLOWED_PATHS = new Set(["/painel/entregas"]);
+// Módulos operacionais (venda, estoque, atendimento) não fazem sentido no
+// painel do Hub — cada afiliado tem o dele, próprio, gerando os dados dele.
+// O Hub só orquestra o marketplace (Início, Dashboard, Afiliados etc).
+const HUB_HIDDEN_PATHS = new Set([
+  "/painel/pdv",
+  "/painel/caixa",
+  "/painel/produtos",
+  "/painel/kits",
+  "/painel/assinaturas",
+  "/painel/receitas",
+  "/painel/banners",
+  "/painel/ofertas",
+  "/painel/raspadinha",
+  "/painel/cupons",
+  "/painel/cashback",
+  "/painel/mensagens",
+  "/painel/cartaz",
+  "/painel/despesas",
+  "/painel/avaliacoes",
+  "/painel/reclamacoes",
+]);
 
 const NAV_ITEMS = [
   { href: "/painel", label: "Início" },
@@ -180,8 +201,10 @@ export default function PainelLayout({ children }: { children: ReactNode }) {
       router.replace("/painel/pdv");
     } else if (role === "entregador" && !ENTREGADOR_ALLOWED_PATHS.has(pathname)) {
       router.replace("/painel/entregas");
+    } else if (role === "completo" && isHub && HUB_HIDDEN_PATHS.has(pathname)) {
+      router.replace("/painel");
     }
-  }, [status, role, pathname, router]);
+  }, [status, role, isHub, pathname, router]);
 
   useEffect(() => {
     if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
@@ -297,21 +320,21 @@ export default function PainelLayout({ children }: { children: ReactNode }) {
 
   if (status === "loading") {
     return (
-      <div className="flex flex-1 items-center justify-center bg-slate-50 dark:bg-slate-950">
-        <p className="text-sm text-slate-500 dark:text-slate-400">Carregando…</p>
+      <div className="flex flex-1 items-center justify-center bg-black">
+        <p className="text-sm text-white/40">Carregando…</p>
       </div>
     );
   }
 
   if (status === "sem-loja") {
     return (
-      <div className="flex flex-1 flex-col items-center justify-center gap-3 bg-slate-50 px-6 text-center dark:bg-slate-950">
-        <p className="text-sm text-slate-600 dark:text-slate-400">
+      <div className="flex flex-1 flex-col items-center justify-center gap-3 bg-black px-6 text-center">
+        <p className="text-sm text-white/50">
           Não encontramos uma loja associada a essa conta.
         </p>
         <button
           onClick={handleSignOut}
-          className="rounded-lg bg-blue-900 px-4 py-2 text-sm font-semibold text-amber-300 dark:bg-blue-800"
+          className="rounded-lg bg-[#F0BB5E] px-4 py-2 text-sm font-semibold text-black"
         >
           Sair
         </button>
@@ -323,15 +346,15 @@ export default function PainelLayout({ children }: { children: ReactNode }) {
 
   if (isPdv) {
     return (
-      <div className="flex flex-1 flex-col bg-slate-50 dark:bg-slate-950">
-        <div className="flex items-center justify-between border-b border-slate-200 bg-white px-4 py-2 dark:border-slate-800 dark:bg-slate-900">
+      <div className="flex flex-1 flex-col bg-black">
+        <div className="flex items-center justify-between border-b border-white/[0.08] bg-black px-4 py-2">
           <a
             href={role === "caixa" ? "/painel/caixa" : "/painel"}
-            className="text-sm font-medium text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
+            className="text-sm font-medium text-white/50 hover:text-white/80"
           >
             {role === "caixa" ? "Abrir/fechar caixa" : "← Voltar ao painel"}
           </a>
-          <p className="truncate text-sm font-semibold text-slate-900 dark:text-slate-50">{store!.name}</p>
+          <p className="truncate text-sm font-semibold text-white">{store!.name}</p>
         </div>
         <main className="flex-1 px-4 py-4 md:px-6 md:py-6">
           <StoreContext.Provider value={store}>{children}</StoreContext.Provider>
@@ -342,11 +365,11 @@ export default function PainelLayout({ children }: { children: ReactNode }) {
               <a
                 key={n.id}
                 href="/painel/pedidos"
-                className="flex items-start justify-between gap-2 rounded-xl border border-blue-900 bg-white p-3 shadow-lg dark:border-blue-700 dark:bg-slate-900"
+                className="flex items-start justify-between gap-2 rounded-xl border border-[#F0BB5E]/30 bg-zinc-900/95 p-3 shadow-lg backdrop-blur"
               >
                 <div className="min-w-0">
-                  <p className="text-sm font-semibold text-slate-900 dark:text-slate-50">🛎️ Novo pedido!</p>
-                  <p className="truncate text-sm text-slate-600 dark:text-slate-400">
+                  <p className="text-sm font-semibold text-white">🛎️ Novo pedido!</p>
+                  <p className="truncate text-sm text-white/60">
                     {n.customerName} · {formatCurrency(n.total)}
                   </p>
                 </div>
@@ -355,7 +378,7 @@ export default function PainelLayout({ children }: { children: ReactNode }) {
                     e.preventDefault();
                     dismissNotification(n.id);
                   }}
-                  className="shrink-0 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
+                  className="shrink-0 text-white/40 hover:text-white/70"
                 >
                   ✕
                 </button>
@@ -371,28 +394,28 @@ export default function PainelLayout({ children }: { children: ReactNode }) {
 
   if (isEntregas) {
     return (
-      <div className="flex flex-1 flex-col bg-slate-50 dark:bg-slate-950">
-        <div className="flex items-center justify-between border-b border-slate-200 bg-white px-4 py-2 dark:border-slate-800 dark:bg-slate-900">
-          <p className="truncate text-sm font-semibold text-slate-900 dark:text-slate-50">{store!.name}</p>
+      <div className="flex flex-1 flex-col bg-black">
+        <div className="flex items-center justify-between border-b border-white/[0.08] bg-black px-4 py-2">
+          <p className="truncate text-sm font-semibold text-white">{store!.name}</p>
           <div className="flex items-center gap-1">
             {pushStatus === "off" && (
               <button
                 onClick={handleEnablePush}
                 disabled={pushLoading}
                 title="Ativar notificação de entrega demorando mesmo com o painel fechado"
-                className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600 disabled:opacity-50 dark:hover:bg-slate-800 dark:hover:text-slate-300"
+                className="rounded-lg p-1.5 text-white/40 hover:bg-white/[0.06] hover:text-white/70 disabled:opacity-50"
               >
                 📲
               </button>
             )}
             {pushStatus === "on" && (
-              <span title="Notificação ativada nesse aparelho" className="rounded-lg p-1.5 text-emerald-500">
+              <span title="Notificação ativada nesse aparelho" className="rounded-lg p-1.5 text-emerald-400">
                 ✅
               </span>
             )}
             <button
               onClick={handleSignOut}
-              className="text-sm font-medium text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"
+              className="text-sm font-medium text-white/50 hover:text-white/80"
             >
               Sair
             </button>
@@ -406,14 +429,14 @@ export default function PainelLayout({ children }: { children: ReactNode }) {
   }
 
   return (
-    <div className="flex flex-1 flex-col bg-slate-50 dark:bg-slate-950 md:flex-row">
-      <aside className="flex shrink-0 flex-col border-b border-slate-200 bg-white px-4 py-4 dark:border-slate-800 dark:bg-slate-900 md:w-56 md:border-b-0 md:border-r md:px-3 md:py-6">
+    <div className="flex flex-1 flex-col bg-black md:flex-row">
+      <aside className="flex shrink-0 flex-col border-b border-white/[0.08] bg-black px-4 py-4 md:w-56 md:border-b-0 md:border-r md:px-3 md:py-6">
         <div className="mb-4 flex items-start justify-between gap-2 px-2">
           <div className="min-w-0">
-            <p className="truncate text-sm font-semibold text-slate-900 dark:text-slate-50">
+            <p className="truncate text-sm font-semibold text-white">
               {store!.name}
             </p>
-            <p className="truncate text-xs text-slate-500 dark:text-slate-400">/{store!.slug}</p>
+            <p className="truncate text-xs text-white/40">/{store!.slug}</p>
           </div>
           <div className="flex shrink-0 items-center gap-1">
             {pushStatus === "off" && (
@@ -421,7 +444,7 @@ export default function PainelLayout({ children }: { children: ReactNode }) {
                 onClick={handleEnablePush}
                 disabled={pushLoading}
                 title="Ativar notificação de pedido novo mesmo com o painel fechado"
-                className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600 disabled:opacity-50 dark:hover:bg-slate-800 dark:hover:text-slate-300"
+                className="rounded-lg p-1.5 text-white/40 hover:bg-white/[0.06] hover:text-white/70 disabled:opacity-50"
               >
                 📲
               </button>
@@ -429,7 +452,7 @@ export default function PainelLayout({ children }: { children: ReactNode }) {
             {pushStatus === "on" && (
               <span
                 title="Notificação de pedido novo ativada nesse aparelho"
-                className="rounded-lg p-1.5 text-emerald-500"
+                className="rounded-lg p-1.5 text-emerald-400"
               >
                 ✅
               </span>
@@ -437,7 +460,7 @@ export default function PainelLayout({ children }: { children: ReactNode }) {
             {pushStatus === "denied" && (
               <span
                 title="Notificação bloqueada nas configurações do navegador — precisa liberar lá pra ativar"
-                className="rounded-lg p-1.5 text-slate-300 dark:text-slate-600"
+                className="rounded-lg p-1.5 text-white/20"
               >
                 🔕
               </span>
@@ -445,7 +468,7 @@ export default function PainelLayout({ children }: { children: ReactNode }) {
             <button
               onClick={toggleSound}
               title={soundMuted ? "Ativar som de pedido novo" : "Silenciar som de pedido novo"}
-              className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-300"
+              className="rounded-lg p-1.5 text-white/40 hover:bg-white/[0.06] hover:text-white/70"
             >
               {soundMuted ? "🔕" : "🔔"}
             </button>
@@ -457,7 +480,7 @@ export default function PainelLayout({ children }: { children: ReactNode }) {
             : role === "entregador"
               ? NAV_ITEMS.filter((item) => ENTREGADOR_ALLOWED_PATHS.has(item.href))
               : isHub
-                ? NAV_ITEMS
+                ? NAV_ITEMS.filter((item) => !HUB_HIDDEN_PATHS.has(item.href))
                 : NAV_ITEMS.filter((item) => item.href !== "/painel/afiliados")
           ).map((item) => {
             const isActive = pathname === item.href;
@@ -467,8 +490,8 @@ export default function PainelLayout({ children }: { children: ReactNode }) {
                 href={item.href}
                 className={`whitespace-nowrap rounded-lg px-3 py-2 text-sm font-medium ${
                   isActive
-                    ? "bg-blue-900 text-amber-300 dark:bg-blue-800"
-                    : "text-slate-700 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
+                    ? "bg-[#F0BB5E]/15 text-[#F0BB5E] border border-[#F0BB5E]/30"
+                    : "text-white/60 hover:bg-white/[0.06] hover:text-white/90 border border-transparent"
                 }`}
               >
                 {item.label}
@@ -483,12 +506,12 @@ export default function PainelLayout({ children }: { children: ReactNode }) {
         </nav>
         <button
           onClick={handleSignOut}
-          className="mt-auto hidden rounded-lg px-3 py-2 text-left text-sm font-medium text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800 md:block"
+          className="mt-auto hidden rounded-lg px-3 py-2 text-left text-sm font-medium text-white/40 hover:bg-white/[0.06] hover:text-white/70 md:block"
         >
           Sair
         </button>
       </aside>
-      <main className="flex-1 px-4 py-6 md:px-8 md:py-8">
+      <main className="flex-1 bg-black px-4 py-6 md:px-8 md:py-8">
         <StoreContext.Provider value={store}>{children}</StoreContext.Provider>
       </main>
 
@@ -498,13 +521,13 @@ export default function PainelLayout({ children }: { children: ReactNode }) {
             <a
               key={n.id}
               href="/painel/pedidos"
-              className="flex items-start justify-between gap-2 rounded-xl border border-blue-900 bg-white p-3 shadow-lg dark:border-blue-700 dark:bg-slate-900"
+              className="flex items-start justify-between gap-2 rounded-xl border border-[#F0BB5E]/30 bg-zinc-900/95 p-3 shadow-lg backdrop-blur"
             >
               <div className="min-w-0">
-                <p className="text-sm font-semibold text-slate-900 dark:text-slate-50">
+                <p className="text-sm font-semibold text-white">
                   🛎️ Novo pedido!
                 </p>
-                <p className="truncate text-sm text-slate-600 dark:text-slate-400">
+                <p className="truncate text-sm text-white/60">
                   {n.customerName} · {formatCurrency(n.total)}
                 </p>
               </div>
@@ -513,7 +536,7 @@ export default function PainelLayout({ children }: { children: ReactNode }) {
                   e.preventDefault();
                   dismissNotification(n.id);
                 }}
-                className="shrink-0 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
+                className="shrink-0 text-white/40 hover:text-white/70"
               >
                 ✕
               </button>
