@@ -54,6 +54,31 @@ export async function POST(request: Request) {
   }
 
   const refUrls = (reference_image_urls ?? []).slice(0, 6);
+  const kind = refUrls.length > 0 ? "editada" : "gerada";
+
+  // Só lojas afiliadas de um Hub têm cota — loja comum (ou o próprio Hub)
+  // gera sem limite. Checa e já registra o uso numa função só (evita corrida
+  // entre duas gerações simultâneas passando as duas pela checagem).
+  const { data: partnershipRows } = await scoped
+    .from("affiliate_partnerships")
+    .select("id")
+    .eq("module_store_id", store_id)
+    .eq("active", true)
+    .limit(1);
+  const partnershipId = partnershipRows?.[0]?.id as string | undefined;
+
+  if (partnershipId) {
+    const { error: quotaError } = await scoped.rpc("affiliate_generate_ai_image", {
+      p_partnership_id: partnershipId,
+      p_kind: kind,
+    });
+    if (quotaError) {
+      return Response.json(
+        { error: "Cota de imagens do mês esgotada. Fale com o Hub pra liberar mais." },
+        { status: 402 },
+      );
+    }
+  }
 
   let genRes: Response;
   if (refUrls.length > 0) {
