@@ -16,7 +16,7 @@ import type {
 } from "@/lib/affiliate-types";
 
 type StoreLite = { id: string; name: string; slug: string };
-type View = "list" | "mercado" | "detail" | "precos" | "novo";
+type View = "list" | "mercado" | "detail" | "precos" | "novo" | "convite" | "convite-pronto";
 
 const PLAN_LABEL: Record<PlanType, string> = { padrao: "Padrão", personalizado: "Personalizado" };
 const BILLING_LABEL: Record<BillingCycle, string> = {
@@ -103,6 +103,23 @@ export default function Afiliados() {
   });
   const [savingNovo, setSavingNovo] = useState(false);
   const [novoError, setNovoError] = useState<string | null>(null);
+
+  const [conviteForm, setConviteForm] = useState({
+    suggested_store_name: "",
+    whatsapp: "",
+    category: "",
+    owner_name: "",
+    tax_id: "",
+    address: "",
+    commission_percent: 12,
+    payout_method: "manual" as PayoutMethod,
+    payout_speed: "72h" as PayoutSpeed,
+    plan_type: "padrao" as PlanType,
+    billing_cycle: "mensal" as BillingCycle,
+  });
+  const [savingConvite, setSavingConvite] = useState(false);
+  const [conviteError, setConviteError] = useState<string | null>(null);
+  const [conviteLink, setConviteLink] = useState<string | null>(null);
 
   async function loadAll() {
     setLoading(true);
@@ -434,6 +451,62 @@ export default function Afiliados() {
     setView("list");
   }
 
+  async function submitConvite(e: FormEvent) {
+    e.preventDefault();
+    setConviteError(null);
+    if (
+      !conviteForm.suggested_store_name.trim() ||
+      !conviteForm.whatsapp.trim() ||
+      !conviteForm.category.trim() ||
+      !conviteForm.owner_name.trim() ||
+      !conviteForm.tax_id.trim() ||
+      !conviteForm.address.trim()
+    ) {
+      setConviteError("Preencha nome da loja, WhatsApp, categoria, responsável, CPF/CNPJ e endereço.");
+      return;
+    }
+    setSavingConvite(true);
+    const priceTable = {
+      mensal: settings?.price_monthly ?? DEFAULT_PRICES.mensal,
+      trimestral: settings?.price_quarterly ?? DEFAULT_PRICES.trimestral,
+      semestral: settings?.price_semiannual ?? DEFAULT_PRICES.semestral,
+      anual: settings?.price_annual ?? DEFAULT_PRICES.anual,
+    };
+    const { data, error: insErr } = await getSupabase()
+      .from("affiliate_invites")
+      .insert({
+        hub_store_id: store.id,
+        suggested_store_name: conviteForm.suggested_store_name.trim(),
+        whatsapp: conviteForm.whatsapp.trim(),
+        category: conviteForm.category.trim(),
+        owner_name: conviteForm.owner_name.trim(),
+        tax_id: conviteForm.tax_id.trim(),
+        address: conviteForm.address.trim(),
+        commission_percent: conviteForm.commission_percent,
+        payout_method: conviteForm.payout_method,
+        payout_speed: conviteForm.payout_method === "manual" ? conviteForm.payout_speed : null,
+        plan_type: conviteForm.plan_type,
+        billing_cycle: conviteForm.billing_cycle,
+        subscription_price: conviteForm.plan_type === "padrao" ? priceTable[conviteForm.billing_cycle] : null,
+      })
+      .select("id")
+      .single();
+    setSavingConvite(false);
+    if (insErr || !data) {
+      setConviteError("Não deu pra criar o convite: " + insErr?.message);
+      return;
+    }
+    const origin = typeof window !== "undefined" ? window.location.origin : "";
+    setConviteLink(`${origin}/afiliado/aceitar/${data.id}`);
+    setView("convite-pronto");
+  }
+
+  function whatsappConviteAfiliadoUrl(link: string) {
+    const digits = conviteForm.whatsapp.replace(/\D/g, "");
+    const texto = `Oi, ${conviteForm.owner_name}! Você foi convidado(a) pra ser afiliado(a) da nossa plataforma. Abre esse link pra criar sua loja e já começar a vender:\n${link}`;
+    return `https://wa.me/55${digits}?text=${encodeURIComponent(texto)}`;
+  }
+
   if (loading) {
     return (
       <div>
@@ -471,6 +544,12 @@ export default function Afiliados() {
                 className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold text-blue-900 dark:border-slate-700 dark:text-blue-300"
               >
                 ⚙ Preços
+              </button>
+              <button
+                onClick={() => setView("convite")}
+                className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold text-blue-900 dark:border-slate-700 dark:text-blue-300"
+              >
+                🔗 Convidar por link
               </button>
               <button
                 onClick={() => setView("novo")}
@@ -1191,6 +1270,204 @@ export default function Afiliados() {
               </button>
             </form>
           )}
+        </>
+      )}
+
+      {view === "convite" && (
+        <>
+          <button
+            onClick={() => {
+              setView("list");
+              setConviteError(null);
+            }}
+            className="mb-3 text-sm font-medium text-slate-500 hover:text-slate-700 dark:text-slate-400"
+          >
+            ← Voltar pra Afiliados
+          </button>
+          <h2 className="text-lg font-bold text-slate-900 dark:text-slate-50">Convidar por link</h2>
+          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+            Defina os termos da parceria agora — a pessoa só confirma e cria a conta dela, sem precisar se cadastrar
+            antes.
+          </p>
+
+          <form onSubmit={submitConvite} className="mt-3 flex flex-col gap-3">
+            <label className="text-sm">
+              <span className="mb-1 block text-slate-600 dark:text-slate-400">Nome da loja dele(a)</span>
+              <input
+                value={conviteForm.suggested_store_name}
+                onChange={(e) => setConviteForm({ ...conviteForm, suggested_store_name: e.target.value })}
+                placeholder="Ex: Padaria do João"
+                className="w-full rounded-lg border border-slate-300 px-3 py-2 dark:border-slate-700 dark:bg-slate-800"
+              />
+            </label>
+            <label className="text-sm">
+              <span className="mb-1 block text-slate-600 dark:text-slate-400">WhatsApp dele(a)</span>
+              <input
+                value={conviteForm.whatsapp}
+                onChange={(e) => setConviteForm({ ...conviteForm, whatsapp: e.target.value })}
+                placeholder="11999998888"
+                className="w-full rounded-lg border border-slate-300 px-3 py-2 dark:border-slate-700 dark:bg-slate-800"
+              />
+            </label>
+            <label className="text-sm">
+              <span className="mb-1 block text-slate-600 dark:text-slate-400">Categoria (exclusiva no seu hub)</span>
+              <input
+                value={conviteForm.category}
+                onChange={(e) => setConviteForm({ ...conviteForm, category: e.target.value })}
+                placeholder="Ex: Padaria, Açougue, Hortifruti…"
+                className="w-full rounded-lg border border-slate-300 px-3 py-2 dark:border-slate-700 dark:bg-slate-800"
+              />
+            </label>
+            <label className="text-sm">
+              <span className="mb-1 block text-slate-600 dark:text-slate-400">Nome do responsável</span>
+              <input
+                value={conviteForm.owner_name}
+                onChange={(e) => setConviteForm({ ...conviteForm, owner_name: e.target.value })}
+                className="w-full rounded-lg border border-slate-300 px-3 py-2 dark:border-slate-700 dark:bg-slate-800"
+              />
+            </label>
+            <label className="text-sm">
+              <span className="mb-1 block text-slate-600 dark:text-slate-400">CPF ou CNPJ</span>
+              <input
+                value={conviteForm.tax_id}
+                onChange={(e) => setConviteForm({ ...conviteForm, tax_id: e.target.value })}
+                className="w-full rounded-lg border border-slate-300 px-3 py-2 dark:border-slate-700 dark:bg-slate-800"
+              />
+            </label>
+            <label className="text-sm">
+              <span className="mb-1 block text-slate-600 dark:text-slate-400">Endereço do ponto de retirada</span>
+              <input
+                value={conviteForm.address}
+                onChange={(e) => setConviteForm({ ...conviteForm, address: e.target.value })}
+                className="w-full rounded-lg border border-slate-300 px-3 py-2 dark:border-slate-700 dark:bg-slate-800"
+              />
+            </label>
+
+            <div className="rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
+              {fieldRow(
+                "Comissão",
+                <div className="flex items-center gap-1">
+                  <input
+                    type="number"
+                    className={inputClass() + " w-20"}
+                    value={conviteForm.commission_percent}
+                    onChange={(e) => setConviteForm({ ...conviteForm, commission_percent: Number(e.target.value) })}
+                  />
+                  <span className="text-sm text-slate-500">%</span>
+                </div>,
+              )}
+              {fieldRow(
+                "Plano",
+                <select
+                  value={conviteForm.plan_type}
+                  onChange={(e) => setConviteForm({ ...conviteForm, plan_type: e.target.value as PlanType })}
+                  className={inputClass()}
+                >
+                  <option value="padrao">Padrão</option>
+                  <option value="personalizado">Personalizado</option>
+                </select>,
+              )}
+              {fieldRow(
+                "Ciclo",
+                <select
+                  value={conviteForm.billing_cycle}
+                  onChange={(e) => setConviteForm({ ...conviteForm, billing_cycle: e.target.value as BillingCycle })}
+                  className={inputClass()}
+                >
+                  {(Object.keys(BILLING_LABEL) as BillingCycle[]).map((c) => (
+                    <option key={c} value={c}>
+                      {BILLING_LABEL[c]}
+                    </option>
+                  ))}
+                </select>,
+              )}
+              {fieldRow(
+                "Recebimento",
+                <select
+                  value={conviteForm.payout_method}
+                  onChange={(e) => setConviteForm({ ...conviteForm, payout_method: e.target.value as PayoutMethod })}
+                  className={inputClass()}
+                >
+                  <option value="manual">Repasse manual</option>
+                  <option value="split_automatico">Split automático</option>
+                </select>,
+              )}
+              {conviteForm.payout_method === "manual" &&
+                fieldRow(
+                  "Prazo",
+                  <select
+                    value={conviteForm.payout_speed}
+                    onChange={(e) => setConviteForm({ ...conviteForm, payout_speed: e.target.value as PayoutSpeed })}
+                    className={inputClass()}
+                  >
+                    <option value="48h">48h</option>
+                    <option value="72h">72h</option>
+                    <option value="semanal">Semanal</option>
+                  </select>,
+                )}
+            </div>
+
+            {conviteError && <p className="text-sm text-red-600 dark:text-red-400">{conviteError}</p>}
+
+            <button
+              type="submit"
+              disabled={savingConvite}
+              className="rounded-lg bg-blue-900 px-4 py-2.5 text-sm font-semibold text-amber-300 disabled:opacity-60 dark:bg-blue-800"
+            >
+              {savingConvite ? "Gerando link…" : "Gerar link de convite"}
+            </button>
+          </form>
+        </>
+      )}
+
+      {view === "convite-pronto" && conviteLink && (
+        <>
+          <h2 className="text-lg font-bold text-slate-900 dark:text-slate-50">Convite pronto!</h2>
+          <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
+            Manda esse link pra {conviteForm.owner_name} — quando ela(e) aceitar, a loja já entra ligada
+            automaticamente, sem você precisar fazer mais nada.
+          </p>
+          <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600 dark:border-slate-800 dark:bg-slate-800 dark:text-slate-300">
+            {conviteLink}
+          </div>
+          <div className="mt-3 flex gap-2">
+            <a
+              href={whatsappConviteAfiliadoUrl(conviteLink)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="rounded-lg bg-green-600 px-4 py-2.5 text-sm font-semibold text-white"
+            >
+              Mandar pelo WhatsApp
+            </a>
+            <button
+              onClick={() => navigator.clipboard.writeText(conviteLink)}
+              className="rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-600 dark:border-slate-700 dark:text-slate-300"
+            >
+              Copiar link
+            </button>
+          </div>
+          <button
+            onClick={() => {
+              setConviteLink(null);
+              setConviteForm({
+                suggested_store_name: "",
+                whatsapp: "",
+                category: "",
+                owner_name: "",
+                tax_id: "",
+                address: "",
+                commission_percent: settings?.suggested_commission_percent ?? 12,
+                payout_method: "manual",
+                payout_speed: "72h",
+                plan_type: "padrao",
+                billing_cycle: "mensal",
+              });
+              setView("list");
+            }}
+            className="mt-4 text-sm font-medium text-slate-500 hover:text-slate-700 dark:text-slate-400"
+          >
+            ← Voltar pra Afiliados
+          </button>
         </>
       )}
     </div>
