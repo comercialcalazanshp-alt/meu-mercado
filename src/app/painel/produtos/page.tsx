@@ -22,6 +22,7 @@ type Product = {
   image_url: string | null;
   stock: number;
   active: boolean;
+  blocked_by_hub: boolean;
   promo_buy_qty: number | null;
   promo_pay_qty: number | null;
   barcode: string | null;
@@ -459,7 +460,7 @@ export default function Produtos() {
     const { data } = await getSupabase()
       .from("products")
       .select(
-        "id, name, category, price, cost_price, image_url, stock, active, promo_buy_qty, promo_pay_qty, barcode, price_fiado, price_wholesale, wholesale_min_qty, stock_alert_threshold, expiry_date, supplier, on_offer, offer_price, offer_ends_at, sold_by_weight, created_at",
+        "id, name, category, price, cost_price, image_url, stock, active, blocked_by_hub, promo_buy_qty, promo_pay_qty, barcode, price_fiado, price_wholesale, wholesale_min_qty, stock_alert_threshold, expiry_date, supplier, on_offer, offer_price, offer_ends_at, sold_by_weight, created_at",
       )
       .eq("store_id", store.id)
       .order("created_at", { ascending: false });
@@ -1804,6 +1805,14 @@ export default function Produtos() {
                     >
                       {p.active ? "Ativo" : "Inativo"}
                     </button>
+                    {p.blocked_by_hub && (
+                      <p
+                        className="mt-1 text-[10px] font-semibold text-red-600 dark:text-red-400"
+                        title="A plataforma bloqueou esse produto — mesmo ativado aqui, ele não aparece no site até o Hub liberar."
+                      >
+                        🚫 bloqueado pelo Hub
+                      </p>
+                    )}
                   </td>
                   <td className="px-3 py-2 text-right whitespace-nowrap">
                     <button

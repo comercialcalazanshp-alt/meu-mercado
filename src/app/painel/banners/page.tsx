@@ -14,6 +14,7 @@ type Banner = {
   start_at: string | null;
   end_at: string | null;
   active: boolean;
+  blocked_by_hub: boolean;
   focal_x: number;
   focal_y: number;
   text_style: BannerTextStyle | null;
@@ -37,6 +38,9 @@ function toDateInputValue(iso: string | null) {
 
 function statusLabel(banner: Banner) {
   const now = new Date();
+  if (banner.blocked_by_hub) {
+    return { text: "🚫 Bloqueado pelo Hub", style: "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400" };
+  }
   if (!banner.active) return { text: "Inativo", style: "bg-slate-200 text-slate-600 dark:bg-slate-700 dark:text-slate-300" };
   if (banner.start_at && new Date(banner.start_at) > now) {
     return { text: "Agendado", style: "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400" };
@@ -77,7 +81,7 @@ export default function Banners() {
     const [{ data }, { data: productsData }] = await Promise.all([
       getSupabase()
         .from("banners")
-        .select("id, title, image_url, link_url, start_at, end_at, active, focal_x, focal_y, text_style, overlay_text")
+        .select("id, title, image_url, link_url, start_at, end_at, active, blocked_by_hub, focal_x, focal_y, text_style, overlay_text")
         .eq("store_id", store.id)
         .order("created_at", { ascending: false }),
       getSupabase()

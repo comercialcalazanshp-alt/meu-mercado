@@ -13,6 +13,7 @@ type ModProduct = {
   price: number;
   image_url: string | null;
   active: boolean;
+  blocked_by_hub: boolean;
   created_at: string;
 };
 
@@ -24,6 +25,7 @@ type ModBanner = {
   image_url: string;
   link_url: string | null;
   active: boolean;
+  blocked_by_hub: boolean;
   created_at: string;
 };
 
@@ -38,7 +40,7 @@ export default function Moderacao() {
   const [banners, setBanners] = useState<ModBanner[]>([]);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
-  const [showInactive, setShowInactive] = useState(false);
+  const [showBlocked, setShowBlocked] = useState(true);
 
   async function load() {
     const supabase = getSupabase();
@@ -56,12 +58,16 @@ export default function Moderacao() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [store.id]);
 
-  async function toggle(kind: "produto" | "banner", id: string, nextActive: boolean) {
-    if (!nextActive) {
+  // p_active aqui significa "deve ficar liberado" (true) ou "bloqueado"
+  // (false) — a função no banco traduz isso pra blocked_by_hub, que é uma
+  // trava separada do "active" que o próprio afiliado controla. Assim
+  // nenhum dos dois lados desfaz a decisão do outro sozinho.
+  async function toggle(kind: "produto" | "banner", id: string, shouldBeAllowed: boolean) {
+    if (!shouldBeAllowed) {
       const ok = confirm(
         kind === "produto"
-          ? "Bloquear esse produto? Ele some da vitrine do afiliado até você reativar."
-          : "Bloquear esse banner? Ele some do site até você reativar.",
+          ? "Bloquear esse produto? Ele some da vitrine na hora, mesmo que o afiliado tente reativar do lado dele."
+          : "Bloquear esse banner? Ele some do site na hora, mesmo que o afiliado tente reativar do lado dele.",
       );
       if (!ok) return;
     }
@@ -70,7 +76,7 @@ export default function Moderacao() {
       p_hub_store_id: store.id,
       p_content_type: kind,
       p_record_id: id,
-      p_active: nextActive,
+      p_active: shouldBeAllowed,
     });
     setBusyId(null);
     if (error) {
@@ -78,21 +84,22 @@ export default function Moderacao() {
       return;
     }
     if (kind === "produto") {
-      setProducts((prev) => prev.map((p) => (p.id === id ? { ...p, active: nextActive } : p)));
+      setProducts((prev) => prev.map((p) => (p.id === id ? { ...p, blocked_by_hub: !shouldBeAllowed } : p)));
     } else {
-      setBanners((prev) => prev.map((b) => (b.id === id ? { ...b, active: nextActive } : b)));
+      setBanners((prev) => prev.map((b) => (b.id === id ? { ...b, blocked_by_hub: !shouldBeAllowed } : b)));
     }
   }
 
-  const visibleProducts = products.filter((p) => showInactive || p.active);
-  const visibleBanners = banners.filter((b) => showInactive || b.active);
-  const blockedCount = products.filter((p) => !p.active).length + banners.filter((b) => !b.active).length;
+  const visibleProducts = products.filter((p) => showBlocked || !p.blocked_by_hub);
+  const visibleBanners = banners.filter((b) => showBlocked || !b.blocked_by_hub);
+  const blockedCount = products.filter((p) => p.blocked_by_hub).length + banners.filter((b) => b.blocked_by_hub).length;
 
   return (
     <div className="max-w-2xl">
       <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-50">Moderação</h1>
       <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-        O que os afiliados publicam no site — bloqueie o que não fizer sentido com a política da plataforma.
+        O que os afiliados publicam no site — bloqueie o que não fizer sentido com a política da plataforma. É uma
+        trava sua, separada: o afiliado não consegue desfazer bloqueando/reativando do lado dele.
       </p>
 
       <div className="mt-4 flex items-center justify-between gap-2">
@@ -115,13 +122,13 @@ export default function Moderacao() {
           </button>
         </div>
         <label className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
-          <input type="checkbox" checked={showInactive} onChange={(e) => setShowInactive(e.target.checked)} />
+          <input type="checkbox" checked={showBlocked} onChange={(e) => setShowBlocked(e.target.checked)} />
           mostrar bloqueados
         </label>
       </div>
 
       {blockedCount > 0 && (
-        <p className="mt-2 text-xs font-semibold text-red-600 dark:text-red-400">{blockedCount} item(ns) bloqueado(s) hoje</p>
+        <p className="mt-2 text-xs font-semibold text-red-600 dark:text-red-400">{blockedCount} item(ns) bloqueado(s) por você</p>
       )}
 
       {loading && <p className="mt-4 text-sm text-slate-500">Carregando…</p>}
@@ -133,7 +140,9 @@ export default function Moderacao() {
             <div
               key={p.id}
               className={`flex items-center gap-3 rounded-xl border p-3 ${
-                p.active ? "border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900" : "border-red-200 bg-red-50 dark:border-red-900/40 dark:bg-red-900/10"
+                p.blocked_by_hub
+                  ? "border-red-200 bg-red-50 dark:border-red-900/40 dark:bg-red-900/10"
+                  : "border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900"
               }`}
             >
               {p.image_url ? (
@@ -146,19 +155,20 @@ export default function Moderacao() {
                 <p className="truncate text-sm font-semibold text-slate-900 dark:text-slate-50">{p.name}</p>
                 <p className="text-xs text-slate-500 dark:text-slate-400">
                   {p.store_name} · {formatCurrency(p.price)}
-                  {!p.active && " · bloqueado"}
+                  {p.blocked_by_hub && " · bloqueado por você"}
+                  {!p.blocked_by_hub && !p.active && " · pausado pelo afiliado"}
                 </p>
               </div>
               <button
-                onClick={() => toggle("produto", p.id, !p.active)}
+                onClick={() => toggle("produto", p.id, p.blocked_by_hub)}
                 disabled={busyId === p.id}
                 className={`shrink-0 rounded-lg px-3 py-1.5 text-xs font-semibold disabled:opacity-50 ${
-                  p.active
-                    ? "border border-red-300 text-red-700 dark:border-red-800 dark:text-red-400"
-                    : "bg-blue-900 text-amber-300 dark:bg-blue-800"
+                  p.blocked_by_hub
+                    ? "bg-blue-900 text-amber-300 dark:bg-blue-800"
+                    : "border border-red-300 text-red-700 dark:border-red-800 dark:text-red-400"
                 }`}
               >
-                {busyId === p.id ? "…" : p.active ? "Bloquear" : "Reativar"}
+                {busyId === p.id ? "…" : p.blocked_by_hub ? "Liberar" : "Bloquear"}
               </button>
             </div>
           ))}
@@ -172,7 +182,9 @@ export default function Moderacao() {
             <div
               key={b.id}
               className={`flex items-center gap-3 rounded-xl border p-3 ${
-                b.active ? "border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900" : "border-red-200 bg-red-50 dark:border-red-900/40 dark:bg-red-900/10"
+                b.blocked_by_hub
+                  ? "border-red-200 bg-red-50 dark:border-red-900/40 dark:bg-red-900/10"
+                  : "border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900"
               }`}
             >
               {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -181,19 +193,20 @@ export default function Moderacao() {
                 <p className="truncate text-sm font-semibold text-slate-900 dark:text-slate-50">{b.title}</p>
                 <p className="text-xs text-slate-500 dark:text-slate-400">
                   {b.store_name}
-                  {!b.active && " · bloqueado"}
+                  {b.blocked_by_hub && " · bloqueado por você"}
+                  {!b.blocked_by_hub && !b.active && " · pausado pelo afiliado"}
                 </p>
               </div>
               <button
-                onClick={() => toggle("banner", b.id, !b.active)}
+                onClick={() => toggle("banner", b.id, b.blocked_by_hub)}
                 disabled={busyId === b.id}
                 className={`shrink-0 rounded-lg px-3 py-1.5 text-xs font-semibold disabled:opacity-50 ${
-                  b.active
-                    ? "border border-red-300 text-red-700 dark:border-red-800 dark:text-red-400"
-                    : "bg-blue-900 text-amber-300 dark:bg-blue-800"
+                  b.blocked_by_hub
+                    ? "bg-blue-900 text-amber-300 dark:bg-blue-800"
+                    : "border border-red-300 text-red-700 dark:border-red-800 dark:text-red-400"
                 }`}
               >
-                {busyId === b.id ? "…" : b.active ? "Bloquear" : "Reativar"}
+                {busyId === b.id ? "…" : b.blocked_by_hub ? "Liberar" : "Bloquear"}
               </button>
             </div>
           ))}
