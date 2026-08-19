@@ -95,6 +95,7 @@ export async function POST(request: Request) {
   const pagbankData = await pagbankRes.json();
 
   if (!pagbankRes.ok) {
+    console.error("PagBank create-subscription-pix failed:", pagbankRes.status, JSON.stringify(pagbankData));
     return Response.json({ error: "Não deu pra gerar o Pix", details: pagbankData }, { status: 502 });
   }
 
