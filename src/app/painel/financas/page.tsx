@@ -23,6 +23,8 @@ function hubCommission(amount: number, pct: number) {
 
 const PAYOUT_LABEL: Record<string, string> = { manual: "Manual", split_automatico: "Split automático" };
 
+type Expense = { id: string; description: string; category: string; amount: number; expense_date: string };
+
 type ExtratoRow = {
   id: string;
   kind: "venda" | "repasse" | "estorno" | "avulsa";
@@ -37,19 +39,30 @@ export default function Financas() {
   const [partnerships, setPartnerships] = useState<AffiliatePartnership[]>([]);
   const [settlements, setSettlements] = useState<AffiliateSettlementTransaction[]>([]);
   const [purchases, setPurchases] = useState<AffiliateAiPurchase[]>([]);
+  const [expenses, setExpenses] = useState<Expense[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
     async function load() {
       const supabase = getSupabase();
-      const { data: partnershipRows } = await supabase
-        .from("affiliate_partnerships")
-        .select("*")
-        .eq("hub_store_id", store.id);
+      // Despesas são os custos da PRÓPRIA Hub (API de IA, taxa do PagBank,
+      // hospedagem etc.) — cadastradas aqui igual qualquer loja, mas sem
+      // relação com afiliado nenhum, por isso busca em paralelo com
+      // partnerships e não depende de ter afiliado cadastrado.
+      const [partnershipsRes, expensesRes] = await Promise.all([
+        supabase.from("affiliate_partnerships").select("*").eq("hub_store_id", store.id),
+        supabase
+          .from("expenses")
+          .select("id, description, category, amount, expense_date")
+          .eq("store_id", store.id)
+          .order("expense_date", { ascending: false })
+          .limit(60),
+      ]);
       if (cancelled) return;
-      const list = (partnershipRows as AffiliatePartnership[]) ?? [];
+      const list = (partnershipsRes.data as AffiliatePartnership[]) ?? [];
       setPartnerships(list);
+      setExpenses((expensesRes.data as Expense[]) ?? []);
 
       const ids = list.map((p) => p.id);
       if (ids.length === 0) {
@@ -106,6 +119,13 @@ export default function Financas() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [purchases],
   );
+
+  const expensesThisMonth = useMemo(
+    () => expenses.filter((e) => e.expense_date >= startOfMonth.toISOString().slice(0, 10)).reduce((s, e) => s + e.amount, 0),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [expenses],
+  );
+  const lucroLiquido = commissionThisMonth + extraSalesThisMonth - expensesThisMonth;
 
   const mrr = useMemo(() => activePartnerships.reduce((s, p) => s + (p.subscription_price ?? 0), 0), [activePartnerships]);
   const overdue = useMemo(
@@ -206,24 +226,49 @@ export default function Financas() {
           </div>
         </div>
 
-        <div className="mb-2.5 grid grid-cols-2 gap-2.5 sm:grid-cols-4">
+        <div className="mb-2.5 rounded-2xl border border-white/[0.09] bg-white/[0.035] p-5 backdrop-blur-xl">
+          <p className="text-[10.5px] font-bold uppercase tracking-wide text-white/30">Lucro líquido do mês</p>
+          <p className={`mt-1.5 text-[30px] font-black tabular-nums ${lucroLiquido >= 0 ? "text-[#34E88C]" : "text-[#FF5C68]"}`}>
+            {formatCurrency(lucroLiquido)}
+          </p>
+          <p className="mt-0.5 text-[11.5px] text-white/30">
+            {formatCurrency(commissionThisMonth)} comissão + {formatCurrency(extraSalesThisMonth)} avulsa −{" "}
+            {formatCurrency(expensesThisMonth)} despesas
+          </p>
+        </div>
+
+        <div className="mb-2.5 grid grid-cols-2 gap-2.5 sm:grid-cols-5">
           <div className="rounded-2xl border border-white/[0.09] bg-white/[0.035] p-4 backdrop-blur-xl">
             <p className="text-[10.5px] font-bold uppercase tracking-wide text-white/30">Comissão do mês</p>
-            <p className="mt-1.5 text-[19px] font-extrabold tabular-nums text-[#5CACFF]">{formatCurrency(commissionThisMonth)}</p>
+            <p className="mt-1.5 text-[17px] font-extrabold tabular-nums text-[#5CACFF]">{formatCurrency(commissionThisMonth)}</p>
           </div>
           <div className="rounded-2xl border border-white/[0.09] bg-white/[0.035] p-4 backdrop-blur-xl">
-            <p className="text-[10.5px] font-bold uppercase tracking-wide text-white/30">Vendas avulsas do mês</p>
-            <p className="mt-1.5 text-[19px] font-extrabold tabular-nums text-[#5CACFF]">{formatCurrency(extraSalesThisMonth)}</p>
+            <p className="text-[10.5px] font-bold uppercase tracking-wide text-white/30">Vendas avulsas</p>
+            <p className="mt-1.5 text-[17px] font-extrabold tabular-nums text-[#5CACFF]">{formatCurrency(extraSalesThisMonth)}</p>
           </div>
           <div className="rounded-2xl border border-white/[0.09] bg-white/[0.035] p-4 backdrop-blur-xl">
-            <p className="text-[10.5px] font-bold uppercase tracking-wide text-white/30">MRR (mensalidades)</p>
-            <p className="mt-1.5 text-[19px] font-extrabold tabular-nums text-[#F5F3EF]">{formatCurrency(mrr)}</p>
+            <p className="text-[10.5px] font-bold uppercase tracking-wide text-white/30">Despesas da Hub</p>
+            <p className="mt-1.5 text-[17px] font-extrabold tabular-nums text-[#FF5C68]">{formatCurrency(expensesThisMonth)}</p>
+          </div>
+          <div className="rounded-2xl border border-white/[0.09] bg-white/[0.035] p-4 backdrop-blur-xl">
+            <p className="text-[10.5px] font-bold uppercase tracking-wide text-white/30">MRR</p>
+            <p className="mt-1.5 text-[17px] font-extrabold tabular-nums text-[#F5F3EF]">{formatCurrency(mrr)}</p>
           </div>
           <div className="rounded-2xl border border-white/[0.09] bg-white/[0.035] p-4 backdrop-blur-xl">
             <p className="text-[10.5px] font-bold uppercase tracking-wide text-white/30">A repassar</p>
-            <p className="mt-1.5 text-[19px] font-extrabold tabular-nums text-[#FF5C68]">{formatCurrency(toRepassar)}</p>
+            <p className="mt-1.5 text-[17px] font-extrabold tabular-nums text-[#FF5C68]">{formatCurrency(toRepassar)}</p>
           </div>
         </div>
+
+        {expenses.length === 0 && (
+          <p className="mb-2.5 text-[11.5px] text-white/30">
+            Nenhuma despesa cadastrada ainda — imagem por IA, taxa do PagBank, hospedagem etc. Cadastre em{" "}
+            <a href="/painel/despesas" className="text-[#5CACFF] underline">
+              Despesas
+            </a>{" "}
+            pra o lucro líquido refletir seus custos reais.
+          </p>
+        )}
 
         {overdue.length > 0 && (
           <div className="mb-2.5 rounded-2xl border border-[#FF5C68]/25 bg-[#FF5C68]/[0.06] p-4">

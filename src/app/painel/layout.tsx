@@ -65,7 +65,6 @@ const HUB_HIDDEN_PATHS = new Set([
   "/painel/cashback",
   "/painel/mensagens",
   "/painel/cartaz",
-  "/painel/despesas",
   "/painel/avaliacoes",
   "/painel/reclamacoes",
   "/painel/bairros",
