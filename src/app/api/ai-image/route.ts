@@ -74,7 +74,7 @@ export async function POST(request: Request) {
     });
     if (quotaError) {
       return Response.json(
-        { error: "Cota de imagens do mês esgotada. Fale com o Hub pra liberar mais." },
+        { error: "Cota de imagens do mês esgotada. Vá em Parceria no menu pra comprar um pacote extra." },
         { status: 402 },
       );
     }

@@ -108,6 +108,7 @@ const NAV_ITEMS = [
   { href: "/painel/trafego", label: "Tráfego" },
   { href: "/painel/cartaz", label: "Cartaz" },
   { href: "/painel/catalogo", label: "Catálogo PDF" },
+  { href: "/painel/parceria", label: "Parceria" },
   { href: "/painel/ajuda", label: "Ajuda" },
   { href: "/painel/equipe", label: "Equipe" },
   { href: "/painel/configuracoes", label: "⚙️ Configurações" },
@@ -124,6 +125,9 @@ export default function PainelLayout({ children }: { children: ReactNode }) {
   // pela primeira vez é feito por trás (setup direto), não por um botão
   // self-service no menu de qualquer loja.
   const [isHub, setIsHub] = useState(false);
+  // Item "Parceria" (pagar mensalidade, comprar pacote de IA) só aparece
+  // pra quem de fato é afiliado ativo de algum Hub.
+  const [isAffiliate, setIsAffiliate] = useState(false);
   const [memberId, setMemberId] = useState<string | null>(null);
   const [notifications, setNotifications] = useState<OrderNotification[]>([]);
   const [soundMuted, setSoundMuted] = useState(false);
@@ -167,6 +171,14 @@ export default function PainelLayout({ children }: { children: ReactNode }) {
         .eq("hub_store_id", storeRow.id)
         .maybeSingle();
       if (active) setIsHub(!!hubRow);
+
+      const { data: affiliateRow } = await supabase
+        .from("affiliate_partnerships")
+        .select("id")
+        .eq("module_store_id", storeRow.id)
+        .eq("active", true)
+        .maybeSingle();
+      if (active) setIsAffiliate(!!affiliateRow);
 
       setStatus("ready");
 
@@ -218,8 +230,10 @@ export default function PainelLayout({ children }: { children: ReactNode }) {
       router.replace("/painel");
     } else if (role === "completo" && !isHub && (pathname === "/painel/financas" || pathname === "/painel/afiliados")) {
       router.replace("/painel");
+    } else if (role === "completo" && !isAffiliate && pathname === "/painel/parceria") {
+      router.replace("/painel");
     }
-  }, [status, role, isHub, pathname, router]);
+  }, [status, role, isHub, isAffiliate, pathname, router]);
 
   useEffect(() => {
     if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
@@ -497,7 +511,9 @@ export default function PainelLayout({ children }: { children: ReactNode }) {
               : isHub
                 ? NAV_ITEMS.filter((item) => !HUB_HIDDEN_PATHS.has(item.href))
                 : NAV_ITEMS.filter((item) => item.href !== "/painel/afiliados" && item.href !== "/painel/financas")
-          ).map((item) => {
+          )
+            .filter((item) => item.href !== "/painel/parceria" || isAffiliate)
+            .map((item) => {
             const isActive = pathname === item.href;
             return (
               <a

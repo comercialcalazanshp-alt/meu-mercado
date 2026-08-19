@@ -34,16 +34,55 @@ export async function POST(request: Request) {
 
   if (orderId && paid) {
     const supabase = getSupabaseAdmin();
-    // reference_id pode ser tanto um pedido de loja única (orders) quanto
-    // um pedido combinado do hub (hub_orders) — checa qual dos dois é essa
+    const now = new Date().toISOString();
+
+    // reference_id pode ser um pedido de loja única (orders), um pedido
+    // combinado do hub (hub_orders), a mensalidade de um afiliado
+    // (affiliate_subscription_payments) ou um pacote extra de IA
+    // (affiliate_ai_purchases) — checa cada um até achar de qual é essa
     // referência antes de marcar como pago.
     const { data: hubOrder } = await supabase.from("hub_orders").select("id").eq("id", orderId).maybeSingle();
-    const table = hubOrder ? "hub_orders" : "orders";
-    await supabase
-      .from(table)
-      .update({ pix_paid_at: new Date().toISOString() })
+    if (hubOrder) {
+      await supabase.from("hub_orders").update({ pix_paid_at: now }).eq("id", orderId).is("pix_paid_at", null);
+      return new Response("OK", { status: 200 });
+    }
+
+    const { data: order } = await supabase.from("orders").select("id").eq("id", orderId).maybeSingle();
+    if (order) {
+      await supabase.from("orders").update({ pix_paid_at: now }).eq("id", orderId).is("pix_paid_at", null);
+      return new Response("OK", { status: 200 });
+    }
+
+    const { data: subPayment } = await supabase
+      .from("affiliate_subscription_payments")
+      .select("id, partnership_id, billing_cycle, paid_at")
       .eq("id", orderId)
-      .is("pix_paid_at", null);
+      .maybeSingle();
+    if (subPayment) {
+      if (!subPayment.paid_at) {
+        await supabase.from("affiliate_subscription_payments").update({ paid_at: now }).eq("id", orderId);
+        // Empurra o vencimento a partir de hoje (ou do vencimento atual, se
+        // ele ainda não tiver passado — paga adiantado não perde dias).
+        const cycleDays: Record<string, number> = { mensal: 30, trimestral: 90, semestral: 180, anual: 365 };
+        const { data: partnership } = await supabase
+          .from("affiliate_partnerships")
+          .select("subscription_due_at")
+          .eq("id", subPayment.partnership_id)
+          .single();
+        const base =
+          partnership?.subscription_due_at && new Date(partnership.subscription_due_at) > new Date()
+            ? new Date(partnership.subscription_due_at)
+            : new Date();
+        base.setDate(base.getDate() + (cycleDays[subPayment.billing_cycle] ?? 30));
+        await supabase
+          .from("affiliate_partnerships")
+          .update({ subscription_due_at: base.toISOString() })
+          .eq("id", subPayment.partnership_id);
+      }
+      return new Response("OK", { status: 200 });
+    }
+
+    await supabase.from("affiliate_ai_purchases").update({ paid_at: now }).eq("id", orderId).is("paid_at", null);
   }
 
   return new Response("OK", { status: 200 });
