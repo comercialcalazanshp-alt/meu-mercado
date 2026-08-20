@@ -181,37 +181,37 @@ export default function Parceria() {
   }
 
   if (loading) {
-    return <div className="flex min-h-[60vh] items-center justify-center text-sm text-slate-500 dark:text-slate-400">Carregando…</div>;
+    return <div className="flex min-h-[60vh] items-center justify-center text-sm text-white/40">Carregando…</div>;
   }
 
   if (!partnership) {
     return (
-      <div className="max-w-lg">
-        <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-50">Parceria</h1>
-        <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">Sua loja ainda não está ligada a nenhum Hub como afiliada.</p>
+      <div className="max-w-2xl">
+        <h1 className="text-2xl font-bold text-white">Parceria</h1>
+        <p className="mt-2 text-sm text-white/40">Sua loja ainda não está ligada a nenhum Hub como afiliada.</p>
       </div>
     );
   }
 
   return (
-    <div className="max-w-lg">
-      <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-50">Parceria com {hubName}</h1>
-      <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+    <div className="max-w-2xl">
+      <h1 className="text-2xl font-bold text-white">Parceria com {hubName}</h1>
+      <p className="mt-1 text-sm text-white/40">
         {partnership.category} · comissão de {partnership.commission_percent}% pro Hub em cada venda
       </p>
 
       {error && <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-900/30 dark:text-red-400">{error}</p>}
 
-      <div className="mt-4 rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
-        <p className="text-xs font-bold uppercase tracking-wide text-slate-400">Mensalidade</p>
+      <div className="mt-4 rounded-xl border border-white/[0.09] bg-white/[0.035] p-4">
+        <p className="text-xs font-bold uppercase tracking-wide text-white/30">Mensalidade</p>
         {partnership.subscription_price ? (
           <>
-            <p className="mt-1 text-xl font-bold text-slate-900 dark:text-slate-50">
+            <p className="mt-1 text-xl font-bold text-white">
               {formatCurrency(partnership.subscription_price)}{" "}
-              <span className="text-sm font-normal text-slate-400">/ {BILLING_LABEL[partnership.billing_cycle] ?? partnership.billing_cycle}</span>
+              <span className="text-sm font-normal text-white/30">/ {BILLING_LABEL[partnership.billing_cycle] ?? partnership.billing_cycle}</span>
             </p>
             {partnership.subscription_due_at && (
-              <p className={`mt-0.5 text-sm ${isOverdue ? "font-semibold text-red-600 dark:text-red-400" : "text-slate-500 dark:text-slate-400"}`}>
+              <p className={`mt-0.5 text-sm ${isOverdue ? "font-semibold text-red-600 dark:text-red-400" : "text-white/40"}`}>
                 {isOverdue ? "Venceu em" : "Vence em"} {formatDate(partnership.subscription_due_at)}
                 {isOverdue ? " — atrasada" : ""}
               </p>
@@ -225,18 +225,18 @@ export default function Parceria() {
             </button>
           </>
         ) : (
-          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Sem mensalidade configurada.</p>
+          <p className="mt-1 text-sm text-white/40">Sem mensalidade configurada.</p>
         )}
       </div>
 
-      <div className="mt-3 rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
+      <div className="mt-3 rounded-xl border border-white/[0.09] bg-white/[0.035] p-4">
         <div className="mb-1 flex items-center justify-between">
-          <p className="text-xs font-bold uppercase tracking-wide text-slate-400">Cota de imagem por IA</p>
-          <span className={`text-sm font-semibold ${quotaFull ? "text-red-600 dark:text-red-400" : "text-slate-500"}`}>
+          <p className="text-xs font-bold uppercase tracking-wide text-white/30">Cota de imagem por IA</p>
+          <span className={`text-sm font-semibold ${quotaFull ? "text-red-600 dark:text-red-400" : "text-white/40"}`}>
             {aiUsed} de {totalQuota} usadas
           </span>
         </div>
-        <div className="h-1.5 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
+        <div className="h-1.5 overflow-hidden rounded-full bg-white/[0.08]">
           <div
             className={`h-full rounded-full ${quotaFull ? "bg-red-600" : "bg-blue-900"}`}
             style={{ width: `${totalQuota > 0 ? Math.min(100, (aiUsed / totalQuota) * 100) : 0}%` }}
@@ -245,12 +245,12 @@ export default function Parceria() {
         {packages.length > 0 && (
           <div className="mt-3 flex flex-col gap-2">
             {packages.map((pkg) => (
-              <div key={pkg.id} className="flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2 dark:bg-slate-800">
-                <span className="text-sm text-slate-700 dark:text-slate-300">+{pkg.qty} imagens — {formatCurrency(pkg.price)}</span>
+              <div key={pkg.id} className="flex items-center justify-between rounded-lg bg-white/[0.04] px-3 py-2">
+                <span className="text-sm text-white/60">+{pkg.qty} imagens — {formatCurrency(pkg.price)}</span>
                 <button
                   onClick={() => comprarPacote(pkg)}
                   disabled={generating === pkg.id}
-                  className="rounded-lg border border-blue-900 px-3 py-1 text-xs font-semibold text-blue-900 disabled:opacity-50 dark:border-blue-700 dark:text-blue-300"
+                  className="rounded-lg border border-[#F0BB5E]/40 px-3 py-1 text-xs font-semibold text-[#F0BB5E] disabled:opacity-50"
                 >
                   {generating === pkg.id ? "Gerando…" : "Comprar via Pix"}
                 </button>
@@ -263,17 +263,17 @@ export default function Parceria() {
       {pix && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={() => !pixPaid && setPix(null)}>
           <div
-            className="w-full max-w-xs rounded-2xl bg-white p-5 text-center dark:bg-slate-900"
+            className="w-full max-w-xs rounded-2xl bg-black border border-white/[0.12] p-5 text-center"
             onClick={(e) => e.stopPropagation()}
           >
             {pixPaid ? (
               <>
                 <p className="text-3xl">✅</p>
-                <p className="mt-2 font-semibold text-slate-900 dark:text-slate-50">Pago!</p>
+                <p className="mt-2 font-semibold text-white">Pago!</p>
               </>
             ) : (
               <>
-                <p className="mb-2 text-sm font-semibold text-slate-900 dark:text-slate-50">
+                <p className="mb-2 text-sm font-semibold text-white">
                   {pix.kind === "mensalidade" ? "Pague sua mensalidade" : "Pague seu pacote"}
                 </p>
                 {pix.qrImage && (
@@ -283,13 +283,13 @@ export default function Parceria() {
                 {pix.qrText && (
                   <button
                     onClick={() => navigator.clipboard.writeText(pix.qrText as string)}
-                    className="mt-2 w-full truncate rounded-lg border border-slate-300 px-2 py-1.5 text-[11px] text-slate-500 dark:border-slate-700 dark:text-slate-400"
+                    className="mt-2 w-full truncate rounded-lg border border-white/[0.14] px-2 py-1.5 text-[11px] text-white/40"
                   >
                     {pix.qrText.slice(0, 40)}… (copiar código)
                   </button>
                 )}
-                <p className="mt-3 text-xs text-slate-400">Aguardando confirmação…</p>
-                <button onClick={() => setPix(null)} className="mt-3 text-xs font-medium text-slate-500 hover:text-slate-700">
+                <p className="mt-3 text-xs text-white/30">Aguardando confirmação…</p>
+                <button onClick={() => setPix(null)} className="mt-3 text-xs font-medium text-white/40 hover:text-white/70">
                   Fechar
                 </button>
               </>

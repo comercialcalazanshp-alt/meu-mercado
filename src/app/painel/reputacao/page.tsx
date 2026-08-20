@@ -88,18 +88,18 @@ export default function Reputacao() {
   }, [complaints]);
 
   if (loading) {
-    return <div className="flex min-h-[60vh] items-center justify-center text-sm text-slate-500 dark:text-slate-400">Carregando…</div>;
+    return <div className="flex min-h-[60vh] items-center justify-center text-sm text-white/40">Carregando…</div>;
   }
 
   return (
-    <div className="max-w-2xl">
-      <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-50">Reputação</h1>
-      <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+    <div className="max-w-4xl">
+      <h1 className="text-2xl font-bold text-white">Reputação</h1>
+      <p className="mt-1 text-sm text-white/40">
         Nota e reclamação de cada afiliado — pra você enxergar risco antes que vire prejuízo pra marca inteira.
         Não mostra dado do cliente (nome/telefone), só a categoria e o que ele descreveu.
       </p>
 
-      {sorted.length === 0 && <p className="mt-4 text-sm text-slate-500 dark:text-slate-400">Nenhum afiliado ainda.</p>}
+      {sorted.length === 0 && <p className="mt-4 text-sm text-white/40">Nenhum afiliado ainda.</p>}
 
       <div className="mt-4 flex flex-col gap-2">
         {sorted.map((r) => {
@@ -110,11 +110,11 @@ export default function Reputacao() {
             <div
               key={r.store_id}
               className={`rounded-xl border p-4 ${
-                risky ? "border-red-200 bg-red-50 dark:border-red-900/40 dark:bg-red-900/10" : "border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900"
+                risky ? "border-red-200 bg-red-50 dark:border-red-900/40 dark:bg-red-900/10" : "border-white/[0.09] bg-white/[0.035]"
               }`}
             >
               <div className="flex items-center justify-between gap-2">
-                <p className="font-semibold text-slate-900 dark:text-slate-50">{r.store_name}</p>
+                <p className="font-semibold text-white">{r.store_name}</p>
                 {r.complaint_open_count > 0 && (
                   <span className="rounded-full bg-red-100 px-2 py-0.5 text-[11px] font-bold text-red-700 dark:bg-red-900/40 dark:text-red-400">
                     {r.complaint_open_count} em aberto
@@ -122,36 +122,36 @@ export default function Reputacao() {
                 )}
               </div>
               <div className="mt-2 flex items-center gap-4 text-sm">
-                <span className="text-slate-600 dark:text-slate-300">
+                <span className="text-white/55">
                   ⭐ {r.avg_rating !== null ? r.avg_rating.toFixed(1) : "—"}{" "}
-                  <span className="text-xs text-slate-400">({r.review_count} avaliação{r.review_count === 1 ? "" : "ões"})</span>
+                  <span className="text-xs text-white/30">({r.review_count} avaliação{r.review_count === 1 ? "" : "ões"})</span>
                 </span>
-                <span className="text-slate-600 dark:text-slate-300">
+                <span className="text-white/55">
                   📋 {r.complaint_count} reclamação{r.complaint_count === 1 ? "" : "ões"} no total
                 </span>
               </div>
               {storeComplaints.length > 0 && (
                 <button
                   onClick={() => setExpandedStoreId(expanded ? null : r.store_id)}
-                  className="mt-2 text-xs font-semibold text-blue-900 dark:text-blue-300"
+                  className="mt-2 text-xs font-semibold text-[#F0BB5E]"
                 >
                   {expanded ? "Esconder reclamações" : "Ver reclamações"}
                 </button>
               )}
               {expanded && (
-                <div className="mt-2 flex flex-col gap-2 border-t border-slate-200 pt-2 dark:border-slate-800">
+                <div className="mt-2 flex flex-col gap-2 border-t border-white/[0.09] pt-2">
                   {storeComplaints.map((c) => {
                     const status = STATUS_LABEL[c.status] ?? STATUS_LABEL.aberta;
                     return (
-                      <div key={c.id} className="rounded-lg bg-slate-50 p-2.5 dark:bg-slate-800">
+                      <div key={c.id} className="rounded-lg bg-white/[0.04] p-2.5">
                         <div className="flex items-center justify-between gap-2">
-                          <span className="text-xs font-semibold text-slate-700 dark:text-slate-200">
+                          <span className="text-xs font-semibold text-white/70">
                             {CATEGORY_LABEL[c.category] ?? c.category}
                           </span>
                           <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${status.style}`}>{status.text}</span>
                         </div>
-                        <p className="mt-1 text-xs text-slate-600 dark:text-slate-300">{c.description}</p>
-                        <p className="mt-1 text-[10px] text-slate-400">{formatDate(c.created_at)}</p>
+                        <p className="mt-1 text-xs text-white/55">{c.description}</p>
+                        <p className="mt-1 text-[10px] text-white/30">{formatDate(c.created_at)}</p>
                       </div>
                     );
                   })}

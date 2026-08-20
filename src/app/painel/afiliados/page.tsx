@@ -42,13 +42,13 @@ function formatDate(iso: string) {
 }
 
 function inputClass() {
-  return "rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm text-right font-semibold text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-50";
+  return "rounded-lg border border-white/[0.14] bg-white/[0.04] px-3 py-1.5 text-sm text-right font-semibold text-white";
 }
 
 function fieldRow(label: string, control: ReactNode) {
   return (
-    <div className="flex items-center justify-between gap-3 border-b border-slate-100 py-2.5 last:border-b-0 dark:border-slate-800">
-      <span className="text-sm text-slate-600 dark:text-slate-400">{label}</span>
+    <div className="flex items-center justify-between gap-3 border-b border-white/[0.06] py-2.5 last:border-b-0">
+      <span className="text-sm text-white/50">{label}</span>
       {control}
     </div>
   );
@@ -510,8 +510,8 @@ export default function Afiliados() {
   if (loading) {
     return (
       <div>
-        <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-50">Afiliados</h1>
-        <p className="mt-2 text-sm text-slate-500">Carregando…</p>
+        <h1 className="text-2xl font-bold text-white">Afiliados</h1>
+        <p className="mt-2 text-sm text-white/40">Carregando…</p>
       </div>
     );
   }
@@ -519,7 +519,7 @@ export default function Afiliados() {
   if (error) {
     return (
       <div>
-        <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-50">Afiliados</h1>
+        <h1 className="text-2xl font-bold text-white">Afiliados</h1>
         <p className="mt-2 max-w-lg text-sm text-red-600 dark:text-red-400">{error}</p>
       </div>
     );
@@ -533,21 +533,21 @@ export default function Afiliados() {
   const toRepassar = partnerships.reduce((sum, p) => sum + Math.max(0, Number(p.balance)), 0);
 
   return (
-    <div className="max-w-2xl">
+    <div className="max-w-4xl">
       {view === "list" && (
         <>
           <div className="flex items-center justify-between gap-2">
-            <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-50">Afiliados</h1>
+            <h1 className="text-2xl font-bold text-white">Afiliados</h1>
             <div className="flex gap-2">
               <button
                 onClick={openPrecos}
-                className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold text-blue-900 dark:border-slate-700 dark:text-blue-300"
+                className="rounded-lg border border-white/[0.14] px-3 py-2 text-xs font-semibold text-[#F0BB5E]"
               >
                 ⚙ Preços
               </button>
               <button
                 onClick={() => setView("convite")}
-                className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-semibold text-blue-900 dark:border-slate-700 dark:text-blue-300"
+                className="rounded-lg border border-white/[0.14] px-3 py-2 text-xs font-semibold text-[#F0BB5E]"
               >
                 🔗 Convidar por link
               </button>
@@ -561,18 +561,18 @@ export default function Afiliados() {
           </div>
 
           <div className="mt-4 grid grid-cols-3 gap-2">
-            <div className="rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
-              <p className="text-xs text-slate-500 dark:text-slate-400">Módulos ativos</p>
-              <p className="mt-1 text-xl font-bold text-slate-900 dark:text-slate-50">{activeCount}</p>
+            <div className="rounded-xl border border-white/[0.09] bg-white/[0.035] p-3">
+              <p className="text-xs text-white/35">Módulos ativos</p>
+              <p className="mt-1 text-xl font-bold text-white">{activeCount}</p>
             </div>
-            <div className="rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
-              <p className="text-xs text-slate-500 dark:text-slate-400">Vendido este mês</p>
-              <p className="mt-1 text-xl font-bold text-slate-900 dark:text-slate-50">
+            <div className="rounded-xl border border-white/[0.09] bg-white/[0.035] p-3">
+              <p className="text-xs text-white/35">Vendido este mês</p>
+              <p className="mt-1 text-xl font-bold text-white">
                 {formatCurrency(salesThisMonth)}
               </p>
             </div>
-            <div className="rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
-              <p className="text-xs text-slate-500 dark:text-slate-400">A repassar</p>
+            <div className="rounded-xl border border-white/[0.09] bg-white/[0.035] p-3">
+              <p className="text-xs text-white/35">A repassar</p>
               <p className="mt-1 text-xl font-bold text-amber-600 dark:text-amber-400">
                 {formatCurrency(toRepassar)}
               </p>
@@ -584,8 +584,8 @@ export default function Afiliados() {
               onClick={() => setView("mercado")}
               className="cursor-pointer rounded-xl border border-amber-300 bg-amber-50 p-4 hover:border-amber-400 dark:border-amber-700 dark:bg-amber-900/10"
             >
-              <p className="font-semibold text-slate-900 dark:text-slate-50">
-                {store.name} <span className="font-normal text-slate-500 dark:text-slate-400">(você)</span>
+              <p className="font-semibold text-white">
+                {store.name} <span className="font-normal text-white/40">(você)</span>
               </p>
               <p className="mt-0.5 text-xs text-amber-700 dark:text-amber-400">
                 Módulo dono · tudo liberado, sem plano
@@ -593,7 +593,7 @@ export default function Afiliados() {
             </div>
 
             {partnerships.length === 0 && (
-              <p className="mt-2 text-sm text-slate-500">
+              <p className="mt-2 text-sm text-white/40">
                 Nenhum afiliado cadastrado ainda. Use "+ Novo afiliado" pra ligar a primeira loja parceira.
               </p>
             )}
@@ -605,28 +605,26 @@ export default function Afiliados() {
                   ? { text: "recebe direto", className: "text-green-600 dark:text-green-400" }
                   : Number(p.balance) > 0
                     ? { text: `a repassar ${formatCurrency(Number(p.balance))}`, className: "text-amber-600 dark:text-amber-400" }
-                    : { text: "sem saldo pendente", className: "text-slate-400" };
+                    : { text: "sem saldo pendente", className: "text-white/30" };
               return (
                 <div
                   key={p.id}
                   onClick={() => openDetail(p)}
-                  className={`cursor-pointer rounded-xl border p-4 hover:border-slate-300 dark:hover:border-slate-600 ${
-                    p.active
-                      ? "border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900"
-                      : "border-slate-200 bg-slate-50 opacity-60 dark:border-slate-800 dark:bg-slate-900/50"
+                  className={`cursor-pointer rounded-xl border p-4 hover:border-white/[0.14] ${
+                    p.active ? "border-white/[0.09] bg-white/[0.035]" : "border-white/[0.09] bg-white/[0.02] opacity-60"
                   }`}
                 >
                   <div className="flex items-center justify-between gap-3">
                     <div className="min-w-0">
-                      <p className="truncate font-semibold text-slate-900 dark:text-slate-50">
-                        {s?.name ?? "Loja"} {!p.active && <span className="text-xs font-normal text-slate-400">(inativo)</span>}
+                      <p className="truncate font-semibold text-white">
+                        {s?.name ?? "Loja"} {!p.active && <span className="text-xs font-normal text-white/30">(inativo)</span>}
                       </p>
-                      <p className="mt-0.5 truncate text-xs text-slate-500 dark:text-slate-400">
+                      <p className="mt-0.5 truncate text-xs text-white/35">
                         {p.category} · Plano {PLAN_LABEL[p.plan_type]} · comissão {p.commission_percent}%
                       </p>
                     </div>
                     <div className="shrink-0 text-right">
-                      <p className="font-semibold text-slate-900 dark:text-slate-50">{formatCurrency(Number(p.balance))}</p>
+                      <p className="font-semibold text-white">{formatCurrency(Number(p.balance))}</p>
                       <p className={`text-xs ${note.className}`}>{note.text}</p>
                     </div>
                   </div>
@@ -639,32 +637,32 @@ export default function Afiliados() {
 
       {view === "mercado" && (
         <>
-          <button onClick={() => setView("list")} className="mb-3 text-sm font-medium text-slate-500 hover:text-slate-700 dark:text-slate-400">
+          <button onClick={() => setView("list")} className="mb-3 text-sm font-medium text-white/40 hover:text-white/70">
             ← Voltar pra Afiliados
           </button>
           <div className="flex items-center justify-between gap-2">
-            <h2 className="text-lg font-bold text-slate-900 dark:text-slate-50">
-              {store.name} <span className="font-normal text-slate-500">(você)</span>
+            <h2 className="text-lg font-bold text-white">
+              {store.name} <span className="font-normal text-white/40">(você)</span>
             </h2>
             <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-800 dark:bg-amber-900/40 dark:text-amber-400">
               Módulo dono
             </span>
           </div>
-          <div className="mt-4 rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
-            <p className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-400">Comercial</p>
-            {fieldRow("Plano", <span className="text-sm text-slate-400">Módulo dono — sem plano</span>)}
-            {fieldRow("Comissão", <span className="text-sm text-slate-400">0% (é a sua loja)</span>)}
-            {fieldRow("Recebimento", <span className="text-sm text-slate-400">Direto — não passa por repasse</span>)}
+          <div className="mt-4 rounded-xl border border-white/[0.09] bg-white/[0.035] p-4">
+            <p className="mb-2 text-xs font-bold uppercase tracking-wide text-white/30">Comercial</p>
+            {fieldRow("Plano", <span className="text-sm text-white/30">Módulo dono — sem plano</span>)}
+            {fieldRow("Comissão", <span className="text-sm text-white/30">0% (é a sua loja)</span>)}
+            {fieldRow("Recebimento", <span className="text-sm text-white/30">Direto — não passa por repasse</span>)}
           </div>
-          <div className="mt-3 rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
-            <p className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-400">Gerador de imagem por IA</p>
+          <div className="mt-3 rounded-xl border border-white/[0.09] bg-white/[0.035] p-4">
+            <p className="mb-2 text-xs font-bold uppercase tracking-wide text-white/30">Gerador de imagem por IA</p>
             <p className="text-sm text-green-600 dark:text-green-400">Cota ilimitada — sem bloqueio, só os afiliados pagam avulso.</p>
           </div>
-          <div className="mt-3 rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
-            <p className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-400">Extras pagos</p>
+          <div className="mt-3 rounded-xl border border-white/[0.09] bg-white/[0.035] p-4">
+            <p className="mb-2 text-xs font-bold uppercase tracking-wide text-white/30">Extras pagos</p>
             {extras.map((extra) => (
-              <div key={extra.id} className="flex items-center justify-between border-b border-slate-100 py-2 last:border-b-0 dark:border-slate-800">
-                <span className="text-sm text-slate-700 dark:text-slate-300">{extra.name}</span>
+              <div key={extra.id} className="flex items-center justify-between border-b border-white/[0.06] py-2 last:border-b-0">
+                <span className="text-sm text-white/60">{extra.name}</span>
                 <span className="rounded-full bg-green-100 px-2.5 py-1 text-xs font-medium text-green-700 dark:bg-green-900/40 dark:text-green-400">
                   Incluso
                 </span>
@@ -676,11 +674,11 @@ export default function Afiliados() {
 
       {view === "detail" && selected && draft && (
         <>
-          <button onClick={() => setView("list")} className="mb-3 text-sm font-medium text-slate-500 hover:text-slate-700 dark:text-slate-400">
+          <button onClick={() => setView("list")} className="mb-3 text-sm font-medium text-white/40 hover:text-white/70">
             ← Voltar pra Afiliados
           </button>
           <div className="flex items-center justify-between gap-2">
-            <h2 className="text-lg font-bold text-slate-900 dark:text-slate-50">
+            <h2 className="text-lg font-bold text-white">
               {storesById[selected.module_store_id]?.name ?? "Afiliado"}
             </h2>
             <button
@@ -688,15 +686,15 @@ export default function Afiliados() {
               className={`rounded-full px-2.5 py-1 text-xs font-medium ${
                 selected.active
                   ? "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-400"
-                  : "bg-slate-200 text-slate-600 dark:bg-slate-700 dark:text-slate-300"
+                  : "bg-white/[0.08] text-white/55"
               }`}
             >
               {selected.active ? "Ativo" : "Inativo"}
             </button>
           </div>
 
-          <div className="mt-4 rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
-            <p className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-400">Comercial</p>
+          <div className="mt-4 rounded-xl border border-white/[0.09] bg-white/[0.035] p-4">
+            <p className="mb-2 text-xs font-bold uppercase tracking-wide text-white/30">Comercial</p>
             {fieldRow(
               "Plano",
               <select
@@ -720,18 +718,18 @@ export default function Afiliados() {
                   onChange={(e) => setDraft({ ...draft, commission_percent: Number(e.target.value) })}
                   className={inputClass() + " w-20"}
                 />
-                <span className="text-sm text-slate-500">%</span>
+                <span className="text-sm text-white/40">%</span>
               </div>,
             )}
             {fieldRow(
               "Recebimento",
-              <div className="flex rounded-lg bg-slate-100 p-0.5 dark:bg-slate-800">
+              <div className="flex rounded-lg bg-white/[0.06] p-0.5">
                 <button
                   onClick={() => setDraft({ ...draft, payout_method: "manual" })}
                   className={`rounded-md px-2.5 py-1 text-xs font-semibold ${
                     draft.payout_method === "manual"
                       ? "bg-blue-900 text-amber-300"
-                      : "text-slate-500 dark:text-slate-400"
+                      : "text-white/40"
                   }`}
                 >
                   Manual
@@ -741,7 +739,7 @@ export default function Afiliados() {
                   className={`rounded-md px-2.5 py-1 text-xs font-semibold ${
                     draft.payout_method === "split_automatico"
                       ? "bg-blue-900 text-amber-300"
-                      : "text-slate-500 dark:text-slate-400"
+                      : "text-white/40"
                   }`}
                 >
                   Split automático
@@ -757,13 +755,13 @@ export default function Afiliados() {
             {draft.payout_method === "manual" &&
               fieldRow(
                 "Prazo de repasse",
-                <div className="flex rounded-lg bg-slate-100 p-0.5 dark:bg-slate-800">
+                <div className="flex rounded-lg bg-white/[0.06] p-0.5">
                   {(["48h", "72h", "semanal"] as PayoutSpeed[]).map((speed) => (
                     <button
                       key={speed}
                       onClick={() => setDraft({ ...draft, payout_speed: speed })}
                       className={`rounded-md px-2.5 py-1 text-xs font-semibold ${
-                        draft.payout_speed === speed ? "bg-blue-900 text-amber-300" : "text-slate-500 dark:text-slate-400"
+                        draft.payout_speed === speed ? "bg-blue-900 text-amber-300" : "text-white/40"
                       }`}
                     >
                       {speed === "semanal" ? "Semanal" : speed}
@@ -788,7 +786,7 @@ export default function Afiliados() {
             {fieldRow(
               `Mensalidade (${BILLING_LABEL[draft.billing_cycle]})`,
               <div className="flex items-center gap-1">
-                <span className="text-sm text-slate-500">R$</span>
+                <span className="text-sm text-white/40">R$</span>
                 <input
                   type="number"
                   min={0}
@@ -801,8 +799,8 @@ export default function Afiliados() {
             )}
           </div>
 
-          <div className="mt-3 rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
-            <p className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-400">Gerador de imagem por IA</p>
+          <div className="mt-3 rounded-xl border border-white/[0.09] bg-white/[0.035] p-4">
+            <p className="mb-2 text-xs font-bold uppercase tracking-wide text-white/30">Gerador de imagem por IA</p>
             {fieldRow(
               "Cota mensal desse afiliado",
               <div className="flex items-center gap-1.5">
@@ -817,13 +815,13 @@ export default function Afiliados() {
                 <button
                   type="button"
                   onClick={() => setDraft({ ...draft, ai_quota_monthly: 999999 })}
-                  className="rounded-lg border border-slate-300 px-2 py-1 text-xs font-medium text-slate-500 hover:text-slate-700 dark:border-slate-700 dark:text-slate-400"
+                  className="rounded-lg border border-white/[0.14] px-2 py-1 text-xs font-medium text-white/40 hover:text-white/70"
                 >
                   Sem limite
                 </button>
               </div>,
             )}
-            <p className="-mt-1 mb-2 text-xs text-slate-400">Em branco usa o padrão do plano ({settings?.ai_quota_monthly_default ?? 5}/mês). Salve pra aplicar.</p>
+            <p className="-mt-1 mb-2 text-xs text-white/30">Em branco usa o padrão do plano ({settings?.ai_quota_monthly_default ?? 5}/mês). Salve pra aplicar.</p>
             {(() => {
               const quota = selected.ai_quota_monthly ?? settings?.ai_quota_monthly_default ?? 5;
               const now = new Date();
@@ -839,23 +837,23 @@ export default function Afiliados() {
               return (
                 <>
                   <div className="mb-1 flex items-center justify-between">
-                    <span className="text-sm font-semibold text-slate-900 dark:text-slate-50">Cota mensal</span>
-                    <span className={`text-sm font-semibold ${full ? "text-red-600 dark:text-red-400" : "text-slate-500"}`}>
+                    <span className="text-sm font-semibold text-white">Cota mensal</span>
+                    <span className={`text-sm font-semibold ${full ? "text-red-600 dark:text-red-400" : "text-white/40"}`}>
                       {aiUsed} de {total} usadas
                     </span>
                   </div>
-                  <div className="h-1.5 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
+                  <div className="h-1.5 overflow-hidden rounded-full bg-white/[0.08]">
                     <div
                       className={`h-full rounded-full ${full ? "bg-red-600" : "bg-blue-900"}`}
                       style={{ width: `${total > 0 ? Math.min(100, (aiUsed / total) * 100) : 0}%` }}
                     />
                   </div>
-                  <p className="mt-1.5 text-xs text-slate-400">Cota base: {quota}/mês (plano) + pacotes comprados no mês</p>
+                  <p className="mt-1.5 text-xs text-white/30">Cota base: {quota}/mês (plano) + pacotes comprados no mês</p>
                   {aiPurchases.length > 0 && (
                     <div className="mt-2 flex flex-col gap-1">
                       {aiPurchases.map((pu) => (
-                        <p key={pu.id} className="rounded-lg bg-slate-50 px-2.5 py-1.5 text-xs text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-                          <b className="text-slate-900 dark:text-slate-50">{pu.paid_at ? formatDate(pu.paid_at) : "—"}</b> — pacote +
+                        <p key={pu.id} className="rounded-lg bg-white/[0.04] px-2.5 py-1.5 text-xs text-white/55">
+                          <b className="text-white">{pu.paid_at ? formatDate(pu.paid_at) : "—"}</b> — pacote +
                           {pu.image_qty} imagens · {formatCurrency(pu.price)}
                         </p>
                       ))}
@@ -866,15 +864,15 @@ export default function Afiliados() {
             })()}
           </div>
 
-          <div className="mt-3 rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
-            <p className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-400">Extras pagos</p>
+          <div className="mt-3 rounded-xl border border-white/[0.09] bg-white/[0.035] p-4">
+            <p className="mb-2 text-xs font-bold uppercase tracking-wide text-white/30">Extras pagos</p>
             {extras.map((extra) => {
               const state = partnershipExtras[extra.id] ?? { rowId: null, enabled: false };
               return (
-                <div key={extra.id} className="flex items-center justify-between border-b border-slate-100 py-2.5 last:border-b-0 dark:border-slate-800">
+                <div key={extra.id} className="flex items-center justify-between border-b border-white/[0.06] py-2.5 last:border-b-0">
                   <div>
-                    <p className="text-sm font-medium text-slate-900 dark:text-slate-50">{extra.name}</p>
-                    <p className="text-xs text-slate-500 dark:text-slate-400">
+                    <p className="text-sm font-medium text-white">{extra.name}</p>
+                    <p className="text-xs text-white/35">
                       {extra.included_in_padrao ? "Incluso no Plano Padrão" : formatCurrency(extra.price_monthly) + "/mês"}
                     </p>
                   </div>
@@ -883,7 +881,7 @@ export default function Afiliados() {
                     className={`rounded-full px-2.5 py-1 text-xs font-medium ${
                       state.enabled
                         ? "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-400"
-                        : "bg-slate-200 text-slate-600 dark:bg-slate-700 dark:text-slate-300"
+                        : "bg-white/[0.08] text-white/55"
                     }`}
                   >
                     {state.enabled ? "Ativo" : "Desligado"}
@@ -905,14 +903,14 @@ export default function Afiliados() {
 
       {view === "precos" && (
         <>
-          <button onClick={() => setView("list")} className="mb-3 text-sm font-medium text-slate-500 hover:text-slate-700 dark:text-slate-400">
+          <button onClick={() => setView("list")} className="mb-3 text-sm font-medium text-white/40 hover:text-white/70">
             ← Voltar pra Afiliados
           </button>
-          <h2 className="text-lg font-bold text-slate-900 dark:text-slate-50">Preços do Plano Padrão</h2>
+          <h2 className="text-lg font-bold text-white">Preços do Plano Padrão</h2>
 
           {!settings || !precosDraft ? (
-            <div className="mt-4 rounded-xl border border-slate-200 bg-white p-6 text-center dark:border-slate-800 dark:bg-slate-900">
-              <p className="text-sm text-slate-600 dark:text-slate-400">
+            <div className="mt-4 rounded-xl border border-white/[0.09] bg-white/[0.035] p-6 text-center">
+              <p className="text-sm text-white/50">
                 O módulo de afiliados ainda não foi configurado nessa loja. Configurar cria os valores padrão (comissão, ciclos
                 de assinatura, extras e pacotes de IA) — todos editáveis depois.
               </p>
@@ -926,12 +924,12 @@ export default function Afiliados() {
             </div>
           ) : (
             <>
-              <p className="mb-3 mt-1 text-xs text-slate-500 dark:text-slate-400">
+              <p className="mb-3 mt-1 text-xs text-white/35">
                 Vale só pra contratos novos — quem já fechou mantém o combinado até você renegociar.
               </p>
 
-              <div className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
-                <p className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-400">Comissão</p>
+              <div className="rounded-xl border border-white/[0.09] bg-white/[0.035] p-4">
+                <p className="mb-2 text-xs font-bold uppercase tracking-wide text-white/30">Comissão</p>
                 {fieldRow(
                   "Comissão sugerida",
                   <input
@@ -943,8 +941,8 @@ export default function Afiliados() {
                 )}
               </div>
 
-              <div className="mt-3 rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
-                <p className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-400">Ciclo de assinatura</p>
+              <div className="mt-3 rounded-xl border border-white/[0.09] bg-white/[0.035] p-4">
+                <p className="mb-2 text-xs font-bold uppercase tracking-wide text-white/30">Ciclo de assinatura</p>
                 {fieldRow(
                   "Mensal",
                   <input
@@ -983,11 +981,11 @@ export default function Afiliados() {
                 )}
               </div>
 
-              <div className="mt-3 rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
-                <p className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-400">Extras (preço mensal)</p>
+              <div className="mt-3 rounded-xl border border-white/[0.09] bg-white/[0.035] p-4">
+                <p className="mb-2 text-xs font-bold uppercase tracking-wide text-white/30">Extras (preço mensal)</p>
                 {extras.map((extra) => (
-                  <div key={extra.id} className="flex items-center justify-between border-b border-slate-100 py-2 last:border-b-0 dark:border-slate-800">
-                    <span className="text-sm text-slate-700 dark:text-slate-300">{extra.name}</span>
+                  <div key={extra.id} className="flex items-center justify-between border-b border-white/[0.06] py-2 last:border-b-0">
+                    <span className="text-sm text-white/60">{extra.name}</span>
                     <input
                       type="number"
                       className={inputClass() + " w-24"}
@@ -1000,8 +998,8 @@ export default function Afiliados() {
                 ))}
               </div>
 
-              <div className="mt-3 rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
-                <p className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-400">Gerador de imagem por IA</p>
+              <div className="mt-3 rounded-xl border border-white/[0.09] bg-white/[0.035] p-4">
+                <p className="mb-2 text-xs font-bold uppercase tracking-wide text-white/30">Gerador de imagem por IA</p>
                 {fieldRow(
                   "Cota inclusa no Plano Padrão",
                   <div className="flex items-center gap-1">
@@ -1011,12 +1009,12 @@ export default function Afiliados() {
                       value={precosDraft.ai_quota_monthly_default}
                       onChange={(e) => setPrecosDraft({ ...precosDraft, ai_quota_monthly_default: Number(e.target.value) })}
                     />
-                    <span className="text-sm text-slate-500">/mês</span>
+                    <span className="text-sm text-white/40">/mês</span>
                   </div>,
                 )}
                 {packages.map((pkg) => (
-                  <div key={pkg.id} className="flex items-center justify-between border-b border-slate-100 py-2 last:border-b-0 dark:border-slate-800">
-                    <span className="text-sm text-slate-700 dark:text-slate-300">Pacote +{pkg.qty} imagens</span>
+                  <div key={pkg.id} className="flex items-center justify-between border-b border-white/[0.06] py-2 last:border-b-0">
+                    <span className="text-sm text-white/60">Pacote +{pkg.qty} imagens</span>
                     <input
                       type="number"
                       className={inputClass() + " w-24"}
@@ -1029,8 +1027,8 @@ export default function Afiliados() {
                 ))}
               </div>
 
-              <div className="mt-3 rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
-                <p className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-400">Padrão de qualidade (upload próprio)</p>
+              <div className="mt-3 rounded-xl border border-white/[0.09] bg-white/[0.035] p-4">
+                <p className="mb-2 text-xs font-bold uppercase tracking-wide text-white/30">Padrão de qualidade (upload próprio)</p>
                 {fieldRow(
                   "Resolução mínima (px)",
                   <input
@@ -1060,8 +1058,8 @@ export default function Afiliados() {
                 )}
               </div>
 
-              <div className="mt-3 rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
-                <p className="mb-2 text-xs font-bold uppercase tracking-wide text-slate-400">Taxas de antecipação (repasse manual)</p>
+              <div className="mt-3 rounded-xl border border-white/[0.09] bg-white/[0.035] p-4">
+                <p className="mb-2 text-xs font-bold uppercase tracking-wide text-white/30">Taxas de antecipação (repasse manual)</p>
                 {fieldRow(
                   "Repasse em 48h",
                   <input
@@ -1080,7 +1078,7 @@ export default function Afiliados() {
                     onChange={(e) => setPrecosDraft({ ...precosDraft, anticipation_fee_72h_percent: Number(e.target.value) })}
                   />,
                 )}
-                {fieldRow("Semanal", <span className="text-sm text-slate-400">Sem taxa</span>)}
+                {fieldRow("Semanal", <span className="text-sm text-white/30">Sem taxa</span>)}
               </div>
 
               <button
@@ -1103,15 +1101,15 @@ export default function Afiliados() {
               setNovoStore(null);
               setNovoError(null);
             }}
-            className="mb-3 text-sm font-medium text-slate-500 hover:text-slate-700 dark:text-slate-400"
+            className="mb-3 text-sm font-medium text-white/40 hover:text-white/70"
           >
             ← Voltar pra Afiliados
           </button>
-          <h2 className="text-lg font-bold text-slate-900 dark:text-slate-50">Novo afiliado</h2>
+          <h2 className="text-lg font-bold text-white">Novo afiliado</h2>
 
           {!novoStore ? (
             <div className="mt-3">
-              <p className="mb-2 text-sm text-slate-600 dark:text-slate-400">
+              <p className="mb-2 text-sm text-white/50">
                 Busque pela loja que o afiliado já criou no Meu Mercado (nome ou endereço da loja).
               </p>
               <input
@@ -1119,22 +1117,22 @@ export default function Afiliados() {
                 value={searchTerm}
                 onChange={(e) => runSearch(e.target.value)}
                 placeholder="Nome ou endereço da loja…"
-                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800"
+                className="w-full rounded-lg border border-white/[0.14] bg-white/[0.04] px-3 py-2 text-sm text-white placeholder:text-white/25"
               />
-              {searching && <p className="mt-2 text-xs text-slate-400">Buscando…</p>}
+              {searching && <p className="mt-2 text-xs text-white/30">Buscando…</p>}
               <div className="mt-2 flex flex-col gap-2">
                 {searchResults.map((s) => (
                   <button
                     key={s.id}
                     onClick={() => pickNovoStore(s)}
-                    className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-left text-sm hover:border-blue-900 dark:border-slate-800 dark:bg-slate-900"
+                    className="rounded-lg border border-white/[0.09] bg-white/[0.035] px-3 py-2 text-left text-sm hover:border-[#F0BB5E]/40"
                   >
-                    <span className="font-semibold text-slate-900 dark:text-slate-50">{s.name}</span>
-                    <span className="ml-2 text-xs text-slate-400">/{s.slug}</span>
+                    <span className="font-semibold text-white">{s.name}</span>
+                    <span className="ml-2 text-xs text-white/30">/{s.slug}</span>
                   </button>
                 ))}
                 {searchTerm.trim().length >= 2 && !searching && searchResults.length === 0 && (
-                  <p className="text-xs text-slate-400">
+                  <p className="text-xs text-white/30">
                     Nenhuma loja ativa encontrada com esse nome — o afiliado precisa criar a própria conta em{" "}
                     <a href="/cadastro" className="underline">
                       /cadastro
@@ -1147,55 +1145,55 @@ export default function Afiliados() {
           ) : (
             <form onSubmit={submitNovo} className="mt-3 flex flex-col gap-3">
               <div className="rounded-lg bg-blue-50 px-3 py-2 text-sm dark:bg-blue-900/20">
-                Ligando: <b className="text-slate-900 dark:text-slate-50">{novoStore.name}</b>{" "}
+                Ligando: <b className="text-white">{novoStore.name}</b>{" "}
                 <button type="button" onClick={() => setNovoStore(null)} className="ml-2 text-xs text-blue-700 underline dark:text-blue-400">
                   trocar
                 </button>
               </div>
 
               <label className="text-sm">
-                <span className="mb-1 block text-slate-600 dark:text-slate-400">Categoria (exclusiva no seu hub)</span>
+                <span className="mb-1 block text-white/45">Categoria (exclusiva no seu hub)</span>
                 <input
                   value={novoForm.category}
                   onChange={(e) => setNovoForm({ ...novoForm, category: e.target.value })}
                   placeholder="Ex: Padaria, Açougue, Hortifruti…"
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2 dark:border-slate-700 dark:bg-slate-800"
+                  className="w-full rounded-lg border border-white/[0.14] bg-white/[0.04] px-3 py-2 text-white placeholder:text-white/25"
                 />
               </label>
               <label className="text-sm">
-                <span className="mb-1 block text-slate-600 dark:text-slate-400">Nome do responsável</span>
+                <span className="mb-1 block text-white/45">Nome do responsável</span>
                 <input
                   value={novoForm.owner_name}
                   onChange={(e) => setNovoForm({ ...novoForm, owner_name: e.target.value })}
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2 dark:border-slate-700 dark:bg-slate-800"
+                  className="w-full rounded-lg border border-white/[0.14] bg-white/[0.04] px-3 py-2 text-white placeholder:text-white/25"
                 />
               </label>
               <label className="text-sm">
-                <span className="mb-1 block text-slate-600 dark:text-slate-400">CPF ou CNPJ</span>
+                <span className="mb-1 block text-white/45">CPF ou CNPJ</span>
                 <input
                   value={novoForm.tax_id}
                   onChange={(e) => setNovoForm({ ...novoForm, tax_id: e.target.value })}
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2 dark:border-slate-700 dark:bg-slate-800"
+                  className="w-full rounded-lg border border-white/[0.14] bg-white/[0.04] px-3 py-2 text-white placeholder:text-white/25"
                 />
               </label>
               <label className="text-sm">
-                <span className="mb-1 block text-slate-600 dark:text-slate-400">Endereço do ponto de retirada</span>
+                <span className="mb-1 block text-white/45">Endereço do ponto de retirada</span>
                 <input
                   value={novoForm.address}
                   onChange={(e) => setNovoForm({ ...novoForm, address: e.target.value })}
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2 dark:border-slate-700 dark:bg-slate-800"
+                  className="w-full rounded-lg border border-white/[0.14] bg-white/[0.04] px-3 py-2 text-white placeholder:text-white/25"
                 />
               </label>
               <label className="text-sm">
-                <span className="mb-1 block text-slate-600 dark:text-slate-400">Nº de licença/alvará (opcional)</span>
+                <span className="mb-1 block text-white/45">Nº de licença/alvará (opcional)</span>
                 <input
                   value={novoForm.license_number}
                   onChange={(e) => setNovoForm({ ...novoForm, license_number: e.target.value })}
-                  className="w-full rounded-lg border border-slate-300 px-3 py-2 dark:border-slate-700 dark:bg-slate-800"
+                  className="w-full rounded-lg border border-white/[0.14] bg-white/[0.04] px-3 py-2 text-white placeholder:text-white/25"
                 />
               </label>
 
-              <div className="rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
+              <div className="rounded-xl border border-white/[0.09] bg-white/[0.035] p-3">
                 {fieldRow(
                   "Comissão",
                   <div className="flex items-center gap-1">
@@ -1205,7 +1203,7 @@ export default function Afiliados() {
                       value={novoForm.commission_percent}
                       onChange={(e) => setNovoForm({ ...novoForm, commission_percent: Number(e.target.value) })}
                     />
-                    <span className="text-sm text-slate-500">%</span>
+                    <span className="text-sm text-white/40">%</span>
                   </div>,
                 )}
                 {fieldRow(
@@ -1280,70 +1278,70 @@ export default function Afiliados() {
               setView("list");
               setConviteError(null);
             }}
-            className="mb-3 text-sm font-medium text-slate-500 hover:text-slate-700 dark:text-slate-400"
+            className="mb-3 text-sm font-medium text-white/40 hover:text-white/70"
           >
             ← Voltar pra Afiliados
           </button>
-          <h2 className="text-lg font-bold text-slate-900 dark:text-slate-50">Convidar por link</h2>
-          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+          <h2 className="text-lg font-bold text-white">Convidar por link</h2>
+          <p className="mt-1 text-sm text-white/40">
             Defina os termos da parceria agora — a pessoa só confirma e cria a conta dela, sem precisar se cadastrar
             antes.
           </p>
 
           <form onSubmit={submitConvite} className="mt-3 flex flex-col gap-3">
             <label className="text-sm">
-              <span className="mb-1 block text-slate-600 dark:text-slate-400">Nome da loja dele(a)</span>
+              <span className="mb-1 block text-white/45">Nome da loja dele(a)</span>
               <input
                 value={conviteForm.suggested_store_name}
                 onChange={(e) => setConviteForm({ ...conviteForm, suggested_store_name: e.target.value })}
                 placeholder="Ex: Padaria do João"
-                className="w-full rounded-lg border border-slate-300 px-3 py-2 dark:border-slate-700 dark:bg-slate-800"
+                className="w-full rounded-lg border border-white/[0.14] bg-white/[0.04] px-3 py-2 text-white placeholder:text-white/25"
               />
             </label>
             <label className="text-sm">
-              <span className="mb-1 block text-slate-600 dark:text-slate-400">WhatsApp dele(a)</span>
+              <span className="mb-1 block text-white/45">WhatsApp dele(a)</span>
               <input
                 value={conviteForm.whatsapp}
                 onChange={(e) => setConviteForm({ ...conviteForm, whatsapp: e.target.value })}
                 placeholder="11999998888"
-                className="w-full rounded-lg border border-slate-300 px-3 py-2 dark:border-slate-700 dark:bg-slate-800"
+                className="w-full rounded-lg border border-white/[0.14] bg-white/[0.04] px-3 py-2 text-white placeholder:text-white/25"
               />
             </label>
             <label className="text-sm">
-              <span className="mb-1 block text-slate-600 dark:text-slate-400">Categoria (exclusiva no seu hub)</span>
+              <span className="mb-1 block text-white/45">Categoria (exclusiva no seu hub)</span>
               <input
                 value={conviteForm.category}
                 onChange={(e) => setConviteForm({ ...conviteForm, category: e.target.value })}
                 placeholder="Ex: Padaria, Açougue, Hortifruti…"
-                className="w-full rounded-lg border border-slate-300 px-3 py-2 dark:border-slate-700 dark:bg-slate-800"
+                className="w-full rounded-lg border border-white/[0.14] bg-white/[0.04] px-3 py-2 text-white placeholder:text-white/25"
               />
             </label>
             <label className="text-sm">
-              <span className="mb-1 block text-slate-600 dark:text-slate-400">Nome do responsável</span>
+              <span className="mb-1 block text-white/45">Nome do responsável</span>
               <input
                 value={conviteForm.owner_name}
                 onChange={(e) => setConviteForm({ ...conviteForm, owner_name: e.target.value })}
-                className="w-full rounded-lg border border-slate-300 px-3 py-2 dark:border-slate-700 dark:bg-slate-800"
+                className="w-full rounded-lg border border-white/[0.14] bg-white/[0.04] px-3 py-2 text-white placeholder:text-white/25"
               />
             </label>
             <label className="text-sm">
-              <span className="mb-1 block text-slate-600 dark:text-slate-400">CPF ou CNPJ</span>
+              <span className="mb-1 block text-white/45">CPF ou CNPJ</span>
               <input
                 value={conviteForm.tax_id}
                 onChange={(e) => setConviteForm({ ...conviteForm, tax_id: e.target.value })}
-                className="w-full rounded-lg border border-slate-300 px-3 py-2 dark:border-slate-700 dark:bg-slate-800"
+                className="w-full rounded-lg border border-white/[0.14] bg-white/[0.04] px-3 py-2 text-white placeholder:text-white/25"
               />
             </label>
             <label className="text-sm">
-              <span className="mb-1 block text-slate-600 dark:text-slate-400">Endereço do ponto de retirada</span>
+              <span className="mb-1 block text-white/45">Endereço do ponto de retirada</span>
               <input
                 value={conviteForm.address}
                 onChange={(e) => setConviteForm({ ...conviteForm, address: e.target.value })}
-                className="w-full rounded-lg border border-slate-300 px-3 py-2 dark:border-slate-700 dark:bg-slate-800"
+                className="w-full rounded-lg border border-white/[0.14] bg-white/[0.04] px-3 py-2 text-white placeholder:text-white/25"
               />
             </label>
 
-            <div className="rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
+            <div className="rounded-xl border border-white/[0.09] bg-white/[0.035] p-3">
               {fieldRow(
                 "Comissão",
                 <div className="flex items-center gap-1">
@@ -1353,7 +1351,7 @@ export default function Afiliados() {
                     value={conviteForm.commission_percent}
                     onChange={(e) => setConviteForm({ ...conviteForm, commission_percent: Number(e.target.value) })}
                   />
-                  <span className="text-sm text-slate-500">%</span>
+                  <span className="text-sm text-white/40">%</span>
                 </div>,
               )}
               {fieldRow(
@@ -1422,12 +1420,12 @@ export default function Afiliados() {
 
       {view === "convite-pronto" && conviteLink && (
         <>
-          <h2 className="text-lg font-bold text-slate-900 dark:text-slate-50">Convite pronto!</h2>
-          <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
+          <h2 className="text-lg font-bold text-white">Convite pronto!</h2>
+          <p className="mt-1 text-sm text-white/50">
             Manda esse link pra {conviteForm.owner_name} — quando ela(e) aceitar, a loja já entra ligada
             automaticamente, sem você precisar fazer mais nada.
           </p>
-          <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600 dark:border-slate-800 dark:bg-slate-800 dark:text-slate-300">
+          <div className="mt-3 rounded-lg border border-white/[0.09] bg-white/[0.04] px-3 py-2 text-xs text-white/55">
             {conviteLink}
           </div>
           <div className="mt-3 flex gap-2">
@@ -1441,7 +1439,7 @@ export default function Afiliados() {
             </a>
             <button
               onClick={() => navigator.clipboard.writeText(conviteLink)}
-              className="rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-600 dark:border-slate-700 dark:text-slate-300"
+              className="rounded-lg border border-white/[0.14] px-4 py-2.5 text-sm font-semibold text-white/60"
             >
               Copiar link
             </button>
@@ -1464,7 +1462,7 @@ export default function Afiliados() {
               });
               setView("list");
             }}
-            className="mt-4 text-sm font-medium text-slate-500 hover:text-slate-700 dark:text-slate-400"
+            className="mt-4 text-sm font-medium text-white/40 hover:text-white/70"
           >
             ← Voltar pra Afiliados
           </button>
