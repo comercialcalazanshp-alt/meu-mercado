@@ -813,6 +813,7 @@ export default function StorefrontClient({
       p_neighborhood_id: neighborhoodId === "retirada" ? undefined : neighborhoodId,
       p_delivery_address: neighborhoodId === "retirada" ? undefined : deliveryAddress.trim(),
       p_recipe_id: attributedRecipeId ?? undefined,
+      p_payment_method: paymentMethod === "combinar" ? "dinheiro" : paymentMethod,
     });
 
     if (rpcError) {

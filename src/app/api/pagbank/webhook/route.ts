@@ -1,6 +1,7 @@
 import "server-only";
 import { createHash, timingSafeEqual } from "crypto";
 import { getSupabaseAdmin } from "@/lib/supabase-admin";
+import { syncHubOrderPayment } from "@/lib/hub-order-payment-sync";
 
 // O PagBank chama essa rota sozinho quando o status de um pagamento muda
 // (ex: Pix caiu). Confirmamos que a chamada é mesmo do PagBank calculando
@@ -41,15 +42,27 @@ export async function POST(request: Request) {
     // (affiliate_subscription_payments) ou um pacote extra de IA
     // (affiliate_ai_purchases) — checa cada um até achar de qual é essa
     // referência antes de marcar como pago.
-    const { data: hubOrder } = await supabase.from("hub_orders").select("id").eq("id", orderId).maybeSingle();
+    const { data: hubOrder } = await supabase.from("hub_orders").select("id, pix_paid_at").eq("id", orderId).maybeSingle();
     if (hubOrder) {
-      await supabase.from("hub_orders").update({ pix_paid_at: now }).eq("id", orderId).is("pix_paid_at", null);
+      if (!hubOrder.pix_paid_at) {
+        await supabase.from("hub_orders").update({ pix_paid_at: now }).eq("id", orderId);
+        // hub_orders.pix_paid_at sozinho não basta — nem o painel de
+        // Entregas nem o extrato de comissão leem esse campo, eles leem
+        // cada "orders" individual (uma por loja do carrinho). Sem isso o
+        // pagamento fica "confirmado" só no pedido combinado, e o
+        // entregador continuaria vendo "cobrar na entrega".
+        await syncHubOrderPayment(supabase, orderId, "pix");
+      }
       return new Response("OK", { status: 200 });
     }
 
     const { data: order } = await supabase.from("orders").select("id").eq("id", orderId).maybeSingle();
     if (order) {
-      await supabase.from("orders").update({ pix_paid_at: now }).eq("id", orderId).is("pix_paid_at", null);
+      await supabase
+        .from("orders")
+        .update({ pix_paid_at: now, payment_method: "pix" })
+        .eq("id", orderId)
+        .is("pix_paid_at", null);
       return new Response("OK", { status: 200 });
     }
 

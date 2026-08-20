@@ -1,6 +1,7 @@
 import "server-only";
 import { getSupabaseAdmin } from "@/lib/supabase-admin";
 import { isValidCPF } from "@/lib/cpf";
+import { syncHubOrderPayment } from "@/lib/hub-order-payment-sync";
 
 // Recebe o cartão já criptografado no navegador (nunca em texto puro) e
 // manda pro PagBank cobrar o valor exato do pedido. Só à vista (1x) por
@@ -111,16 +112,27 @@ export async function POST(request: Request) {
     );
   }
 
+  const lastDigits = charge.payment_method?.card?.last_digits ?? null;
+  const brand = charge.payment_method?.card?.brand ?? null;
+
   await supabase
     .from(table)
     .update({
       pagbank_order_id: pagbankData.id,
       payment_method: "cartao",
       card_paid_at: new Date().toISOString(),
-      card_last_digits: charge.payment_method?.card?.last_digits ?? null,
-      card_brand: charge.payment_method?.card?.brand ?? null,
+      card_last_digits: lastDigits,
+      card_brand: brand,
     })
     .eq("id", order.id);
+
+  // Pedido de Hub: a confirmação acima só marca o "hub_orders" combinado —
+  // precisa propagar pra cada "orders" individual (uma por loja do
+  // carrinho), que é o que o painel de Entregas e o extrato de comissão
+  // realmente leem, e só agora criar a comissão (pagamento confirmado).
+  if (hub_order_id) {
+    await syncHubOrderPayment(supabase, hub_order_id, "cartao", { lastDigits, brand });
+  }
 
   return Response.json({ paid: true });
 }
