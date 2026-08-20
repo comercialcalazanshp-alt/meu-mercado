@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { getSupabase } from "@/lib/supabase";
 import { useStore } from "@/lib/store-context";
 
@@ -18,6 +18,34 @@ type DeliveryOrder = {
   card_paid_at: string | null;
 };
 
+type HubDeliveryLeg = {
+  hub_order_id: string;
+  hub_customer_name: string;
+  hub_customer_phone: string;
+  hub_order_created_at: string;
+  order_id: string;
+  order_store_id: string;
+  order_store_name: string;
+  order_status: string;
+  order_total: number;
+  order_payment_method: string | null;
+  order_pix_paid_at: string | null;
+  order_card_paid_at: string | null;
+  order_delivery_address: string;
+  stop_address: string | null;
+  stop_lat: number | null;
+  stop_lng: number | null;
+  stop_picked_up_at: string | null;
+};
+
+type HubDelivery = {
+  hubOrderId: string;
+  customerName: string;
+  customerPhone: string;
+  createdAt: string;
+  legs: HubDeliveryLeg[];
+};
+
 function formatCurrency(value: number) {
   return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
@@ -26,23 +54,28 @@ function formatTime(iso: string) {
   return new Date(iso).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
 }
 
-function paymentInfo(order: DeliveryOrder): { label: string; value: string; due: boolean } {
-  if (order.payment_method === "pix") {
-    return order.pix_paid_at
+function mapsUrl(address: string) {
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`;
+}
+
+function paymentInfo(payment_method: string | null, pix_paid_at: string | null, card_paid_at: string | null, total: number) {
+  if (payment_method === "pix") {
+    return pix_paid_at
       ? { label: "✓ Pago no site (Pix)", value: "Nada a cobrar", due: false }
-      : { label: "⏳ Pix ainda não confirmado", value: formatCurrency(order.total), due: true };
+      : { label: "⏳ Pix ainda não confirmado", value: formatCurrency(total), due: true };
   }
-  if (order.payment_method === "cartao") {
-    return order.card_paid_at
+  if (payment_method === "cartao") {
+    return card_paid_at
       ? { label: "✓ Pago no site (cartão)", value: "Nada a cobrar", due: false }
-      : { label: "⏳ Cartão ainda não confirmado", value: formatCurrency(order.total), due: true };
+      : { label: "⏳ Cartão ainda não confirmado", value: formatCurrency(total), due: true };
   }
-  return { label: "💵 Cobrar na entrega", value: formatCurrency(order.total), due: true };
+  return { label: "💵 Cobrar na entrega", value: formatCurrency(total), due: true };
 }
 
 export default function Entregas() {
   const store = useStore();
   const [orders, setOrders] = useState<DeliveryOrder[]>([]);
+  const [hubLegs, setHubLegs] = useState<HubDeliveryLeg[]>([]);
   const [loading, setLoading] = useState(true);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [historyToday, setHistoryToday] = useState(0);
@@ -52,16 +85,25 @@ export default function Entregas() {
   async function load() {
     const supabase = getSupabase();
 
-    const { data } = await supabase
-      .from("orders")
-      .select(
-        "id, customer_name, customer_phone, total, status, created_at, delivery_address, neighborhood_name, payment_method, pix_paid_at, card_paid_at",
-      )
-      .eq("store_id", store.id)
-      .in("status", ["confirmado", "entregando"])
-      .not("delivery_address", "is", null)
-      .order("created_at", { ascending: true });
+    // hub_order_id null: pedido direto dessa loja só. Pedido de Hub
+    // (carrinho com várias lojas) some daqui e aparece agrupado em
+    // hubDeliveries — senão o entregador veria a perna de uma loja só,
+    // sem saber que faz parte de uma entrega maior.
+    const [{ data }, { data: hubData }] = await Promise.all([
+      supabase
+        .from("orders")
+        .select(
+          "id, customer_name, customer_phone, total, status, created_at, delivery_address, neighborhood_name, payment_method, pix_paid_at, card_paid_at",
+        )
+        .eq("store_id", store.id)
+        .in("status", ["confirmado", "entregando"])
+        .not("delivery_address", "is", null)
+        .is("hub_order_id", null)
+        .order("created_at", { ascending: true }),
+      supabase.rpc("get_hub_delivery_orders", { p_store_id: store.id }),
+    ]);
     setOrders((data ?? []) as DeliveryOrder[]);
+    setHubLegs((hubData ?? []) as HubDeliveryLeg[]);
 
     const startOfToday = new Date();
     startOfToday.setHours(0, 0, 0, 0);
@@ -118,6 +160,25 @@ export default function Entregas() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [store.id]);
 
+  const hubDeliveries: HubDelivery[] = useMemo(() => {
+    const map = new Map<string, HubDelivery>();
+    for (const leg of hubLegs) {
+      const existing = map.get(leg.hub_order_id);
+      if (existing) {
+        existing.legs.push(leg);
+      } else {
+        map.set(leg.hub_order_id, {
+          hubOrderId: leg.hub_order_id,
+          customerName: leg.hub_customer_name,
+          customerPhone: leg.hub_customer_phone,
+          createdAt: leg.hub_order_created_at,
+          legs: [leg],
+        });
+      }
+    }
+    return Array.from(map.values()).sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+  }, [hubLegs]);
+
   async function markEmRota(id: string) {
     setUpdatingId(id);
     await getSupabase()
@@ -137,6 +198,15 @@ export default function Entregas() {
     await load();
     setUpdatingId(null);
   }
+
+  async function markHubStatus(hubOrderId: string, status: "entregando" | "entregue") {
+    setUpdatingId(hubOrderId);
+    await getSupabase().rpc("update_hub_delivery_status", { p_hub_order_id: hubOrderId, p_status: status });
+    await load();
+    setUpdatingId(null);
+  }
+
+  const totalPending = orders.length + hubDeliveries.length;
 
   return (
     <div className="max-w-lg">
@@ -167,13 +237,108 @@ export default function Entregas() {
       <p className="mt-4 text-sm font-semibold text-slate-700 dark:text-slate-300">Pedidos pra entregar</p>
 
       {loading && <p className="mt-3 text-sm text-slate-500">Carregando…</p>}
-      {!loading && orders.length === 0 && (
-        <p className="mt-3 text-sm text-slate-500">Nenhuma entrega pendente agora.</p>
-      )}
+      {!loading && totalPending === 0 && <p className="mt-3 text-sm text-slate-500">Nenhuma entrega pendente agora.</p>}
 
       <div className="mt-2 flex flex-col gap-3">
+        {hubDeliveries.map((delivery) => {
+          const busy = updatingId === delivery.hubOrderId;
+          const anyConfirmado = delivery.legs.some((l) => l.order_status === "confirmado");
+          const first = delivery.legs[0];
+          const pay = paymentInfo(first.order_payment_method, first.order_pix_paid_at, first.order_card_paid_at, first.order_total);
+          const totalGeral = delivery.legs.reduce((s, l) => s + l.order_total, 0);
+          const deliveryAddresses = Array.from(new Set(delivery.legs.map((l) => l.order_delivery_address)));
+
+          return (
+            <div
+              key={delivery.hubOrderId}
+              className="rounded-xl border-2 border-indigo-200 bg-white p-4 dark:border-indigo-900/50 dark:bg-slate-900"
+            >
+              <div className="flex items-center justify-between">
+                <p className="text-xs text-slate-400">{formatTime(delivery.createdAt)}</p>
+                <span className="rounded-full bg-indigo-100 px-2 py-0.5 text-[11px] font-semibold text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-400">
+                  {delivery.legs.length} paradas · {anyConfirmado ? "Pronto pra sair" : "Em rota"}
+                </span>
+              </div>
+
+              <p className="mt-1 text-base font-semibold text-slate-900 dark:text-slate-50">{delivery.customerName}</p>
+
+              <div
+                className={
+                  pay.due
+                    ? "mt-2 flex items-center justify-between rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 dark:border-amber-700 dark:bg-amber-900/20"
+                    : "mt-2 flex items-center justify-between rounded-lg bg-green-50 px-3 py-2 dark:bg-green-900/20"
+                }
+              >
+                <span className={pay.due ? "text-xs font-semibold text-amber-800 dark:text-amber-400" : "text-xs font-semibold text-green-700 dark:text-green-400"}>
+                  {pay.label}
+                </span>
+                <span className={pay.due ? "text-sm font-bold text-amber-800 dark:text-amber-400" : "text-sm font-bold text-green-700 dark:text-green-400"}>
+                  {pay.due ? formatCurrency(totalGeral) : pay.value}
+                </span>
+              </div>
+
+              <div className="mt-2 flex flex-col gap-1.5">
+                <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400">Retirar em, nessa ordem:</p>
+                {delivery.legs.map((leg, i) => (
+                  <a
+                    key={leg.order_id}
+                    href={mapsUrl(leg.stop_address ?? leg.order_store_name)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center justify-between gap-2 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600 hover:bg-slate-100 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
+                  >
+                    <span>
+                      <b className="text-slate-900 dark:text-slate-50">
+                        {i + 1}. {leg.order_store_name}
+                      </b>{" "}
+                      — {leg.stop_address ?? "sem endereço cadastrado"}
+                    </span>
+                    <span className="shrink-0 text-indigo-600 dark:text-indigo-400">🗺️</span>
+                  </a>
+                ))}
+              </div>
+
+              <div className="mt-2 flex flex-col gap-1">
+                {deliveryAddresses.map((addr) => (
+                  <a
+                    key={addr}
+                    href={mapsUrl(addr)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center justify-between gap-2 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600 hover:bg-slate-100 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
+                  >
+                    <span>
+                      <span className="font-semibold text-slate-900 dark:text-slate-50">Entregar em: </span>
+                      {addr}
+                    </span>
+                    <span className="shrink-0 text-indigo-600 dark:text-indigo-400">🗺️</span>
+                  </a>
+                ))}
+              </div>
+
+              <div className="mt-3 flex gap-2">
+                <a
+                  href={`https://wa.me/55${delivery.customerPhone.replace(/\D/g, "")}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-center text-xs font-semibold text-slate-600 dark:border-slate-700 dark:text-slate-300"
+                >
+                  WhatsApp
+                </a>
+                <button
+                  onClick={() => markHubStatus(delivery.hubOrderId, anyConfirmado ? "entregando" : "entregue")}
+                  disabled={busy}
+                  className="flex-[2] rounded-lg bg-indigo-700 px-3 py-2 text-xs font-semibold text-white disabled:opacity-60"
+                >
+                  {busy ? "Salvando…" : anyConfirmado ? "Saiu pra entrega (todas as paradas)" : "Marcar tudo entregue"}
+                </button>
+              </div>
+            </div>
+          );
+        })}
+
         {orders.map((order) => {
-          const pay = paymentInfo(order);
+          const pay = paymentInfo(order.payment_method, order.pix_paid_at, order.card_paid_at, order.total);
           const busy = updatingId === order.id;
           return (
             <div
@@ -224,11 +389,19 @@ export default function Entregas() {
                 </span>
               </div>
 
-              <div className="mt-2 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-                <span className="font-semibold text-slate-900 dark:text-slate-50">Entregar em: </span>
-                {order.delivery_address}
-                {order.neighborhood_name ? ` — ${order.neighborhood_name}` : ""}
-              </div>
+              <a
+                href={mapsUrl(order.delivery_address)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-2 flex items-center justify-between gap-2 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600 hover:bg-slate-100 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
+              >
+                <span>
+                  <span className="font-semibold text-slate-900 dark:text-slate-50">Entregar em: </span>
+                  {order.delivery_address}
+                  {order.neighborhood_name ? ` — ${order.neighborhood_name}` : ""}
+                </span>
+                <span className="shrink-0 text-indigo-600 dark:text-indigo-400">🗺️</span>
+              </a>
 
               <div className="mt-3 flex gap-2">
                 <a
