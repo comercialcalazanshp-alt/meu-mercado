@@ -224,7 +224,7 @@ export default function StorefrontClient({
         return;
       }
       const [{ data: profile }, { data: record }] = await Promise.all([
-        customerSupabase.from("customer_profiles").select("full_name").eq("id", userId).maybeSingle(),
+        customerSupabase.from("customer_profiles").select("full_name, phone, default_address").eq("id", userId).maybeSingle(),
         customerSupabase
           .from("customers")
           .select("cashback_balance, referral_code")
@@ -246,6 +246,12 @@ export default function StorefrontClient({
       setCustomerLoggedIn(true);
       setCustomerAccountName(profile.full_name);
       setCustomerRecord(record ?? null);
+      // Pré-preenche com o que já está salvo no perfil, mas só se o campo
+      // ainda estiver vazio — se a pessoa já digitou algo diferente antes
+      // disso carregar, não sobrescreve o que ela escreveu.
+      setCustomerName((prev) => prev || profile.full_name || "");
+      setCustomerPhone((prev) => prev || profile.phone || "");
+      setDeliveryAddress((prev) => prev || profile.default_address || "");
     }
 
     customerSupabase.auth.getSession().then(({ data: { session } }) => {
@@ -849,6 +855,22 @@ export default function StorefrontClient({
         cashback_balance: (prev?.cashback_balance ?? 0) - cashbackUsed + cashbackEarned,
         referral_code: data?.[0]?.referral_code ?? prev?.referral_code ?? "",
       }));
+      // Guarda telefone e o endereço usado nesse pedido como padrão do
+      // perfil — só quando é entrega de verdade (retirada não é um
+      // endereço válido pra salvar) — assim o próximo pedido já vem
+      // pré-preenchido, sem precisar de tela/botão extra pra "salvar".
+      if (neighborhoodId !== "retirada" && deliveryAddress.trim()) {
+        const customerSupabase = getCustomerSupabase();
+        const {
+          data: { session: customerSession },
+        } = await customerSupabase.auth.getSession();
+        if (customerSession) {
+          await customerSupabase
+            .from("customer_profiles")
+            .update({ phone: customerPhone.trim(), default_address: deliveryAddress.trim() })
+            .eq("id", customerSession.user.id);
+        }
+      }
     }
     setConfirmedScratchDiscount(data?.[0]?.scratch_discount ?? 0);
     const newOrderId = data?.[0]?.order_id ?? null;
