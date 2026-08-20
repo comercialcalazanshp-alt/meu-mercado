@@ -118,7 +118,7 @@ export default function Parceria() {
     setError(null);
     setGenerating("mensalidade");
     try {
-      const res = await fetch("/api/pagbank/create-subscription-pix", {
+      const res = await fetch("/api/efi/create-subscription-pix", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: await authHeader() },
         body: JSON.stringify({ partnership_id: partnership.id }),
@@ -150,7 +150,7 @@ export default function Parceria() {
     setError(null);
     setGenerating(pkg.id);
     try {
-      const res = await fetch("/api/pagbank/create-package-pix", {
+      const res = await fetch("/api/efi/create-package-pix", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: await authHeader() },
         body: JSON.stringify({ partnership_id: partnership.id, package_id: pkg.id }),

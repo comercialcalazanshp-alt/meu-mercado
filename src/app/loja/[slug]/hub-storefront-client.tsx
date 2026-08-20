@@ -439,7 +439,7 @@ export default function HubStorefrontClient({ hubStore, modules }: { hubStore: S
       setPixLoading(true);
       setPixError(null);
       try {
-        const res = await fetch("/api/pagbank/create-pix", {
+        const res = await fetch("/api/efi/create-pix", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ hub_order_id: hubOrderId, customer_tax_id: customerCpf.trim() }),
