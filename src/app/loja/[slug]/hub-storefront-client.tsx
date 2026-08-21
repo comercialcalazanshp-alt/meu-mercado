@@ -158,7 +158,7 @@ export default function HubStorefrontClient({ hubStore, modules }: { hubStore: S
   const [customerPhone, setCustomerPhone] = useState("");
   const [customerCpf, setCustomerCpf] = useState("");
   const [deliveryByStore, setDeliveryByStore] = useState<Record<string, { neighborhoodId: string; address: string }>>({});
-  const [paymentMethod, setPaymentMethod] = useState<"combinar" | "pix" | "cartao">("combinar");
+  const [paymentMethod, setPaymentMethod] = useState<"dinheiro" | "cartao_entrega" | "pix" | "cartao">("dinheiro");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -390,6 +390,8 @@ export default function HubStorefrontClient({ hubStore, modules }: { hubStore: S
       }
     }
 
+    if (!window.confirm("Podemos confirmar esse pedido?")) return;
+
     setSaving(true);
     const carts = storesInCart.map((m) => {
       const choice = deliveryByStore[m.store_id];
@@ -407,7 +409,7 @@ export default function HubStorefrontClient({ hubStore, modules }: { hubStore: S
       p_customer_name: customerName.trim(),
       p_customer_phone: customerPhone.trim(),
       p_carts: carts,
-      p_payment_method: paymentMethod === "combinar" ? "dinheiro" : paymentMethod,
+      p_payment_method: paymentMethod,
     });
 
     if (rpcError) {
@@ -1394,7 +1396,7 @@ export default function HubStorefrontClient({ hubStore, modules }: { hubStore: S
           <div className="rounded-2xl bg-white p-4 shadow-sm">
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Forma de pagamento</p>
             <div className="mt-2.5 space-y-2">
-              {(["combinar", "pix", "cartao"] as const).map((pm) => (
+              {(["dinheiro", "cartao_entrega", "pix", "cartao"] as const).map((pm) => (
                 <label
                   key={pm}
                   className={`flex cursor-pointer items-center gap-2.5 rounded-xl border px-3.5 py-3 text-sm transition ${
@@ -1403,11 +1405,13 @@ export default function HubStorefrontClient({ hubStore, modules }: { hubStore: S
                   style={paymentMethod === pm ? { borderColor: PLATFORM_ACCENT, backgroundColor: "#FFF8EB" } : undefined}
                 >
                   <input type="radio" name="paymentMethod" checked={paymentMethod === pm} onChange={() => setPaymentMethod(pm)} />
-                  {pm === "combinar"
-                    ? "Pagamento na entrega (dinheiro, cartão, etc.)"
-                    : pm === "pix"
-                      ? "Pix"
-                      : "Cartão de crédito"}
+                  {pm === "dinheiro"
+                    ? "Dinheiro na entrega"
+                    : pm === "cartao_entrega"
+                      ? "Cartão na entrega (maquininha)"
+                      : pm === "pix"
+                        ? "Pix"
+                        : "Cartão de crédito"}
                 </label>
               ))}
             </div>

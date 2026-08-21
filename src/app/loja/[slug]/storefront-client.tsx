@@ -142,7 +142,7 @@ export default function StorefrontClient({
   const [confirmedDeliveryFee, setConfirmedDeliveryFee] = useState(0);
   const [confirmedEta, setConfirmedEta] = useState<{ min: number | null; max: number | null } | null>(null);
   const [confirmedOrderId, setConfirmedOrderId] = useState<string | null>(null);
-  const [paymentMethod, setPaymentMethod] = useState<"combinar" | "pix" | "cartao">("combinar");
+  const [paymentMethod, setPaymentMethod] = useState<"dinheiro" | "cartao_entrega" | "pix" | "cartao">("dinheiro");
   const [pixQrCodeText, setPixQrCodeText] = useState<string | null>(null);
   const [pixQrCodeImage, setPixQrCodeImage] = useState<string | null>(null);
   const [pixLoading, setPixLoading] = useState(false);
@@ -799,6 +799,8 @@ export default function StorefrontClient({
       return;
     }
 
+    if (!window.confirm("Podemos confirmar esse pedido?")) return;
+
     setSaving(true);
     // O preço e a baixa de estoque são recalculados no banco (função
     // "checkout") — o navegador só manda produto e quantidade, nunca preço,
@@ -819,7 +821,7 @@ export default function StorefrontClient({
       p_neighborhood_id: neighborhoodId === "retirada" ? undefined : neighborhoodId,
       p_delivery_address: neighborhoodId === "retirada" ? undefined : deliveryAddress.trim(),
       p_recipe_id: attributedRecipeId ?? undefined,
-      p_payment_method: paymentMethod === "combinar" ? "dinheiro" : paymentMethod,
+      p_payment_method: paymentMethod,
     });
 
     if (rpcError) {
@@ -981,7 +983,7 @@ export default function StorefrontClient({
     setUseCashback(false);
     setNeighborhoodId("retirada");
     setDeliveryAddress("");
-    setPaymentMethod("combinar");
+    setPaymentMethod("dinheiro");
     setPixQrCodeText(null);
     setPixQrCodeImage(null);
     setPixLoading(false);
@@ -1501,10 +1503,19 @@ export default function StorefrontClient({
                   <input
                     type="radio"
                     name="paymentMethod"
-                    checked={paymentMethod === "combinar"}
-                    onChange={() => setPaymentMethod("combinar")}
+                    checked={paymentMethod === "dinheiro"}
+                    onChange={() => setPaymentMethod("dinheiro")}
                   />
-                  Pagamento na entrega (dinheiro, cartão, etc.)
+                  Dinheiro na entrega
+                </label>
+                <label className="flex items-center gap-2 rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 dark:border-slate-700 dark:text-slate-300">
+                  <input
+                    type="radio"
+                    name="paymentMethod"
+                    checked={paymentMethod === "cartao_entrega"}
+                    onChange={() => setPaymentMethod("cartao_entrega")}
+                  />
+                  Cartão na entrega (maquininha)
                 </label>
                 <label className="flex items-center gap-2 rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 dark:border-slate-700 dark:text-slate-300">
                   <input
