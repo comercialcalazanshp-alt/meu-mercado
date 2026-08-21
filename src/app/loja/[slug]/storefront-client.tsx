@@ -1504,7 +1504,7 @@ export default function StorefrontClient({
                     checked={paymentMethod === "combinar"}
                     onChange={() => setPaymentMethod("combinar")}
                   />
-                  Combinar direto com a loja (dinheiro, cartão na entrega, etc.)
+                  Pagamento na entrega (dinheiro, cartão, etc.)
                 </label>
                 <label className="flex items-center gap-2 rounded-lg border border-slate-300 px-3 py-2 text-sm text-slate-700 dark:border-slate-700 dark:text-slate-300">
                   <input

@@ -1404,7 +1404,7 @@ export default function HubStorefrontClient({ hubStore, modules }: { hubStore: S
                 >
                   <input type="radio" name="paymentMethod" checked={paymentMethod === pm} onChange={() => setPaymentMethod(pm)} />
                   {pm === "combinar"
-                    ? "Combinar direto com a loja (dinheiro, cartão na entrega, etc.)"
+                    ? "Pagamento na entrega (dinheiro, cartão, etc.)"
                     : pm === "pix"
                       ? "Pix"
                       : "Cartão de crédito"}
