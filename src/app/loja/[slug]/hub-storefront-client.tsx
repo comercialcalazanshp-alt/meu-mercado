@@ -1403,7 +1403,11 @@ export default function HubStorefrontClient({ hubStore, modules }: { hubStore: S
                   style={paymentMethod === pm ? { borderColor: PLATFORM_ACCENT, backgroundColor: "#FFF8EB" } : undefined}
                 >
                   <input type="radio" name="paymentMethod" checked={paymentMethod === pm} onChange={() => setPaymentMethod(pm)} />
-                  {pm === "combinar" ? "Combinar direto com a loja" : pm === "pix" ? "Pix" : "Cartão de crédito"}
+                  {pm === "combinar"
+                    ? "Combinar direto com a loja (dinheiro, cartão na entrega, etc.)"
+                    : pm === "pix"
+                      ? "Pix"
+                      : "Cartão de crédito"}
                 </label>
               ))}
             </div>
@@ -1519,6 +1523,15 @@ export default function HubStorefrontClient({ hubStore, modules }: { hubStore: S
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src={pixQrCodeImage} alt="QR Code Pix" className="mx-auto h-48 w-48" />
                   <p className="mt-2 text-xs text-slate-500">Escaneie com o app do seu banco pra pagar.</p>
+                  {pixQrCodeText && (
+                    <button
+                      onClick={() => navigator.clipboard.writeText(pixQrCodeText)}
+                      className="mt-3 w-full rounded-xl px-3 py-2.5 text-sm font-semibold"
+                      style={{ backgroundColor: PLATFORM_ACCENT, color: PLATFORM_ACCENT_TEXT }}
+                    >
+                      Copiar código Pix
+                    </button>
+                  )}
                 </>
               )}
             </div>
