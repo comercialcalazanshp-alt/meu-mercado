@@ -648,7 +648,7 @@ export default function HubStorefrontClient({ hubStore, modules }: { hubStore: S
                 <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg" style={{ backgroundColor: m.brand_color }}>
                   <Icon size={14} color={readableTextColor(m.brand_color)} />
                 </span>
-                <span className="truncate">{m.category}</span>
+                <span className="truncate">{m.store_name}</span>
               </button>
             );
           })}
@@ -754,7 +754,7 @@ export default function HubStorefrontClient({ hubStore, modules }: { hubStore: S
                       >
                         <Icon size={24} color={readableTextColor(m.brand_color)} strokeWidth={2} />
                       </span>
-                      <span className="max-w-[64px] truncate text-center text-[11px] font-medium text-white/80">{m.category}</span>
+                      <span className="max-w-[64px] truncate text-center text-[11px] font-medium text-white/80">{m.store_name}</span>
                     </button>
                   );
                 })}
@@ -939,10 +939,10 @@ export default function HubStorefrontClient({ hubStore, modules }: { hubStore: S
                 </span>
                 <div className="relative">
                   <p className="text-base font-bold leading-tight" style={{ ...FONT_DISPLAY, color: readableTextColor(m.brand_color) }}>
-                    {m.category}
+                    {m.store_name}
                   </p>
                   <p className="mt-0.5 truncate text-[11px] opacity-75" style={{ color: readableTextColor(m.brand_color) }}>
-                    {m.store_name}
+                    {m.category}
                   </p>
                   <p className="mt-2 text-[11px] font-semibold opacity-90" style={{ color: readableTextColor(m.brand_color) }}>
                     {count ? `${count} produtos` : "Ver produtos"} →
@@ -982,8 +982,8 @@ export default function HubStorefrontClient({ hubStore, modules }: { hubStore: S
               <ChevronLeft size={22} />
             </button>
             <div className="min-w-0 flex-1">
-              <p className="truncate text-base font-bold">{m.category}</p>
-              <p className="truncate text-xs opacity-80">{m.store_name}</p>
+              <p className="truncate text-base font-bold">{m.store_name}</p>
+              <p className="truncate text-xs opacity-80">{m.category}</p>
             </div>
             <button onClick={goToCart} className="relative rounded-full p-1.5 opacity-90 active:scale-90">
               <ShoppingCart size={20} />
