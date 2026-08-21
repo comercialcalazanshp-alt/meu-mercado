@@ -45,6 +45,8 @@ type Order = {
   internal_note: string | null;
   cancel_reason: string | null;
   refund_resolved: boolean;
+  pix_end_to_end_id: string | null;
+  pix_refunded_at: string | null;
 };
 
 type Product = {
@@ -153,6 +155,8 @@ export default function Pedidos() {
   const [savingEdit, setSavingEdit] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
   const [noteDrafts, setNoteDrafts] = useState<Record<string, string>>({});
+  const [refundingPixId, setRefundingPixId] = useState<string | null>(null);
+  const [refundError, setRefundError] = useState<Record<string, string>>({});
   const [products, setProducts] = useState<Product[]>([]);
   const [addProductId, setAddProductId] = useState<Record<string, string>>({});
   const [highValueThreshold, setHighValueThreshold] = useState(150);
@@ -191,7 +195,7 @@ export default function Pedidos() {
       const { data } = await getSupabase()
         .from("orders")
         .select(
-          "id, customer_name, customer_phone, items, total, status, created_at, coupon_code, discount_amount, neighborhood_name, delivery_fee, delivery_address, channel, payment_method, pix_paid_at, card_paid_at, card_last_digits, seen_at, internal_note, cancel_reason, refund_resolved",
+          "id, customer_name, customer_phone, items, total, status, created_at, coupon_code, discount_amount, neighborhood_name, delivery_fee, delivery_address, channel, payment_method, pix_paid_at, card_paid_at, card_last_digits, seen_at, internal_note, cancel_reason, refund_resolved, pix_end_to_end_id, pix_refunded_at",
         )
         .eq("store_id", store.id)
         .order("created_at", { ascending: false });
@@ -278,6 +282,35 @@ export default function Pedidos() {
   async function markRefundResolved(order: Order) {
     setOrders((prev) => prev.map((o) => (o.id === order.id ? { ...o, refund_resolved: true } : o)));
     await getSupabase().from("orders").update({ refund_resolved: true }).eq("id", order.id);
+  }
+
+  async function handleRefundPix(order: Order) {
+    setRefundingPixId(order.id);
+    setRefundError((prev) => ({ ...prev, [order.id]: "" }));
+    const {
+      data: { session },
+    } = await getSupabase().auth.getSession();
+    if (!session) {
+      setRefundingPixId(null);
+      return;
+    }
+    try {
+      const res = await fetch("/api/efi/refund-pix", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify({ order_id: order.id }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setRefundError((prev) => ({ ...prev, [order.id]: data.error ?? "Não deu pra devolver o Pix." }));
+        return;
+      }
+      setOrders((prev) => prev.map((o) => (o.id === order.id ? { ...o, refund_resolved: true, pix_refunded_at: new Date().toISOString() } : o)));
+    } catch {
+      setRefundError((prev) => ({ ...prev, [order.id]: "Não deu pra devolver o Pix — tente de novo." }));
+    } finally {
+      setRefundingPixId(null);
+    }
   }
 
   function copySummary(order: Order) {
@@ -874,19 +907,36 @@ export default function Pedidos() {
                     {order.status === "cancelado" &&
                       (order.pix_paid_at || order.card_paid_at) &&
                       !order.refund_resolved && (
-                        <div className="mt-2 flex items-center justify-end gap-2">
-                          <span className="rounded-full bg-red-100 px-2.5 py-1 text-xs font-medium text-red-700 dark:bg-red-900/40 dark:text-red-400">
-                            💸 Reembolso pendente
-                          </span>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              markRefundResolved(order);
-                            }}
-                            className="text-xs text-slate-500 underline dark:text-slate-400"
-                          >
-                            marcar devolvido
-                          </button>
+                        <div className="mt-2 flex flex-col items-end gap-1.5">
+                          <div className="flex items-center gap-2">
+                            <span className="rounded-full bg-red-100 px-2.5 py-1 text-xs font-medium text-red-700 dark:bg-red-900/40 dark:text-red-400">
+                              💸 Reembolso pendente
+                            </span>
+                            {order.payment_method === "pix" && order.pix_end_to_end_id ? (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleRefundPix(order);
+                                }}
+                                disabled={refundingPixId === order.id}
+                                className="rounded-full bg-red-600 px-2.5 py-1 text-xs font-semibold text-white disabled:opacity-50"
+                              >
+                                {refundingPixId === order.id ? "Devolvendo…" : "Devolver via Pix"}
+                              </button>
+                            ) : null}
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                markRefundResolved(order);
+                              }}
+                              className="text-xs text-slate-500 underline dark:text-slate-400"
+                            >
+                              marcar devolvido
+                            </button>
+                          </div>
+                          {refundError[order.id] && (
+                            <p className="text-xs text-red-600 dark:text-red-400">{refundError[order.id]}</p>
+                          )}
                         </div>
                       )}
 

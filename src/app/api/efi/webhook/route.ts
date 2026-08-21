@@ -1,6 +1,6 @@
 import "server-only";
 import { getSupabaseAdmin } from "@/lib/supabase-admin";
-import { getEfiPixChargeStatus } from "@/lib/efi-pix";
+import { getEfiPixChargeDetail } from "@/lib/efi-pix";
 import { syncHubOrderPayment } from "@/lib/hub-order-payment-sync";
 
 // A Efí chama essa rota quando um Pix muda de status, mas a notificação em
@@ -23,14 +23,15 @@ export async function POST(request: Request) {
   const now = new Date().toISOString();
 
   for (const txid of txids) {
-    let status: string;
+    let detail: { status: string; pix: { endToEndId: string }[] };
     try {
-      status = await getEfiPixChargeStatus(txid);
+      detail = await getEfiPixChargeDetail(txid);
     } catch (err) {
       console.error("Efí webhook: falha ao reconsultar txid", txid, err instanceof Error ? err.message : err);
       continue;
     }
-    if (status !== "CONCLUIDA") continue;
+    if (detail.status !== "CONCLUIDA") continue;
+    const endToEndId = detail.pix?.[0]?.endToEndId ?? null;
 
     const { data: hubOrder } = await supabase
       .from("hub_orders")
@@ -39,8 +40,8 @@ export async function POST(request: Request) {
       .maybeSingle();
     if (hubOrder) {
       if (!hubOrder.pix_paid_at) {
-        await supabase.from("hub_orders").update({ pix_paid_at: now }).eq("id", hubOrder.id);
-        await syncHubOrderPayment(supabase, hubOrder.id, "pix");
+        await supabase.from("hub_orders").update({ pix_paid_at: now, pix_end_to_end_id: endToEndId }).eq("id", hubOrder.id);
+        await syncHubOrderPayment(supabase, hubOrder.id, "pix", undefined, endToEndId);
       }
       continue;
     }
@@ -49,7 +50,7 @@ export async function POST(request: Request) {
     if (order) {
       await supabase
         .from("orders")
-        .update({ pix_paid_at: now, payment_method: "pix" })
+        .update({ pix_paid_at: now, payment_method: "pix", pix_end_to_end_id: endToEndId })
         .eq("id", order.id)
         .is("pix_paid_at", null);
       continue;

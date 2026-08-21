@@ -12,6 +12,7 @@ export async function syncHubOrderPayment(
   hubOrderId: string,
   method: "pix" | "cartao",
   cardDetails?: { lastDigits: string | null; brand: string | null },
+  pixEndToEndId?: string | null,
 ) {
   const { data: orders } = await admin
     .from("orders")
@@ -31,7 +32,7 @@ export async function syncHubOrderPayment(
     const now = new Date().toISOString();
     const patch: Record<string, unknown> =
       method === "pix"
-        ? { payment_method: "pix", pix_paid_at: now }
+        ? { payment_method: "pix", pix_paid_at: now, pix_end_to_end_id: pixEndToEndId ?? null }
         : {
             payment_method: "cartao",
             card_paid_at: now,
