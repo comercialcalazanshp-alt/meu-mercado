@@ -68,6 +68,8 @@ export type Store = {
   scratch_enabled: boolean;
   brand_color: string;
   accent_color: string;
+  min_order_for_delivery_enabled: boolean;
+  min_order_for_delivery: number;
 };
 
 export function isNewProduct(createdAt: string) {

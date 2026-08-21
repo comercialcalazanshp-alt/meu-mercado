@@ -51,6 +51,8 @@ type ModuleCatalog = {
   loading: boolean;
   loaded: boolean;
   error: string | null;
+  minOrderEnabled: boolean;
+  minOrderValue: number;
 };
 
 type OfferProduct = Product & {
@@ -253,12 +255,12 @@ export default function HubStorefrontClient({ hubStore, modules }: { hubStore: S
   async function loadCatalog(storeId: string) {
     setCatalogs((prev) => {
       if (prev[storeId]?.loaded || prev[storeId]?.loading) return prev;
-      return { ...prev, [storeId]: { products: [], neighborhoods: [], loading: true, loaded: false, error: null } };
+      return { ...prev, [storeId]: { products: [], neighborhoods: [], loading: true, loaded: false, error: null, minOrderEnabled: false, minOrderValue: 0 } };
     });
     if (catalogs[storeId]?.loaded || catalogs[storeId]?.loading) return;
 
     const supabase = getSupabase();
-    const [{ data: products, error: productsError }, { data: neighborhoods }] = await Promise.all([
+    const [{ data: products, error: productsError }, { data: neighborhoods }, { data: storeSettings }] = await Promise.all([
       supabase
         .from("products")
         .select(
@@ -274,6 +276,7 @@ export default function HubStorefrontClient({ hubStore, modules }: { hubStore: S
         .eq("store_id", storeId)
         .eq("active", true)
         .order("name", { ascending: true }),
+      supabase.from("stores").select("min_order_for_delivery_enabled, min_order_for_delivery").eq("id", storeId).maybeSingle(),
     ]);
 
     setCatalogs((prev) => ({
@@ -284,6 +287,8 @@ export default function HubStorefrontClient({ hubStore, modules }: { hubStore: S
         loading: false,
         loaded: true,
         error: productsError ? "Não deu pra carregar os produtos dessa loja. Tente de novo." : null,
+        minOrderEnabled: storeSettings?.min_order_for_delivery_enabled ?? false,
+        minOrderValue: storeSettings?.min_order_for_delivery ?? 0,
       },
     }));
   }
@@ -354,6 +359,8 @@ export default function HubStorefrontClient({ hubStore, modules }: { hubStore: S
           loading: false,
           loaded: existing?.loaded ?? false,
           error: existing?.error ?? null,
+          minOrderEnabled: existing?.minOrderEnabled ?? false,
+          minOrderValue: existing?.minOrderValue ?? 0,
         },
       };
     });
@@ -384,9 +391,20 @@ export default function HubStorefrontClient({ hubStore, modules }: { hubStore: S
     }
     for (const m of storesInCart) {
       const choice = deliveryByStore[m.store_id];
-      if (choice && choice.neighborhoodId !== "retirada" && choice.neighborhoodId && !choice.address?.trim()) {
+      const isDelivery = choice && choice.neighborhoodId !== "retirada" && choice.neighborhoodId;
+      if (isDelivery && !choice.address?.trim()) {
         setError(`Preencha o endereço de entrega de "${m.store_name}".`);
         return;
+      }
+      const catalog = catalogs[m.store_id];
+      if (isDelivery && catalog?.minOrderEnabled) {
+        const storeSubtotal = (cartByStore.get(m.store_id) ?? []).reduce((s, l) => s + l.lineTotal, 0);
+        if (storeSubtotal < catalog.minOrderValue) {
+          setError(
+            `Pedido mínimo pra entrega em "${m.store_name}" é ${formatCurrency(catalog.minOrderValue)} — faltam ${formatCurrency(catalog.minOrderValue - storeSubtotal)}.`,
+          );
+          return;
+        }
       }
     }
 
@@ -1358,6 +1376,18 @@ export default function HubStorefrontClient({ hubStore, modules }: { hubStore: S
                       className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm text-slate-900 outline-none focus:border-slate-400"
                     />
                   )}
+                  {choice.neighborhoodId !== "retirada" &&
+                    catalogs[m.store_id]?.minOrderEnabled &&
+                    (() => {
+                      const storeSubtotal = (cartByStore.get(m.store_id) ?? []).reduce((s, l) => s + l.lineTotal, 0);
+                      const minValue = catalogs[m.store_id]?.minOrderValue ?? 0;
+                      if (storeSubtotal >= minValue) return null;
+                      return (
+                        <p className="text-xs font-medium text-amber-700">
+                          Pedido mínimo pra entrega nessa loja é {formatCurrency(minValue)} — faltam {formatCurrency(minValue - storeSubtotal)}
+                        </p>
+                      );
+                    })()}
                 </div>
               </div>
             );
@@ -1505,8 +1535,14 @@ export default function HubStorefrontClient({ hubStore, modules }: { hubStore: S
                     </li>
                   ))}
                 </ul>
-                <p className="mt-2.5 flex justify-between border-t border-slate-100 pt-2.5 text-sm font-semibold text-slate-900">
-                  <span>Subtotal dessa loja</span>
+                {r.delivery_fee > 0 && (
+                  <p className="mt-2 flex justify-between border-t border-slate-100 pt-2 text-sm text-slate-500">
+                    <span>Entrega</span>
+                    <span className="tabular-nums">{formatCurrency(r.delivery_fee)}</span>
+                  </p>
+                )}
+                <p className={`flex justify-between pt-2.5 text-sm font-semibold text-slate-900 ${r.delivery_fee > 0 ? "" : "mt-2.5 border-t border-slate-100"}`}>
+                  <span>Total dessa loja</span>
                   <span className="tabular-nums">{formatCurrency(r.store_total)}</span>
                 </p>
               </div>

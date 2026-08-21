@@ -394,6 +394,8 @@ export default function StorefrontClient({
       : 0;
   const totalWithDelivery =
     total - (couponPreview?.valid ? couponPreview.discount : 0) - scratchDiscountPreview + deliveryFee;
+  const minOrderShortfall =
+    neighborhoodId !== "retirada" && store.min_order_for_delivery_enabled ? Math.max(0, store.min_order_for_delivery - total) : 0;
 
   const storeRatingAvg =
     storeReviews.length > 0
@@ -796,6 +798,11 @@ export default function StorefrontClient({
 
     if (neighborhoodId !== "retirada" && !deliveryAddress.trim()) {
       setError("Preencha o endereço de entrega.");
+      return;
+    }
+
+    if (minOrderShortfall > 0) {
+      setError(`Pedido mínimo pra entrega é de ${formatCurrency(store.min_order_for_delivery)} — faltam ${formatCurrency(minOrderShortfall)}.`);
       return;
     }
 
@@ -1335,6 +1342,11 @@ export default function StorefrontClient({
               {deliveryEtaLabel && (
                 <p className="mt-1.5 text-xs text-slate-500 dark:text-slate-400">
                   🕒 Chega em <span className="font-semibold">{deliveryEtaLabel}</span> depois da confirmação do pedido
+                </p>
+              )}
+              {minOrderShortfall > 0 && (
+                <p className="mt-1.5 text-xs font-medium text-amber-700 dark:text-amber-400">
+                  Pedido mínimo pra entrega é {formatCurrency(store.min_order_for_delivery)} — faltam {formatCurrency(minOrderShortfall)}
                 </p>
               )}
               {neighborhoodId !== "retirada" && (

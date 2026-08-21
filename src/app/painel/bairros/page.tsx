@@ -34,6 +34,10 @@ export default function Bairros() {
   const [etaDrafts, setEtaDrafts] = useState<Record<string, { min: string; max: string }>>({});
   const [savingEta, setSavingEta] = useState<string | null>(null);
 
+  const [minOrderEnabled, setMinOrderEnabled] = useState(true);
+  const [minOrderValue, setMinOrderValue] = useState("25");
+  const [savingMinOrder, setSavingMinOrder] = useState(false);
+
   async function loadNeighborhoods() {
     setLoading(true);
     const { data } = await getSupabase()
@@ -52,8 +56,29 @@ export default function Bairros() {
 
   useEffect(() => {
     loadNeighborhoods();
+    getSupabase()
+      .from("stores")
+      .select("min_order_for_delivery_enabled, min_order_for_delivery")
+      .eq("id", store.id)
+      .single()
+      .then(({ data }) => {
+        if (!data) return;
+        setMinOrderEnabled(data.min_order_for_delivery_enabled);
+        setMinOrderValue(String(data.min_order_for_delivery));
+      });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [store.id]);
+
+  async function saveMinOrder(enabled: boolean, valueText: string) {
+    const value = valueText.trim() === "" ? 0 : Number(valueText.replace(",", "."));
+    if (Number.isNaN(value) || value < 0) return;
+    setSavingMinOrder(true);
+    await getSupabase()
+      .from("stores")
+      .update({ min_order_for_delivery_enabled: enabled, min_order_for_delivery: value })
+      .eq("id", store.id);
+    setSavingMinOrder(false);
+  }
 
   async function handleAdd(e: FormEvent) {
     e.preventDefault();
@@ -130,6 +155,44 @@ export default function Bairros() {
         tempo de entrega. Na hora de fechar o pedido, o cliente escolhe o bairro (ou retirar na
         loja, sem custo) e vê o frete e a estimativa somados automaticamente.
       </p>
+
+      <div className="mt-4 rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <p className="text-sm font-semibold text-slate-900 dark:text-slate-50">Pedido mínimo pra entrega</p>
+            <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+              Não vale pra retirada na loja — só quando o cliente escolhe um bairro pra entrega.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              setMinOrderEnabled((prev) => {
+                saveMinOrder(!prev, minOrderValue);
+                return !prev;
+              });
+            }}
+            className={`relative h-6 w-11 shrink-0 rounded-full transition ${minOrderEnabled ? "bg-blue-900 dark:bg-blue-700" : "bg-slate-300 dark:bg-slate-700"}`}
+          >
+            <span
+              className={`absolute top-0.5 h-5 w-5 rounded-full bg-white transition ${minOrderEnabled ? "left-5" : "left-0.5"}`}
+            />
+          </button>
+        </div>
+        {minOrderEnabled && (
+          <div className="mt-3 flex items-center gap-2">
+            <span className="text-sm text-slate-500 dark:text-slate-400">R$</span>
+            <input
+              value={minOrderValue}
+              onChange={(e) => setMinOrderValue(e.target.value)}
+              onBlur={() => saveMinOrder(minOrderEnabled, minOrderValue)}
+              inputMode="decimal"
+              className="w-24 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+            />
+            {savingMinOrder && <span className="text-xs text-slate-400">salvando…</span>}
+          </div>
+        )}
+      </div>
 
       <form
         onSubmit={handleAdd}
