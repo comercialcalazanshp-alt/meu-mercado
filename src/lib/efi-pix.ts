@@ -23,7 +23,13 @@ function getAgent(): https.Agent {
   return cachedAgent;
 }
 
-function efiRequest<T>(method: string, path: string, body: unknown, authHeader: string): Promise<T> {
+function efiRequest<T>(
+  method: string,
+  path: string,
+  body: unknown,
+  authHeader: string,
+  extraHeaders: Record<string, string> = {},
+): Promise<T> {
   return new Promise((resolve, reject) => {
     const data = body ? JSON.stringify(body) : undefined;
     const url = new URL(`${EFI_BASE_URL}${path}`);
@@ -36,6 +42,7 @@ function efiRequest<T>(method: string, path: string, body: unknown, authHeader: 
         headers: {
           "Content-Type": "application/json",
           Authorization: authHeader,
+          ...extraHeaders,
           ...(data ? { "Content-Length": Buffer.byteLength(data) } : {}),
         },
       },
@@ -129,10 +136,25 @@ export async function createEfiPixCharge(params: {
 // A notificação que a Efí manda pro webhook não vem assinada — a forma seg-
 // ura de confirmar é reconsultar a cobrança direto na API (com nossas
 // próprias credenciais) em vez de confiar cegamente no corpo da chamada.
-export async function getEfiPixChargeStatus(txid: string): Promise<string> {
+// Devolve também o endToEndId de cada Pix recebido pra essa cobrança —
+// é o identificador que a devolução (estorno) exige depois.
+export async function getEfiPixChargeDetail(
+  txid: string,
+): Promise<{ status: string; pix: { endToEndId: string; valor: string }[] }> {
   const token = await getAccessToken();
-  const cob = await efiRequest<{ status: string }>("GET", `/v2/cob/${txid}`, null, `Bearer ${token}`);
-  return cob.status;
+  return efiRequest("GET", `/v2/cob/${txid}`, null, `Bearer ${token}`);
+}
+
+export async function getEfiPixChargeStatus(txid: string): Promise<string> {
+  return (await getEfiPixChargeDetail(txid)).status;
+}
+
+// Devolve (total ou parcialmente) um Pix já recebido. p_refund_id é gerado
+// por nós (identifica essa devolução específica, não a cobrança original)
+// — reaproveita makeTxid pra gerar algo no formato certo.
+export async function refundEfiPix(endToEndId: string, refundId: string, amount: number): Promise<{ status: string }> {
+  const token = await getAccessToken();
+  return efiRequest("PUT", `/v2/pix/${endToEndId}/devolucao/${refundId}`, { valor: amount.toFixed(2) }, `Bearer ${token}`);
 }
 
 // Registro do webhook — só precisa rodar uma vez (ou de novo se a URL
@@ -140,7 +162,10 @@ export async function getEfiPixChargeStatus(txid: string): Promise<string> {
 export async function registerEfiWebhook(webhookUrl: string): Promise<void> {
   const token = await getAccessToken();
   const pixKey = process.env.EFI_PIX_KEY!;
-  await efiRequest("PUT", `/v2/webhook/${pixKey}`, { webhookUrl }, `Bearer ${token}`);
+  // Nosso endpoint de webhook não valida certificado de cliente (mTLS) na
+  // ponta de recebimento — sem esse header a Efí recusa o registro exigindo
+  // autenticação mútua na URL informada.
+  await efiRequest("PUT", `/v2/webhook/${pixKey}`, { webhookUrl }, `Bearer ${token}`, { "x-skip-mtls-checking": "true" });
 }
 
 export { isConfigured as isEfiConfigured };
