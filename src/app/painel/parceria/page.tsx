@@ -16,6 +16,26 @@ function formatDate(iso: string) {
 const BILLING_LABEL: Record<string, string> = { mensal: "mensal", trimestral: "trimestral", semestral: "semestral", anual: "anual" };
 
 type PixState = { qrText: string | null; qrImage: string | null; kind: "mensalidade" | "pacote"; recordId: string; table: string } | null;
+type BoletoState = {
+  barcode: string;
+  pdfUrl: string;
+  expireAt: string;
+  kind: "mensalidade" | "pacote";
+  recordId: string;
+  table: "affiliate_subscription_payments" | "affiliate_ai_purchases";
+} | null;
+
+const emptyBillingForm = {
+  billing_email: "",
+  billing_phone: "",
+  billing_cep: "",
+  billing_street: "",
+  billing_number: "",
+  billing_neighborhood: "",
+  billing_city: "",
+  billing_state: "",
+  billing_complement: "",
+};
 
 export default function Parceria() {
   const store = useStore();
@@ -32,6 +52,13 @@ export default function Parceria() {
   const [pixPaid, setPixPaid] = useState(false);
   const [generating, setGenerating] = useState<string | null>(null);
 
+  const [boleto, setBoleto] = useState<BoletoState>(null);
+  const [billingForm, setBillingForm] = useState(emptyBillingForm);
+  const [savingBilling, setSavingBilling] = useState(false);
+  const [billingSaved, setBillingSaved] = useState(false);
+  const [checkingBoleto, setCheckingBoleto] = useState(false);
+  const [boletoJustPaid, setBoletoJustPaid] = useState(false);
+
   async function loadAll() {
     const supabase = getSupabase();
     const { data: rows } = await supabase.from("affiliate_partnerships").select("*").eq("module_store_id", store.id).eq("active", true).limit(1);
@@ -41,6 +68,17 @@ export default function Parceria() {
       setLoading(false);
       return;
     }
+    setBillingForm({
+      billing_email: p.billing_email ?? "",
+      billing_phone: p.billing_phone ?? "",
+      billing_cep: p.billing_cep ?? "",
+      billing_street: p.billing_street ?? "",
+      billing_number: p.billing_number ?? "",
+      billing_neighborhood: p.billing_neighborhood ?? "",
+      billing_city: p.billing_city ?? "",
+      billing_state: p.billing_state ?? "",
+      billing_complement: p.billing_complement ?? "",
+    });
 
     const [hubRes, settingsRes, usedRes, packagesRes, purchasesRes] = await Promise.all([
       supabase.from("stores").select("name").eq("id", p.hub_store_id).maybeSingle(),
@@ -180,6 +218,111 @@ export default function Parceria() {
     }
   }
 
+  async function saveBillingInfo() {
+    if (!partnership) return;
+    setSavingBilling(true);
+    setBillingSaved(false);
+    setError(null);
+    const { error: rpcError } = await getSupabase().rpc("update_affiliate_billing_info", {
+      p_partnership_id: partnership.id,
+      p_billing_email: billingForm.billing_email,
+      p_billing_phone: billingForm.billing_phone,
+      p_billing_cep: billingForm.billing_cep,
+      p_billing_street: billingForm.billing_street,
+      p_billing_number: billingForm.billing_number,
+      p_billing_neighborhood: billingForm.billing_neighborhood,
+      p_billing_city: billingForm.billing_city,
+      p_billing_state: billingForm.billing_state,
+      p_billing_complement: billingForm.billing_complement,
+    });
+    setSavingBilling(false);
+    if (rpcError) {
+      setError("Não deu pra salvar os dados de cobrança.");
+      return;
+    }
+    setBillingSaved(true);
+    loadAll();
+  }
+
+  const billingComplete =
+    billingForm.billing_email.trim() &&
+    billingForm.billing_phone.trim() &&
+    billingForm.billing_cep.trim() &&
+    billingForm.billing_street.trim() &&
+    billingForm.billing_number.trim() &&
+    billingForm.billing_neighborhood.trim() &&
+    billingForm.billing_city.trim() &&
+    billingForm.billing_state.trim();
+
+  async function pagarMensalidadeBoleto() {
+    if (!partnership) return;
+    setError(null);
+    setGenerating("mensalidade-boleto");
+    try {
+      const res = await fetch("/api/efi/create-subscription-boleto", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: await authHeader() },
+        body: JSON.stringify({ partnership_id: partnership.id }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || "Não deu pra gerar o boleto");
+        return;
+      }
+      setBoletoJustPaid(false);
+      setBoleto({ barcode: data.barcode, pdfUrl: data.pdf_url, expireAt: data.expire_at, kind: "mensalidade", recordId: data.record_id, table: "affiliate_subscription_payments" });
+    } finally {
+      setGenerating(null);
+    }
+  }
+
+  async function comprarPacoteBoleto(pkg: AffiliateAiPackage) {
+    if (!partnership) return;
+    setError(null);
+    setGenerating(`${pkg.id}-boleto`);
+    try {
+      const res = await fetch("/api/efi/create-package-boleto", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: await authHeader() },
+        body: JSON.stringify({ partnership_id: partnership.id, package_id: pkg.id }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || "Não deu pra gerar o boleto");
+        return;
+      }
+      setBoletoJustPaid(false);
+      setBoleto({ barcode: data.barcode, pdfUrl: data.pdf_url, expireAt: data.expire_at, kind: "pacote", recordId: data.record_id, table: "affiliate_ai_purchases" });
+    } finally {
+      setGenerating(null);
+    }
+  }
+
+  async function checkBoletoPaid() {
+    if (!boleto) return;
+    setCheckingBoleto(true);
+    try {
+      const res = await fetch("/api/efi/check-boleto-status", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: await authHeader() },
+        body: JSON.stringify({ table: boleto.table, record_id: boleto.recordId }),
+      });
+      const data = await res.json();
+      if (res.ok && data.paid) {
+        setBoletoJustPaid(true);
+        setTimeout(() => {
+          setBoleto(null);
+          setBoletoJustPaid(false);
+          loadAll();
+        }, 2500);
+      } else if (!res.ok) {
+        setError(data.error || "Não deu pra verificar o boleto");
+      }
+    } finally {
+      setCheckingBoleto(false);
+    }
+  }
+
   if (loading) {
     return <div className="flex min-h-[60vh] items-center justify-center text-sm text-white/40">Carregando…</div>;
   }
@@ -216,13 +359,26 @@ export default function Parceria() {
                 {isOverdue ? " — atrasada" : ""}
               </p>
             )}
-            <button
-              onClick={pagarMensalidade}
-              disabled={generating === "mensalidade"}
-              className="mt-3 rounded-lg bg-blue-900 px-4 py-2 text-sm font-semibold text-amber-300 disabled:opacity-50 dark:bg-blue-800"
-            >
-              {generating === "mensalidade" ? "Gerando Pix…" : "Pagar mensalidade via Pix"}
-            </button>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button
+                onClick={pagarMensalidade}
+                disabled={generating === "mensalidade"}
+                className="rounded-lg bg-blue-900 px-4 py-2 text-sm font-semibold text-amber-300 disabled:opacity-50 dark:bg-blue-800"
+              >
+                {generating === "mensalidade" ? "Gerando Pix…" : "Pagar via Pix"}
+              </button>
+              <button
+                onClick={pagarMensalidadeBoleto}
+                disabled={generating === "mensalidade-boleto" || !billingComplete}
+                title={!billingComplete ? "Preencha seus dados de cobrança abaixo primeiro" : undefined}
+                className="rounded-lg border border-white/[0.14] px-4 py-2 text-sm font-semibold text-white/70 disabled:opacity-40"
+              >
+                {generating === "mensalidade-boleto" ? "Gerando boleto…" : "Pagar via Boleto"}
+              </button>
+            </div>
+            {!billingComplete && (
+              <p className="mt-1.5 text-xs text-white/30">Pra pagar via boleto, preencha seus dados de cobrança abaixo.</p>
+            )}
           </>
         ) : (
           <p className="mt-1 text-sm text-white/40">Sem mensalidade configurada.</p>
@@ -245,19 +401,97 @@ export default function Parceria() {
         {packages.length > 0 && (
           <div className="mt-3 flex flex-col gap-2">
             {packages.map((pkg) => (
-              <div key={pkg.id} className="flex items-center justify-between rounded-lg bg-white/[0.04] px-3 py-2">
+              <div key={pkg.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-white/[0.04] px-3 py-2">
                 <span className="text-sm text-white/60">+{pkg.qty} imagens — {formatCurrency(pkg.price)}</span>
-                <button
-                  onClick={() => comprarPacote(pkg)}
-                  disabled={generating === pkg.id}
-                  className="rounded-lg border border-[#F0BB5E]/40 px-3 py-1 text-xs font-semibold text-[#F0BB5E] disabled:opacity-50"
-                >
-                  {generating === pkg.id ? "Gerando…" : "Comprar via Pix"}
-                </button>
+                <div className="flex gap-1.5">
+                  <button
+                    onClick={() => comprarPacote(pkg)}
+                    disabled={generating === pkg.id}
+                    className="rounded-lg border border-[#F0BB5E]/40 px-3 py-1 text-xs font-semibold text-[#F0BB5E] disabled:opacity-50"
+                  >
+                    {generating === pkg.id ? "Gerando…" : "Pix"}
+                  </button>
+                  <button
+                    onClick={() => comprarPacoteBoleto(pkg)}
+                    disabled={generating === `${pkg.id}-boleto` || !billingComplete}
+                    title={!billingComplete ? "Preencha seus dados de cobrança abaixo primeiro" : undefined}
+                    className="rounded-lg border border-white/[0.14] px-3 py-1 text-xs font-semibold text-white/70 disabled:opacity-40"
+                  >
+                    {generating === `${pkg.id}-boleto` ? "Gerando…" : "Boleto"}
+                  </button>
+                </div>
               </div>
             ))}
           </div>
         )}
+      </div>
+
+      <div className="mt-3 rounded-xl border border-white/[0.09] bg-white/[0.035] p-4">
+        <p className="text-xs font-bold uppercase tracking-wide text-white/30">Dados de cobrança</p>
+        <p className="mt-0.5 text-xs text-white/40">Necessário só pra gerar boleto (o Pix não precisa disso).</p>
+        <div className="mt-3 grid grid-cols-2 gap-2">
+          <input
+            value={billingForm.billing_email}
+            onChange={(e) => setBillingForm((p) => ({ ...p, billing_email: e.target.value }))}
+            placeholder="E-mail"
+            className="col-span-2 rounded-lg border border-white/[0.12] bg-white/[0.03] px-3 py-2 text-sm text-white placeholder:text-white/25"
+          />
+          <input
+            value={billingForm.billing_phone}
+            onChange={(e) => setBillingForm((p) => ({ ...p, billing_phone: e.target.value }))}
+            placeholder="Telefone (DDD + número)"
+            className="col-span-2 rounded-lg border border-white/[0.12] bg-white/[0.03] px-3 py-2 text-sm text-white placeholder:text-white/25"
+          />
+          <input
+            value={billingForm.billing_cep}
+            onChange={(e) => setBillingForm((p) => ({ ...p, billing_cep: e.target.value }))}
+            placeholder="CEP"
+            className="rounded-lg border border-white/[0.12] bg-white/[0.03] px-3 py-2 text-sm text-white placeholder:text-white/25"
+          />
+          <input
+            value={billingForm.billing_state}
+            onChange={(e) => setBillingForm((p) => ({ ...p, billing_state: e.target.value.toUpperCase().slice(0, 2) }))}
+            placeholder="UF"
+            className="rounded-lg border border-white/[0.12] bg-white/[0.03] px-3 py-2 text-sm text-white placeholder:text-white/25"
+          />
+          <input
+            value={billingForm.billing_street}
+            onChange={(e) => setBillingForm((p) => ({ ...p, billing_street: e.target.value }))}
+            placeholder="Rua"
+            className="col-span-2 rounded-lg border border-white/[0.12] bg-white/[0.03] px-3 py-2 text-sm text-white placeholder:text-white/25"
+          />
+          <input
+            value={billingForm.billing_number}
+            onChange={(e) => setBillingForm((p) => ({ ...p, billing_number: e.target.value }))}
+            placeholder="Número"
+            className="rounded-lg border border-white/[0.12] bg-white/[0.03] px-3 py-2 text-sm text-white placeholder:text-white/25"
+          />
+          <input
+            value={billingForm.billing_complement}
+            onChange={(e) => setBillingForm((p) => ({ ...p, billing_complement: e.target.value }))}
+            placeholder="Complemento (opcional)"
+            className="rounded-lg border border-white/[0.12] bg-white/[0.03] px-3 py-2 text-sm text-white placeholder:text-white/25"
+          />
+          <input
+            value={billingForm.billing_neighborhood}
+            onChange={(e) => setBillingForm((p) => ({ ...p, billing_neighborhood: e.target.value }))}
+            placeholder="Bairro"
+            className="rounded-lg border border-white/[0.12] bg-white/[0.03] px-3 py-2 text-sm text-white placeholder:text-white/25"
+          />
+          <input
+            value={billingForm.billing_city}
+            onChange={(e) => setBillingForm((p) => ({ ...p, billing_city: e.target.value }))}
+            placeholder="Cidade"
+            className="rounded-lg border border-white/[0.12] bg-white/[0.03] px-3 py-2 text-sm text-white placeholder:text-white/25"
+          />
+        </div>
+        <button
+          onClick={saveBillingInfo}
+          disabled={savingBilling}
+          className="mt-3 rounded-lg bg-blue-900 px-4 py-2 text-sm font-semibold text-amber-300 disabled:opacity-50 dark:bg-blue-800"
+        >
+          {savingBilling ? "Salvando…" : billingSaved ? "Salvo ✓" : "Salvar dados de cobrança"}
+        </button>
       </div>
 
       {pix && (
@@ -290,6 +524,51 @@ export default function Parceria() {
                 )}
                 <p className="mt-3 text-xs text-white/30">Aguardando confirmação…</p>
                 <button onClick={() => setPix(null)} className="mt-3 text-xs font-medium text-white/40 hover:text-white/70">
+                  Fechar
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {boleto && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={() => !boletoJustPaid && setBoleto(null)}>
+          <div className="w-full max-w-xs rounded-2xl bg-black border border-white/[0.12] p-5 text-center" onClick={(e) => e.stopPropagation()}>
+            {boletoJustPaid ? (
+              <>
+                <p className="text-3xl">✅</p>
+                <p className="mt-2 font-semibold text-white">Pago!</p>
+              </>
+            ) : (
+              <>
+                <p className="mb-2 text-sm font-semibold text-white">
+                  {boleto.kind === "mensalidade" ? "Boleto da mensalidade" : "Boleto do pacote"}
+                </p>
+                <p className="text-xs text-white/40">Vence em {formatDate(boleto.expireAt)}</p>
+                <button
+                  onClick={() => navigator.clipboard.writeText(boleto.barcode)}
+                  className="mt-3 w-full truncate rounded-lg border border-white/[0.14] px-2 py-1.5 text-[11px] text-white/40"
+                >
+                  {boleto.barcode.slice(0, 30)}… (copiar código de barras)
+                </button>
+                <a
+                  href={boleto.pdfUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="mt-2 block w-full rounded-lg bg-blue-900 px-3 py-2 text-sm font-semibold text-amber-300 dark:bg-blue-800"
+                >
+                  Abrir PDF do boleto
+                </a>
+                <button
+                  onClick={checkBoletoPaid}
+                  disabled={checkingBoleto}
+                  className="mt-3 w-full rounded-lg border border-[#F0BB5E]/40 px-3 py-2 text-sm font-semibold text-[#F0BB5E] disabled:opacity-50"
+                >
+                  {checkingBoleto ? "Verificando…" : "Já paguei, verificar"}
+                </button>
+                <p className="mt-2 text-[11px] text-white/25">O boleto pode levar até 1-2 dias úteis pra compensar.</p>
+                <button onClick={() => setBoleto(null)} className="mt-3 text-xs font-medium text-white/40 hover:text-white/70">
                   Fechar
                 </button>
               </>

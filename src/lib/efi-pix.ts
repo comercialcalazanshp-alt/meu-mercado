@@ -12,7 +12,7 @@ function isConfigured() {
 }
 
 let cachedAgent: https.Agent | null = null;
-function getAgent(): https.Agent {
+export function getEfiAgent(): https.Agent {
   if (cachedAgent) return cachedAgent;
   const certBase64 = process.env.EFI_CERTIFICATE_BASE64;
   if (!certBase64) throw new Error("EFI_CERTIFICATE_BASE64 não configurado");
@@ -38,7 +38,7 @@ function efiRequest<T>(
         hostname: url.hostname,
         path: url.pathname + url.search,
         method,
-        agent: getAgent(),
+        agent: getEfiAgent(),
         headers: {
           "Content-Type": "application/json",
           Authorization: authHeader,

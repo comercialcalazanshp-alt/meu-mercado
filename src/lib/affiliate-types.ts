@@ -16,6 +16,15 @@ export type AffiliatePartnership = {
   owner_name: string;
   tax_id: string;
   address: string;
+  billing_email: string | null;
+  billing_phone: string | null;
+  billing_cep: string | null;
+  billing_street: string | null;
+  billing_number: string | null;
+  billing_neighborhood: string | null;
+  billing_city: string | null;
+  billing_state: string | null;
+  billing_complement: string | null;
   lat: number | null;
   lng: number | null;
   license_number: string | null;
@@ -101,6 +110,9 @@ export type AffiliateAiPurchase = {
   payment_method: string;
   pagbank_order_id: string | null;
   paid_at: string | null;
+  boleto_barcode: string | null;
+  boleto_pdf_url: string | null;
+  boleto_expire_at: string | null;
   created_at: string;
 };
 
