@@ -173,6 +173,7 @@ export default function HubStorefrontClient({ hubStore, modules }: { hubStore: S
   const [cardHolder, setCardHolder] = useState("");
   const [cardExpiry, setCardExpiry] = useState("");
   const [cardCvv, setCardCvv] = useState("");
+  const [cardInstallments, setCardInstallments] = useState(1);
   const [cardLoading, setCardLoading] = useState(false);
   const [cardError, setCardError] = useState<string | null>(null);
   const [cardPaid, setCardPaid] = useState(false);
@@ -509,6 +510,7 @@ export default function HubStorefrontClient({ hubStore, modules }: { hubStore: S
               encrypted_card: card.encryptedCard,
               holder_name: cardHolder,
               holder_cpf: customerCpf,
+              installments: cardInstallments,
             }),
           });
           const chargeData = await chargeRes.json();
@@ -1460,6 +1462,18 @@ export default function HubStorefrontClient({ hubStore, modules }: { hubStore: S
                 <input required value={cardNumber} onChange={(e) => setCardNumber(e.target.value)} placeholder="Número do cartão" className="col-span-2 rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm text-slate-900 outline-none focus:border-slate-400" />
                 <input required value={cardExpiry} onChange={(e) => setCardExpiry(e.target.value)} placeholder="MM/AA" className="rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm text-slate-900 outline-none focus:border-slate-400" />
                 <input required value={cardCvv} onChange={(e) => setCardCvv(e.target.value)} placeholder="CVV" className="rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm text-slate-900 outline-none focus:border-slate-400" />
+                <select
+                  value={cardInstallments}
+                  onChange={(e) => setCardInstallments(Number(e.target.value))}
+                  className="col-span-2 rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm text-slate-900 outline-none focus:border-slate-400"
+                >
+                  {[1, 2, 3].map((n) => (
+                    <option key={n} value={n}>
+                      {n}x de {formatCurrency(totalGeral / n)}
+                      {n === 1 ? " (à vista)" : " sem juros"}
+                    </option>
+                  ))}
+                </select>
               </div>
             )}
           </div>

@@ -4,21 +4,25 @@ import { isValidCPF } from "@/lib/cpf";
 import { syncHubOrderPayment } from "@/lib/hub-order-payment-sync";
 
 // Recebe o cartão já criptografado no navegador (nunca em texto puro) e
-// manda pro PagBank cobrar o valor exato do pedido. Só à vista (1x) por
-// enquanto, pra manter simples.
+// manda pro PagBank cobrar o valor exato do pedido. Aceita parcelamento
+// (até 3x) — o valor total cobrado do cliente não muda com o número de
+// parcelas (confirmado na documentação da PagBank: "amount.value" é
+// sempre o total do pedido, não por parcela).
 export async function POST(request: Request) {
   const token = process.env.PAGBANK_TOKEN;
   if (!token) {
     return Response.json({ error: "Pagamento não configurado" }, { status: 500 });
   }
 
-  const { order_id, hub_order_id, encrypted_card, holder_name, holder_cpf } = (await request.json()) as {
+  const { order_id, hub_order_id, encrypted_card, holder_name, holder_cpf, installments } = (await request.json()) as {
     order_id?: string;
     hub_order_id?: string;
     encrypted_card: string;
     holder_name: string;
     holder_cpf: string;
+    installments?: number;
   };
+  const installmentCount = Number.isInteger(installments) && installments! >= 1 && installments! <= 3 ? installments! : 1;
   const table = hub_order_id ? "hub_orders" : "orders";
   const id = hub_order_id ?? order_id;
 
@@ -78,7 +82,7 @@ export async function POST(request: Request) {
         amount: { value: amountCents, currency: "BRL" },
         payment_method: {
           type: "CREDIT_CARD",
-          installments: 1,
+          installments: installmentCount,
           capture: true,
           card: { encrypted: encrypted_card },
           holder: { name: holder_name, tax_id: cpfDigits },

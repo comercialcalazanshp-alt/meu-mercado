@@ -152,6 +152,7 @@ export default function StorefrontClient({
   const [cardHolder, setCardHolder] = useState("");
   const [cardExpiry, setCardExpiry] = useState("");
   const [cardCvv, setCardCvv] = useState("");
+  const [cardInstallments, setCardInstallments] = useState(1);
   const [customerCpf, setCustomerCpf] = useState("");
   const [cardLoading, setCardLoading] = useState(false);
   const [cardError, setCardError] = useState<string | null>(null);
@@ -946,6 +947,7 @@ export default function StorefrontClient({
               encrypted_card: card.encryptedCard,
               holder_name: cardHolder,
               holder_cpf: customerCpf,
+              installments: cardInstallments,
             }),
           });
           const chargeData = await chargeRes.json();
@@ -1585,6 +1587,21 @@ export default function StorefrontClient({
                           className="w-1/2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
                         />
                       </div>
+                      <div>
+                        <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">Parcelas</label>
+                        <select
+                          value={cardInstallments}
+                          onChange={(e) => setCardInstallments(Number(e.target.value))}
+                          className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                        >
+                          {[1, 2, 3].map((n) => (
+                            <option key={n} value={n}>
+                              {n}x de {formatCurrency(totalWithDelivery / n)}
+                              {n === 1 ? " (à vista)" : " sem juros"}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
                     </>
                   )}
                   <input
@@ -1597,7 +1614,7 @@ export default function StorefrontClient({
                   />
                   <p className="text-xs text-slate-500 dark:text-slate-400">
                     {paymentMethod === "cartao"
-                      ? "Pagamento à vista (1x). Seus dados de cartão são criptografados no seu navegador antes de sair daqui."
+                      ? "Seus dados de cartão são criptografados no seu navegador antes de sair daqui."
                       : "O CPF é exigido pelo Pix pra identificar quem está pagando."}
                   </p>
                 </div>
