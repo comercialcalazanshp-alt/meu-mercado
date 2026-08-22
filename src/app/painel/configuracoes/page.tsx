@@ -69,6 +69,17 @@ export default function Configuracoes() {
   const [savingGoal, setSavingGoal] = useState(false);
   const [goalSaved, setGoalSaved] = useState(false);
 
+  const [cardInterestEnabled, setCardInterestEnabled] = useState(false);
+  const [cardInterestPercent, setCardInterestPercent] = useState("");
+  const [savingCardInterest, setSavingCardInterest] = useState(false);
+  const [cardInterestSaved, setCardInterestSaved] = useState(false);
+
+  const [feePixPercent, setFeePixPercent] = useState("");
+  const [feeCardPercent, setFeeCardPercent] = useState("");
+  const [feeBoletoFixed, setFeeBoletoFixed] = useState("");
+  const [savingFees, setSavingFees] = useState(false);
+  const [feesSaved, setFeesSaved] = useState(false);
+
   const [accountantToken, setAccountantToken] = useState<string | null>(null);
   const [regeneratingToken, setRegeneratingToken] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
@@ -88,7 +99,7 @@ export default function Configuracoes() {
     getSupabase()
       .from("stores")
       .select(
-        "business_hours_enabled, opens_at, closes_at, open_days, manually_closed, accountant_token, brand_color, accent_color, cashback_percent, referral_bonus, loyalty_silver_threshold, loyalty_gold_threshold, credit_interest_percent, sales_goal, alert_low_stock_enabled, alert_stalled_order_enabled, alert_delivery_delay_enabled, alert_goal_reached_enabled, weekly_summary_enabled, complaint_notification_enabled",
+        "business_hours_enabled, opens_at, closes_at, open_days, manually_closed, accountant_token, brand_color, accent_color, cashback_percent, referral_bonus, loyalty_silver_threshold, loyalty_gold_threshold, credit_interest_percent, sales_goal, alert_low_stock_enabled, alert_stalled_order_enabled, alert_delivery_delay_enabled, alert_goal_reached_enabled, weekly_summary_enabled, complaint_notification_enabled, card_installment_interest_enabled, card_installment_interest_percent, fee_pix_percent, fee_card_percent, fee_boleto_fixed",
       )
       .eq("id", store.id)
       .single()
@@ -114,6 +125,11 @@ export default function Configuracoes() {
         setAlertGoalReached(data.alert_goal_reached_enabled);
         setWeeklySummary(data.weekly_summary_enabled);
         setAlertNewComplaint(data.complaint_notification_enabled);
+        setCardInterestEnabled(data.card_installment_interest_enabled);
+        setCardInterestPercent(data.card_installment_interest_percent > 0 ? String(data.card_installment_interest_percent) : "");
+        setFeePixPercent(data.fee_pix_percent > 0 ? String(data.fee_pix_percent) : "");
+        setFeeCardPercent(data.fee_card_percent > 0 ? String(data.fee_card_percent) : "");
+        setFeeBoletoFixed(data.fee_boleto_fixed > 0 ? String(data.fee_boleto_fixed) : "");
       });
   }, [store.id]);
 
@@ -254,6 +270,35 @@ export default function Configuracoes() {
     setSavingInterest(false);
     setInterestSaved(true);
     setTimeout(() => setInterestSaved(false), 2500);
+  }
+
+  async function handleSaveCardInterest(enabled: boolean, percentText: string) {
+    const percent = Number(percentText.replace(",", ".")) || 0;
+    if (percent < 0) return;
+    setSavingCardInterest(true);
+    await getSupabase()
+      .from("stores")
+      .update({ card_installment_interest_enabled: enabled, card_installment_interest_percent: percent })
+      .eq("id", store.id);
+    setSavingCardInterest(false);
+    setCardInterestSaved(true);
+    setTimeout(() => setCardInterestSaved(false), 2500);
+  }
+
+  async function handleSaveFees(e: FormEvent) {
+    e.preventDefault();
+    const pix = Number(feePixPercent.replace(",", ".")) || 0;
+    const card = Number(feeCardPercent.replace(",", ".")) || 0;
+    const boleto = Number(feeBoletoFixed.replace(",", ".")) || 0;
+    if (pix < 0 || card < 0 || boleto < 0) return;
+    setSavingFees(true);
+    await getSupabase()
+      .from("stores")
+      .update({ fee_pix_percent: pix, fee_card_percent: card, fee_boleto_fixed: boleto })
+      .eq("id", store.id);
+    setSavingFees(false);
+    setFeesSaved(true);
+    setTimeout(() => setFeesSaved(false), 2500);
   }
 
   async function handleSaveGoal(e: FormEvent) {
@@ -645,6 +690,100 @@ export default function Configuracoes() {
             {savingInterest ? "Salvando…" : "Salvar"}
           </button>
           {interestSaved && <span className="text-sm text-green-600">Salvo!</span>}
+        </div>
+      </form>
+
+      <div className="mt-4 rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+              Juros no parcelamento do cartão
+            </h2>
+            <p className="mt-0.5 text-xs text-slate-400 dark:text-slate-500">
+              Hoje o cliente parcela sem juros. Se ligar, cada parcela extra soma esse % ao total.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              setCardInterestEnabled((prev) => {
+                handleSaveCardInterest(!prev, cardInterestPercent);
+                return !prev;
+              });
+            }}
+            className={`relative h-6 w-11 shrink-0 rounded-full transition ${cardInterestEnabled ? "bg-blue-900 dark:bg-blue-700" : "bg-slate-300 dark:bg-slate-700"}`}
+          >
+            <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white transition ${cardInterestEnabled ? "left-5" : "left-0.5"}`} />
+          </button>
+        </div>
+        {cardInterestEnabled && (
+          <div className="mt-3 flex items-center gap-2">
+            <input
+              value={cardInterestPercent}
+              onChange={(e) => setCardInterestPercent(e.target.value)}
+              onBlur={() => handleSaveCardInterest(cardInterestEnabled, cardInterestPercent)}
+              placeholder="0"
+              inputMode="decimal"
+              className="w-24 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+            />
+            <span className="text-sm text-slate-500 dark:text-slate-400">% por parcela extra</span>
+            {savingCardInterest && <span className="text-xs text-slate-400">salvando…</span>}
+            {cardInterestSaved && <span className="text-sm text-green-600">Salvo!</span>}
+          </div>
+        )}
+      </div>
+
+      <form
+        onSubmit={handleSaveFees}
+        className="mt-4 rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900"
+      >
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+          Taxas da maquininha/gateway
+        </h2>
+        <p className="mt-0.5 text-xs text-slate-400 dark:text-slate-500">
+          Preenche com o que a PagBank/Efí cobra, só pra você acompanhar o custo — não afeta o valor cobrado do cliente.
+        </p>
+        <div className="mt-2 grid grid-cols-3 gap-2">
+          <div>
+            <label className="block text-xs text-slate-500 dark:text-slate-400">Pix (%)</label>
+            <input
+              value={feePixPercent}
+              onChange={(e) => setFeePixPercent(e.target.value)}
+              placeholder="0"
+              inputMode="decimal"
+              className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+            />
+          </div>
+          <div>
+            <label className="block text-xs text-slate-500 dark:text-slate-400">Cartão (%)</label>
+            <input
+              value={feeCardPercent}
+              onChange={(e) => setFeeCardPercent(e.target.value)}
+              placeholder="0"
+              inputMode="decimal"
+              className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+            />
+          </div>
+          <div>
+            <label className="block text-xs text-slate-500 dark:text-slate-400">Boleto (R$ fixo)</label>
+            <input
+              value={feeBoletoFixed}
+              onChange={(e) => setFeeBoletoFixed(e.target.value)}
+              placeholder="0"
+              inputMode="decimal"
+              className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+            />
+          </div>
+        </div>
+        <div className="mt-3 flex items-center gap-2">
+          <button
+            type="submit"
+            disabled={savingFees}
+            className="rounded-lg bg-blue-900 px-4 py-2 text-sm font-semibold text-amber-300 disabled:opacity-60 dark:bg-blue-800"
+          >
+            {savingFees ? "Salvando…" : "Salvar"}
+          </button>
+          {feesSaved && <span className="text-sm text-green-600">Salvo!</span>}
         </div>
       </form>
 

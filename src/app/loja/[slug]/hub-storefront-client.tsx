@@ -1467,12 +1467,18 @@ export default function HubStorefrontClient({ hubStore, modules }: { hubStore: S
                   onChange={(e) => setCardInstallments(Number(e.target.value))}
                   className="col-span-2 rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm text-slate-900 outline-none focus:border-slate-400"
                 >
-                  {[1, 2, 3].map((n) => (
-                    <option key={n} value={n}>
-                      {n}x de {formatCurrency(totalGeral / n)}
-                      {n === 1 ? " (à vista)" : " sem juros"}
-                    </option>
-                  ))}
+                  {[1, 2, 3].map((n) => {
+                    const withInterest =
+                      n > 1 && hubStore.card_installment_interest_enabled && hubStore.card_installment_interest_percent > 0
+                        ? totalGeral * (1 + (hubStore.card_installment_interest_percent / 100) * (n - 1))
+                        : totalGeral;
+                    return (
+                      <option key={n} value={n}>
+                        {n}x de {formatCurrency(withInterest / n)}
+                        {n === 1 ? " (à vista)" : withInterest > totalGeral ? " com juros" : " sem juros"}
+                      </option>
+                    );
+                  })}
                 </select>
               </div>
             )}

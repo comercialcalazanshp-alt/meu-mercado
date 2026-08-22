@@ -35,9 +35,10 @@ export async function POST(request: Request) {
   }
 
   const supabase = getSupabaseAdmin();
+  const storeIdColumn = hub_order_id ? "hub_store_id" : "store_id";
   const { data: order } = await supabase
     .from(table)
-    .select("id, customer_name, customer_phone, total, card_paid_at")
+    .select(`id, customer_name, customer_phone, total, card_paid_at, ${storeIdColumn}`)
     .eq("id", id)
     .maybeSingle();
 
@@ -53,7 +54,23 @@ export async function POST(request: Request) {
     return Response.json({ error: "Esse pedido já foi pago." }, { status: 409 });
   }
 
-  const amountCents = Math.round(Number(order.total) * 100);
+  // Sem juros por padrão — o valor cobrado só muda se a loja tiver ligado
+  // juros no parcelamento (painel/configurações). O total do pedido em si
+  // (order.total) nunca muda, só o valor cobrado no cartão quando parcelado.
+  let chargeTotal = Number(order.total);
+  if (installmentCount > 1) {
+    const storeId = (order as unknown as Record<string, string>)[storeIdColumn];
+    const { data: storeSettings } = await supabase
+      .from("stores")
+      .select("card_installment_interest_enabled, card_installment_interest_percent")
+      .eq("id", storeId)
+      .maybeSingle();
+    if (storeSettings?.card_installment_interest_enabled && storeSettings.card_installment_interest_percent > 0) {
+      chargeTotal = chargeTotal * (1 + (storeSettings.card_installment_interest_percent / 100) * (installmentCount - 1));
+    }
+  }
+
+  const amountCents = Math.round(chargeTotal * 100);
   const phoneDigits = (order.customer_phone || "").replace(/\D/g, "");
   const cpfDigits = holder_cpf.replace(/\D/g, "");
 

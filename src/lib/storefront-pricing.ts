@@ -70,6 +70,8 @@ export type Store = {
   accent_color: string;
   min_order_for_delivery_enabled: boolean;
   min_order_for_delivery: number;
+  card_installment_interest_enabled: boolean;
+  card_installment_interest_percent: number;
 };
 
 export function isNewProduct(createdAt: string) {

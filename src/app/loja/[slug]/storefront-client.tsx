@@ -1594,12 +1594,18 @@ export default function StorefrontClient({
                           onChange={(e) => setCardInstallments(Number(e.target.value))}
                           className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
                         >
-                          {[1, 2, 3].map((n) => (
-                            <option key={n} value={n}>
-                              {n}x de {formatCurrency(totalWithDelivery / n)}
-                              {n === 1 ? " (à vista)" : " sem juros"}
-                            </option>
-                          ))}
+                          {[1, 2, 3].map((n) => {
+                            const withInterest =
+                              n > 1 && store.card_installment_interest_enabled && store.card_installment_interest_percent > 0
+                                ? totalWithDelivery * (1 + (store.card_installment_interest_percent / 100) * (n - 1))
+                                : totalWithDelivery;
+                            return (
+                              <option key={n} value={n}>
+                                {n}x de {formatCurrency(withInterest / n)}
+                                {n === 1 ? " (à vista)" : withInterest > totalWithDelivery ? " com juros" : " sem juros"}
+                              </option>
+                            );
+                          })}
                         </select>
                       </div>
                     </>
