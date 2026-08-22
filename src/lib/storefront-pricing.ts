@@ -72,6 +72,8 @@ export type Store = {
   min_order_for_delivery: number;
   card_installment_interest_enabled: boolean;
   card_installment_interest_percent: number;
+  free_delivery_threshold_enabled: boolean;
+  free_delivery_threshold: number;
 };
 
 export function isNewProduct(createdAt: string) {

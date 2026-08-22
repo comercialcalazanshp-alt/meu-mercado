@@ -387,7 +387,13 @@ export default function StorefrontClient({
   const cartCount = cartItems.reduce((sum, item) => sum + item.quantity, 0);
   const storeStatus = useMemo(() => isStoreOpenNow(store), [store]);
   const selectedNeighborhood = neighborhoodId === "retirada" ? null : neighborhoods.find((n) => n.id === neighborhoodId);
-  const deliveryFee = selectedNeighborhood?.fee ?? 0;
+  const freeDeliveryEarned =
+    store.free_delivery_threshold_enabled && store.free_delivery_threshold > 0 && total >= store.free_delivery_threshold;
+  const deliveryFee = freeDeliveryEarned ? 0 : (selectedNeighborhood?.fee ?? 0);
+  const freeDeliveryShortfall =
+    neighborhoodId !== "retirada" && store.free_delivery_threshold_enabled && store.free_delivery_threshold > 0 && !freeDeliveryEarned
+      ? store.free_delivery_threshold - total
+      : 0;
   const deliveryEtaLabel = selectedNeighborhood ? etaLabel(selectedNeighborhood.eta_min_minutes, selectedNeighborhood.eta_max_minutes) : null;
   const scratchDiscountPreview =
     scratchResult && !scratchResult.redeemed && !scratchResult.expired
@@ -1349,6 +1355,14 @@ export default function StorefrontClient({
               {minOrderShortfall > 0 && (
                 <p className="mt-1.5 text-xs font-medium text-amber-700 dark:text-amber-400">
                   Pedido mínimo pra entrega é {formatCurrency(store.min_order_for_delivery)} — faltam {formatCurrency(minOrderShortfall)}
+                </p>
+              )}
+              {freeDeliveryEarned && neighborhoodId !== "retirada" && (
+                <p className="mt-1.5 text-xs font-medium text-green-700 dark:text-green-400">🎉 Seu frete é grátis!</p>
+              )}
+              {freeDeliveryShortfall > 0 && (
+                <p className="mt-1.5 text-xs text-slate-500 dark:text-slate-400">
+                  Faltam {formatCurrency(freeDeliveryShortfall)} pro frete grátis
                 </p>
               )}
               {neighborhoodId !== "retirada" && (

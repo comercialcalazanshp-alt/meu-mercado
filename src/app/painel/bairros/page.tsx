@@ -38,6 +38,10 @@ export default function Bairros() {
   const [minOrderValue, setMinOrderValue] = useState("25");
   const [savingMinOrder, setSavingMinOrder] = useState(false);
 
+  const [freeDeliveryEnabled, setFreeDeliveryEnabled] = useState(false);
+  const [freeDeliveryValue, setFreeDeliveryValue] = useState("");
+  const [savingFreeDelivery, setSavingFreeDelivery] = useState(false);
+
   async function loadNeighborhoods() {
     setLoading(true);
     const { data } = await getSupabase()
@@ -58,13 +62,15 @@ export default function Bairros() {
     loadNeighborhoods();
     getSupabase()
       .from("stores")
-      .select("min_order_for_delivery_enabled, min_order_for_delivery")
+      .select("min_order_for_delivery_enabled, min_order_for_delivery, free_delivery_threshold_enabled, free_delivery_threshold")
       .eq("id", store.id)
       .single()
       .then(({ data }) => {
         if (!data) return;
         setMinOrderEnabled(data.min_order_for_delivery_enabled);
         setMinOrderValue(String(data.min_order_for_delivery));
+        setFreeDeliveryEnabled(data.free_delivery_threshold_enabled);
+        setFreeDeliveryValue(data.free_delivery_threshold > 0 ? String(data.free_delivery_threshold) : "");
       });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [store.id]);
@@ -78,6 +84,17 @@ export default function Bairros() {
       .update({ min_order_for_delivery_enabled: enabled, min_order_for_delivery: value })
       .eq("id", store.id);
     setSavingMinOrder(false);
+  }
+
+  async function saveFreeDelivery(enabled: boolean, valueText: string) {
+    const value = valueText.trim() === "" ? 0 : Number(valueText.replace(",", "."));
+    if (Number.isNaN(value) || value < 0) return;
+    setSavingFreeDelivery(true);
+    await getSupabase()
+      .from("stores")
+      .update({ free_delivery_threshold_enabled: enabled, free_delivery_threshold: value })
+      .eq("id", store.id);
+    setSavingFreeDelivery(false);
   }
 
   async function handleAdd(e: FormEvent) {
@@ -190,6 +207,43 @@ export default function Bairros() {
               className="w-24 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
             />
             {savingMinOrder && <span className="text-xs text-slate-400">salvando…</span>}
+          </div>
+        )}
+      </div>
+
+      <div className="mt-3 rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <p className="text-sm font-semibold text-slate-900 dark:text-slate-50">Frete grátis a partir de um valor</p>
+            <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+              Quando o pedido bate esse valor, o frete do bairro escolhido vira R$0 — não muda o valor cadastrado ali em cima.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              setFreeDeliveryEnabled((prev) => {
+                saveFreeDelivery(!prev, freeDeliveryValue);
+                return !prev;
+              });
+            }}
+            className={`relative h-6 w-11 shrink-0 rounded-full transition ${freeDeliveryEnabled ? "bg-blue-900 dark:bg-blue-700" : "bg-slate-300 dark:bg-slate-700"}`}
+          >
+            <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white transition ${freeDeliveryEnabled ? "left-5" : "left-0.5"}`} />
+          </button>
+        </div>
+        {freeDeliveryEnabled && (
+          <div className="mt-3 flex items-center gap-2">
+            <span className="text-sm text-slate-500 dark:text-slate-400">R$</span>
+            <input
+              value={freeDeliveryValue}
+              onChange={(e) => setFreeDeliveryValue(e.target.value)}
+              onBlur={() => saveFreeDelivery(freeDeliveryEnabled, freeDeliveryValue)}
+              inputMode="decimal"
+              placeholder="0"
+              className="w-24 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+            />
+            {savingFreeDelivery && <span className="text-xs text-slate-400">salvando…</span>}
           </div>
         )}
       </div>

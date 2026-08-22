@@ -53,6 +53,8 @@ type ModuleCatalog = {
   error: string | null;
   minOrderEnabled: boolean;
   minOrderValue: number;
+  freeDeliveryEnabled: boolean;
+  freeDeliveryThreshold: number;
 };
 
 type OfferProduct = Product & {
@@ -256,7 +258,10 @@ export default function HubStorefrontClient({ hubStore, modules }: { hubStore: S
   async function loadCatalog(storeId: string) {
     setCatalogs((prev) => {
       if (prev[storeId]?.loaded || prev[storeId]?.loading) return prev;
-      return { ...prev, [storeId]: { products: [], neighborhoods: [], loading: true, loaded: false, error: null, minOrderEnabled: false, minOrderValue: 0 } };
+      return {
+        ...prev,
+        [storeId]: { products: [], neighborhoods: [], loading: true, loaded: false, error: null, minOrderEnabled: false, minOrderValue: 0, freeDeliveryEnabled: false, freeDeliveryThreshold: 0 },
+      };
     });
     if (catalogs[storeId]?.loaded || catalogs[storeId]?.loading) return;
 
@@ -277,7 +282,11 @@ export default function HubStorefrontClient({ hubStore, modules }: { hubStore: S
         .eq("store_id", storeId)
         .eq("active", true)
         .order("name", { ascending: true }),
-      supabase.from("stores").select("min_order_for_delivery_enabled, min_order_for_delivery").eq("id", storeId).maybeSingle(),
+      supabase
+        .from("stores")
+        .select("min_order_for_delivery_enabled, min_order_for_delivery, free_delivery_threshold_enabled, free_delivery_threshold")
+        .eq("id", storeId)
+        .maybeSingle(),
     ]);
 
     setCatalogs((prev) => ({
@@ -290,6 +299,8 @@ export default function HubStorefrontClient({ hubStore, modules }: { hubStore: S
         error: productsError ? "Não deu pra carregar os produtos dessa loja. Tente de novo." : null,
         minOrderEnabled: storeSettings?.min_order_for_delivery_enabled ?? false,
         minOrderValue: storeSettings?.min_order_for_delivery ?? 0,
+        freeDeliveryEnabled: storeSettings?.free_delivery_threshold_enabled ?? false,
+        freeDeliveryThreshold: storeSettings?.free_delivery_threshold ?? 0,
       },
     }));
   }
@@ -338,7 +349,12 @@ export default function HubStorefrontClient({ hubStore, modules }: { hubStore: S
   const deliveryFeeTotal = storesInCart.reduce((sum, m) => {
     const choice = deliveryByStore[m.store_id];
     if (!choice || choice.neighborhoodId === "retirada" || !choice.neighborhoodId) return sum;
-    const n = catalogs[m.store_id]?.neighborhoods.find((x) => x.id === choice.neighborhoodId);
+    const catalog = catalogs[m.store_id];
+    const storeSubtotal = (cartByStore.get(m.store_id) ?? []).reduce((s, l) => s + l.lineTotal, 0);
+    if (catalog?.freeDeliveryEnabled && catalog.freeDeliveryThreshold > 0 && storeSubtotal >= catalog.freeDeliveryThreshold) {
+      return sum;
+    }
+    const n = catalog?.neighborhoods.find((x) => x.id === choice.neighborhoodId);
     return sum + (n?.fee ?? 0);
   }, 0);
 
@@ -362,6 +378,8 @@ export default function HubStorefrontClient({ hubStore, modules }: { hubStore: S
           error: existing?.error ?? null,
           minOrderEnabled: existing?.minOrderEnabled ?? false,
           minOrderValue: existing?.minOrderValue ?? 0,
+          freeDeliveryEnabled: existing?.freeDeliveryEnabled ?? false,
+          freeDeliveryThreshold: existing?.freeDeliveryThreshold ?? 0,
         },
       };
     });
@@ -1387,6 +1405,21 @@ export default function HubStorefrontClient({ hubStore, modules }: { hubStore: S
                       return (
                         <p className="text-xs font-medium text-amber-700">
                           Pedido mínimo pra entrega nessa loja é {formatCurrency(minValue)} — faltam {formatCurrency(minValue - storeSubtotal)}
+                        </p>
+                      );
+                    })()}
+                  {choice.neighborhoodId !== "retirada" &&
+                    catalogs[m.store_id]?.freeDeliveryEnabled &&
+                    (() => {
+                      const storeSubtotal = (cartByStore.get(m.store_id) ?? []).reduce((s, l) => s + l.lineTotal, 0);
+                      const threshold = catalogs[m.store_id]?.freeDeliveryThreshold ?? 0;
+                      if (threshold <= 0) return null;
+                      if (storeSubtotal >= threshold) {
+                        return <p className="text-xs font-medium text-green-700">🎉 Frete grátis nessa loja!</p>;
+                      }
+                      return (
+                        <p className="text-xs text-slate-400">
+                          Faltam {formatCurrency(threshold - storeSubtotal)} pro frete grátis nessa loja
                         </p>
                       );
                     })()}
