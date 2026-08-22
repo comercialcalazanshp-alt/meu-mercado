@@ -41,6 +41,7 @@ export default function Moderacao() {
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [showBlocked, setShowBlocked] = useState(true);
+  const [search, setSearch] = useState("");
 
   async function load() {
     const supabase = getSupabase();
@@ -90,8 +91,13 @@ export default function Moderacao() {
     }
   }
 
-  const visibleProducts = products.filter((p) => showBlocked || !p.blocked_by_hub);
-  const visibleBanners = banners.filter((b) => showBlocked || !b.blocked_by_hub);
+  const q = search.trim().toLowerCase();
+  const visibleProducts = products
+    .filter((p) => showBlocked || !p.blocked_by_hub)
+    .filter((p) => !q || p.name.toLowerCase().includes(q) || p.store_name.toLowerCase().includes(q));
+  const visibleBanners = banners
+    .filter((b) => showBlocked || !b.blocked_by_hub)
+    .filter((b) => !q || b.title.toLowerCase().includes(q) || b.store_name.toLowerCase().includes(q));
   const blockedCount = products.filter((p) => p.blocked_by_hub).length + banners.filter((b) => b.blocked_by_hub).length;
 
   return (
@@ -126,6 +132,13 @@ export default function Moderacao() {
           mostrar bloqueados
         </label>
       </div>
+
+      <input
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+        placeholder="Buscar por nome do produto/banner ou da loja…"
+        className="mt-3 w-full rounded-lg border border-white/[0.12] bg-white/[0.03] px-3 py-2 text-sm text-white placeholder:text-white/25"
+      />
 
       {blockedCount > 0 && (
         <p className="mt-2 text-xs font-semibold text-red-600 dark:text-red-400">{blockedCount} item(ns) bloqueado(s) por você</p>

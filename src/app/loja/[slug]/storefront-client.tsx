@@ -199,7 +199,7 @@ export default function StorefrontClient({
   const [customerOrders, setCustomerOrders] = useState<
     {
       id: string;
-      items: { name: string; quantity: number }[];
+      items: { name: string; quantity: number; product_id?: string; kit_id?: string }[];
       total: number;
       status: string;
       created_at: string;
@@ -419,6 +419,29 @@ export default function StorefrontClient({
 
   function setQuantity(key: string, quantity: number) {
     setCart((prev) => ({ ...prev, [key]: Math.max(0, quantity) }));
+  }
+
+  function reorder(order: (typeof customerOrders)[number]) {
+    let skipped = 0;
+    setCart((prev) => {
+      const next = { ...prev };
+      for (const item of order.items) {
+        if (item.product_id && products.some((p) => p.id === item.product_id)) {
+          const key = `product:${item.product_id}`;
+          next[key] = (next[key] ?? 0) + item.quantity;
+        } else if (item.kit_id && kits.some((k) => k.id === item.kit_id)) {
+          const key = `kit:${item.kit_id}`;
+          next[key] = (next[key] ?? 0) + item.quantity;
+        } else {
+          skipped++;
+        }
+      }
+      return next;
+    });
+    setShowAccountPanel(false);
+    if (skipped > 0) {
+      alert(`Adicionado ao carrinho! ${skipped} item(ns) desse pedido não está(ão) mais disponível(is) e não entrou(aram).`);
+    }
   }
 
   function handleBarcodeFound(code: string) {
@@ -2583,12 +2606,21 @@ export default function StorefrontClient({
                           + {formatCurrency(order.cashback_earned)} de cashback
                         </p>
                       )}
-                      <a
-                        href={`/loja/${store.slug}/pedido/${order.id}`}
-                        className="mt-1 inline-block text-xs font-medium text-[var(--brand-bg)] underline"
-                      >
-                        Ver recibo
-                      </a>
+                      <div className="mt-1 flex items-center gap-3">
+                        <a
+                          href={`/loja/${store.slug}/pedido/${order.id}`}
+                          className="text-xs font-medium text-[var(--brand-bg)] underline"
+                        >
+                          Ver recibo
+                        </a>
+                        <button
+                          type="button"
+                          onClick={() => reorder(order)}
+                          className="text-xs font-medium text-[var(--brand-bg)] underline"
+                        >
+                          Comprar de novo
+                        </button>
+                      </div>
                     </li>
                   ))}
                 </ul>

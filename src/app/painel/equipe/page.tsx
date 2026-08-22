@@ -13,6 +13,7 @@ type Member = {
   phone: string | null;
   terms_accepted_at: string | null;
   value_per_delivery: number | null;
+  active: boolean;
 };
 
 function formatCurrency(value: number) {
@@ -45,6 +46,12 @@ function whatsappConviteUrl(member: Member) {
   return `https://wa.me/55${digits}?text=${encodeURIComponent(texto)}`;
 }
 
+function whatsappCredentialsUrl(member: Member, email: string, senha: string) {
+  const digits = (member.phone ?? "").replace(/\D/g, "");
+  const texto = `Oi, ${member.full_name ?? ""}! Seu acesso pra entregas:\nLogin: ${email}\nSenha: ${senha}\n\nGuarda com cuidado, essa senha não aparece de novo.`;
+  return `https://wa.me/55${digits}?text=${encodeURIComponent(texto)}`;
+}
+
 export default function Equipe() {
   const store = useStore();
   const [members, setMembers] = useState<Member[]>([]);
@@ -74,7 +81,7 @@ export default function Equipe() {
 
     const { data } = await supabase
       .from("store_members")
-      .select("id, email, created_at, role, full_name, phone, terms_accepted_at, value_per_delivery")
+      .select("id, email, created_at, role, full_name, phone, terms_accepted_at, value_per_delivery, active")
       .eq("store_id", store.id)
       .order("created_at", { ascending: false });
     setMembers((data ?? []) as Member[]);
@@ -182,6 +189,11 @@ export default function Equipe() {
       return;
     }
     load();
+  }
+
+  async function handleToggleActive(id: string, active: boolean) {
+    setMembers((prev) => prev.map((m) => (m.id === id ? { ...m, active } : m)));
+    await getSupabase().from("store_members").update({ active }).eq("id", id);
   }
 
   async function handleRoleChange(id: string, newRole: Member["role"]) {
@@ -362,6 +374,16 @@ export default function Equipe() {
                   <option value="entregador">Só entregas</option>
                 </select>
                 <button
+                  onClick={() => handleToggleActive(m.id, !m.active)}
+                  className={`rounded-lg px-2 py-1 text-xs font-medium ${
+                    m.active
+                      ? "text-slate-500 hover:underline dark:text-slate-400"
+                      : "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400"
+                  }`}
+                >
+                  {m.active ? "Pausar" : "Pausado — reativar"}
+                </button>
+                <button
                   onClick={() => handleRemove(m.id)}
                   className="text-xs font-medium text-red-600 hover:underline dark:text-red-400"
                 >
@@ -399,6 +421,16 @@ export default function Equipe() {
                     <p className="mt-1 text-slate-500 dark:text-slate-400">
                       Anote agora e repasse pra ele — essa senha não vai aparecer de novo aqui.
                     </p>
+                    {m.phone && (
+                      <a
+                        href={whatsappCredentialsUrl(m, credentials[m.id].email, credentials[m.id].senha)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="mt-2 inline-block rounded-lg border border-slate-300 px-2.5 py-1 text-xs font-semibold text-slate-600 dark:border-slate-700 dark:text-slate-300"
+                      >
+                        Mandar login/senha no WhatsApp
+                      </a>
+                    )}
                   </div>
                 ) : (
                   <div className="flex flex-wrap items-center gap-2">

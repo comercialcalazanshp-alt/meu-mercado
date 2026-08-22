@@ -46,6 +46,17 @@ export default function Mensagens() {
   const [birthdays, setBirthdays] = useState<BirthdayCustomer[]>([]);
   const [inactive, setInactive] = useState<InactiveCustomer[]>([]);
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
+  const dismissedStorageKey = `mensagens-dispensadas:${store.id}`;
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(dismissedStorageKey);
+      if (saved) setDismissed(new Set(JSON.parse(saved)));
+    } catch {
+      // localStorage indisponível — segue sem lembrar dispensados
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [store.id]);
 
   async function load() {
     setLoading(true);
@@ -118,7 +129,15 @@ export default function Mensagens() {
   );
 
   function dismiss(key: string) {
-    setDismissed((prev) => new Set(prev).add(key));
+    setDismissed((prev) => {
+      const next = new Set(prev).add(key);
+      try {
+        localStorage.setItem(dismissedStorageKey, JSON.stringify([...next]));
+      } catch {
+        // localStorage indisponível — dispensa só nessa sessão
+      }
+      return next;
+    });
   }
 
   return (
