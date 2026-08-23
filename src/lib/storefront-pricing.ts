@@ -201,6 +201,31 @@ export function groupProductsByCategory(products: Product[]): [string, Product[]
   return Array.from(groups.entries());
 }
 
+// Só chamado uma vez, na primeira visita da sessão — de onde a pessoa
+// veio pra cá. utm_source (link de campanha) manda mais que o referrer
+// do navegador; sem isso, olha o referrer pra reconhecer as origens mais
+// comuns de loja de bairro (WhatsApp, Instagram, Facebook, Google).
+export function detectVisitSource(): string {
+  if (typeof window === "undefined") return "direto";
+  const params = new URLSearchParams(window.location.search);
+  const utmSource = params.get("utm_source");
+  if (utmSource) return utmSource.toLowerCase().slice(0, 40);
+
+  const ref = document.referrer;
+  if (!ref) return "direto";
+  try {
+    const host = new URL(ref).hostname.replace(/^www\./, "");
+    if (host === window.location.hostname) return "direto";
+    if (host.includes("wa.me") || host.includes("whatsapp")) return "whatsapp";
+    if (host.includes("instagram")) return "instagram";
+    if (host.includes("facebook") || host.includes("fb.com")) return "facebook";
+    if (host.includes("google")) return "google";
+    return host;
+  } catch {
+    return "direto";
+  }
+}
+
 export type PagSeguroSdk = {
   encryptCard: (params: {
     publicKey: string;

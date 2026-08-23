@@ -26,6 +26,7 @@ import {
   isStoreOpenNow,
   groupProductsByCategory,
   loadPagSeguroSdk,
+  detectVisitSource,
 } from "@/lib/storefront-pricing";
 
 type BeforeInstallPromptEvent = Event & {
@@ -738,6 +739,7 @@ export default function StorefrontClient({
         p_store_id: store.id,
         p_session_id: sessionId,
         p_count_view: isNewSession,
+        p_source: isNewSession ? detectVisitSource() : undefined,
       })
       .then(({ error }) => {
         if (error) console.error("Erro ao registrar visita:", error.message);

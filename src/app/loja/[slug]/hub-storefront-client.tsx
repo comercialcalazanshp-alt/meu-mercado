@@ -18,6 +18,7 @@ import {
   isNewProduct,
   groupProductsByCategory,
   loadPagSeguroSdk,
+  detectVisitSource,
 } from "@/lib/storefront-pricing";
 import { BannerOverlay } from "@/components/BannerOverlay";
 import { categoryIcon } from "@/lib/hub-categories";
@@ -226,6 +227,31 @@ export default function HubStorefrontClient({ hubStore, modules }: { hubStore: S
     setCartLoaded(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cartStorageKey]);
+
+  // Rastreio de visita do Hub — mesma RPC/lógica da loja única
+  // (storefront-client.tsx), contra o store_id do próprio Hub (entrar
+  // num módulo específico continua sendo visita do Hub como um todo).
+  const visitStorageKey = `mm_visit_${hubStore.id}`;
+  useEffect(() => {
+    const supabase = getSupabase();
+    let sessionId = sessionStorage.getItem(visitStorageKey);
+    const isNewSession = !sessionId;
+    if (!sessionId) {
+      sessionId = crypto.randomUUID();
+      sessionStorage.setItem(visitStorageKey, sessionId);
+    }
+    supabase
+      .rpc("track_site_visit", {
+        p_store_id: hubStore.id,
+        p_session_id: sessionId,
+        p_count_view: isNewSession,
+        p_source: isNewSession ? detectVisitSource() : undefined,
+      })
+      .then(({ error }) => {
+        if (error) console.error("Erro ao registrar visita:", error.message);
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Mesma conta de cliente da loja única (identidade única pra toda a
   // plataforma, ver lib/supabase-customer.ts) — só precisa checar a
@@ -557,6 +583,15 @@ export default function HubStorefrontClient({ hubStore, modules }: { hubStore: S
     setView("confirmado");
     setCart({});
     setAccountDataLoaded(false);
+
+    const visitSessionId = sessionStorage.getItem(visitStorageKey);
+    if (visitSessionId) {
+      getSupabase()
+        .rpc("track_site_visit", { p_store_id: hubStore.id, p_session_id: visitSessionId, p_mark_converted: true, p_count_view: false })
+        .then(({ error }) => {
+          if (error) console.error("Erro ao registrar conversão:", error.message);
+        });
+    }
 
     if (customerLoggedIn) {
       const customerSupabase = getCustomerSupabase();

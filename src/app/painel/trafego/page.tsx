@@ -10,6 +10,15 @@ type Visit = {
   last_seen_at: string;
   page_views: number;
   converted: boolean;
+  source: string | null;
+};
+
+const SOURCE_LABEL: Record<string, string> = {
+  direto: "Link direto",
+  whatsapp: "WhatsApp",
+  instagram: "Instagram",
+  facebook: "Facebook",
+  google: "Google",
 };
 
 const DAYS_FOR_CHART = 14;
@@ -40,13 +49,13 @@ export default function Trafego() {
       const [{ data }, { data: prevData }] = await Promise.all([
         getSupabase()
           .from("site_visits")
-          .select("session_id, first_seen_at, last_seen_at, page_views, converted")
+          .select("session_id, first_seen_at, last_seen_at, page_views, converted, source")
           .eq("store_id", store.id)
           .gte("first_seen_at", since.toISOString())
           .order("first_seen_at", { ascending: true }),
         getSupabase()
           .from("site_visits")
-          .select("session_id, first_seen_at, last_seen_at, page_views, converted")
+          .select("session_id, first_seen_at, last_seen_at, page_views, converted, source")
           .eq("store_id", store.id)
           .gte("first_seen_at", prevSince.toISOString())
           .lt("first_seen_at", since.toISOString()),
@@ -94,6 +103,18 @@ export default function Trafego() {
       return sum + Math.max(0, seconds);
     }, 0);
     return total / visits.length;
+  }, [visits]);
+
+  const visitsBySource = useMemo(() => {
+    const map = new Map<string, { count: number; converted: number }>();
+    for (const visit of visits) {
+      const key = visit.source?.trim() || "direto";
+      if (!map.has(key)) map.set(key, { count: 0, converted: 0 });
+      const entry = map.get(key)!;
+      entry.count += 1;
+      if (visit.converted) entry.converted += 1;
+    }
+    return Array.from(map.entries()).sort((a, b) => b[1].count - a[1].count);
   }, [visits]);
 
   const visitsByDay = useMemo(() => {
@@ -161,6 +182,32 @@ export default function Trafego() {
           <p className="text-sm text-slate-600 dark:text-slate-400">tempo médio no site</p>
         </div>
       </div>
+
+      {visitsBySource.length > 0 && (
+        <div className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+            De onde vieram as visitas
+          </h2>
+          <div className="mt-3 space-y-2">
+            {visitsBySource.map(([source, { count, converted }]) => (
+              <div key={source} className="flex items-center gap-3">
+                <span className="w-28 shrink-0 truncate text-sm text-slate-600 dark:text-slate-400">
+                  {SOURCE_LABEL[source] ?? source}
+                </span>
+                <div className="h-2 flex-1 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800">
+                  <div
+                    className="h-full rounded-full bg-blue-900 dark:bg-blue-700"
+                    style={{ width: `${(count / visitsBySource[0][1].count) * 100}%` }}
+                  />
+                </div>
+                <span className="w-28 shrink-0 text-right text-xs text-slate-500 dark:text-slate-400">
+                  {count} visita(s){converted > 0 ? ` · ${converted} pedido(s)` : ""}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
