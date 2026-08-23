@@ -27,6 +27,7 @@ function dayKey(iso: string) {
 export default function Trafego() {
   const store = useStore();
   const [visits, setVisits] = useState<Visit[]>([]);
+  const [prevVisits, setPrevVisits] = useState<Visit[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -34,24 +35,57 @@ export default function Trafego() {
       setLoading(true);
       const since = new Date();
       since.setDate(since.getDate() - RANGE_DAYS);
-      const { data } = await getSupabase()
-        .from("site_visits")
-        .select("session_id, first_seen_at, last_seen_at, page_views, converted")
-        .eq("store_id", store.id)
-        .gte("first_seen_at", since.toISOString())
-        .order("first_seen_at", { ascending: true });
+      const prevSince = new Date();
+      prevSince.setDate(prevSince.getDate() - RANGE_DAYS * 2);
+      const [{ data }, { data: prevData }] = await Promise.all([
+        getSupabase()
+          .from("site_visits")
+          .select("session_id, first_seen_at, last_seen_at, page_views, converted")
+          .eq("store_id", store.id)
+          .gte("first_seen_at", since.toISOString())
+          .order("first_seen_at", { ascending: true }),
+        getSupabase()
+          .from("site_visits")
+          .select("session_id, first_seen_at, last_seen_at, page_views, converted")
+          .eq("store_id", store.id)
+          .gte("first_seen_at", prevSince.toISOString())
+          .lt("first_seen_at", since.toISOString()),
+      ]);
       setVisits(data ?? []);
+      setPrevVisits(prevData ?? []);
       setLoading(false);
     }
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [store.id]);
 
+  function pctDelta(current: number, previous: number): number | null {
+    if (previous <= 0) return current > 0 ? 100 : null;
+    return Math.round(((current - previous) / previous) * 100);
+  }
+
+  function DeltaBadge({ current, previous }: { current: number; previous: number }) {
+    const delta = pctDelta(current, previous);
+    if (delta === null) return null;
+    return (
+      <span className={`text-xs font-semibold ${delta >= 0 ? "text-green-600" : "text-red-600"}`}>
+        {delta >= 0 ? "+" : ""}
+        {delta}% vs. período anterior
+      </span>
+    );
+  }
+
   const totalVisits = visits.length;
   const conversions = visits.filter((v) => v.converted).length;
   const conversionRate = totalVisits > 0 ? (conversions / totalVisits) * 100 : 0;
   const avgPageViews =
     totalVisits > 0 ? visits.reduce((sum, v) => sum + v.page_views, 0) / totalVisits : 0;
+
+  const prevTotalVisits = prevVisits.length;
+  const prevConversions = prevVisits.filter((v) => v.converted).length;
+  const prevConversionRate = prevTotalVisits > 0 ? (prevConversions / prevTotalVisits) * 100 : 0;
+  const prevAvgPageViews =
+    prevTotalVisits > 0 ? prevVisits.reduce((sum, v) => sum + v.page_views, 0) / prevTotalVisits : 0;
 
   const avgDurationSeconds = useMemo(() => {
     if (visits.length === 0) return 0;
@@ -98,18 +132,27 @@ export default function Trafego() {
         <div className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
           <p className="text-2xl font-bold text-slate-900 dark:text-slate-50">{totalVisits}</p>
           <p className="text-sm text-slate-600 dark:text-slate-400">visitas</p>
+          <div className="mt-1">
+            <DeltaBadge current={totalVisits} previous={prevTotalVisits} />
+          </div>
         </div>
         <div className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
           <p className="text-2xl font-bold text-slate-900 dark:text-slate-50">
             {conversionRate.toFixed(0)}%
           </p>
           <p className="text-sm text-slate-600 dark:text-slate-400">converteram em pedido</p>
+          <div className="mt-1">
+            <DeltaBadge current={conversionRate} previous={prevConversionRate} />
+          </div>
         </div>
         <div className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
           <p className="text-2xl font-bold text-slate-900 dark:text-slate-50">
             {avgPageViews.toFixed(1)}
           </p>
           <p className="text-sm text-slate-600 dark:text-slate-400">telas por visita</p>
+          <div className="mt-1">
+            <DeltaBadge current={avgPageViews} previous={prevAvgPageViews} />
+          </div>
         </div>
         <div className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
           <p className="text-2xl font-bold text-slate-900 dark:text-slate-50">

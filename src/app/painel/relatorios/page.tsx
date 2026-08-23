@@ -76,7 +76,7 @@ function shortDay(dateStr: string) {
 
 const DAYS_FOR_CHART = 14;
 const DAYS_FOR_STALE = 60;
-const RANGE_DAYS = 90;
+const RANGE_OPTIONS = [30, 90, 180, 365];
 
 export default function Relatorios() {
   const store = useStore();
@@ -89,6 +89,7 @@ export default function Relatorios() {
   const [savingGoal, setSavingGoal] = useState(false);
   const [currentGoal, setCurrentGoal] = useState(0);
 
+  const [rangeDays, setRangeDays] = useState(90);
   const [exportMonth, setExportMonth] = useState(currentMonthValue());
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
@@ -107,7 +108,7 @@ export default function Relatorios() {
       setLoading(true);
       const supabase = getSupabase();
       const since = new Date();
-      since.setDate(since.getDate() - RANGE_DAYS);
+      since.setDate(since.getDate() - rangeDays);
 
       const [{ data: ordersData }, { data: productsData }, { data: storeData }, { data: reviewsData }] =
         await Promise.all([
@@ -140,7 +141,7 @@ export default function Relatorios() {
     }
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [store.id]);
+  }, [store.id, rangeDays]);
 
   useEffect(() => {
     async function loadProfit() {
@@ -315,9 +316,26 @@ export default function Relatorios() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-50">Relatórios</h1>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-50">Relatórios</h1>
+        <div className="flex gap-1.5">
+          {RANGE_OPTIONS.map((d) => (
+            <button
+              key={d}
+              onClick={() => setRangeDays(d)}
+              className={`rounded-lg px-3 py-1.5 text-xs font-semibold ${
+                rangeDays === d
+                  ? "bg-blue-900 text-amber-300 dark:bg-blue-800"
+                  : "border border-slate-300 text-slate-600 dark:border-slate-700 dark:text-slate-300"
+              }`}
+            >
+              {d === 365 ? "1 ano" : `${d} dias`}
+            </button>
+          ))}
+        </div>
+      </div>
 
-      <div className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
+      <div className="mt-4 rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
           Exportar vendas pro contador
         </h2>
@@ -442,7 +460,7 @@ export default function Relatorios() {
           Clientes que mais compraram
         </h2>
         {clientRanking.length === 0 && (
-          <p className="mt-2 text-sm text-slate-500">Nenhum pedido nos últimos {RANGE_DAYS} dias.</p>
+          <p className="mt-2 text-sm text-slate-500">Nenhum pedido nos últimos {rangeDays} dias.</p>
         )}
         <ul className="mt-2 space-y-2">
           {clientRanking.map(([phone, data], i) => (
