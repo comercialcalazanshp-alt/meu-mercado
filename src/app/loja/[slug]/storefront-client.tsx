@@ -1966,6 +1966,9 @@ export default function StorefrontClient({
                   rel="noopener noreferrer"
                   className="group shrink-0 animate-mm-fade-up transition"
                   style={animStyle}
+                  onClick={() => {
+                    getSupabase().from("banner_clicks").insert({ store_id: store.id, banner_id: banner.id });
+                  }}
                 >
                   {content}
                 </a>

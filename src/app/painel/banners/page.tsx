@@ -75,10 +75,11 @@ export default function Banners() {
   const [saving, setSaving] = useState(false);
   const [sharingId, setSharingId] = useState<string | null>(null);
   const [fallbackFor, setFallbackFor] = useState<string | null>(null);
+  const [clickCounts, setClickCounts] = useState<Record<string, number>>({});
 
   async function loadBanners() {
     setLoading(true);
-    const [{ data }, { data: productsData }] = await Promise.all([
+    const [{ data }, { data: productsData }, { data: clicksData }] = await Promise.all([
       getSupabase()
         .from("banners")
         .select("id, title, image_url, link_url, start_at, end_at, active, blocked_by_hub, focal_x, focal_y, text_style, overlay_text")
@@ -90,9 +91,15 @@ export default function Banners() {
         .eq("store_id", store.id)
         .eq("active", true)
         .order("name"),
+      getSupabase().from("banner_clicks").select("banner_id").eq("store_id", store.id),
     ]);
     setBanners(data ?? []);
     setProducts(productsData ?? []);
+    const counts: Record<string, number> = {};
+    for (const c of (clicksData ?? []) as { banner_id: string }[]) {
+      counts[c.banner_id] = (counts[c.banner_id] ?? 0) + 1;
+    }
+    setClickCounts(counts);
     setLoading(false);
   }
 
@@ -365,6 +372,9 @@ export default function Banners() {
                         }`
                       : "Sem prazo definido"}
                   </p>
+                  {banner.link_url && (
+                    <p className="text-xs text-slate-400">👆 {clickCounts[banner.id] ?? 0} clique(s)</p>
+                  )}
                 </div>
                 <span
                   className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-medium ${status.style}`}

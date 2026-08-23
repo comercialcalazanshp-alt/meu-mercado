@@ -825,6 +825,9 @@ export default function HubStorefrontClient({ hubStore, modules }: { hubStore: S
                         rel="noopener noreferrer"
                         className="animate-mm-fade-up group shrink-0"
                         style={animStyle}
+                        onClick={() => {
+                          getSupabase().from("banner_clicks").insert({ store_id: banner.store_id, banner_id: banner.id });
+                        }}
                       >
                         {content}
                       </a>

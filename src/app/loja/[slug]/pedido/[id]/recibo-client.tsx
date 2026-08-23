@@ -106,7 +106,28 @@ function formatCurrency(value: number) {
   return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
-export default function ReciboClient({ order }: { order: OrderReceipt }) {
+export default function ReciboClient({ order: initialOrder }: { order: OrderReceipt }) {
+  const [order, setOrder] = useState(initialOrder);
+
+  // Se o status mudar (entregador marcou "saiu pra entrega"/"entregue")
+  // enquanto o cliente está com o recibo aberto, atualiza sozinho — sem
+  // isso só via recarregando a página manualmente. É um cliente anônimo
+  // (sem login), então não dá pra assinar postgres_changes direto na
+  // tabela — a RLS de "orders" só libera select pra dono/equipe. Em vez
+  // disso, verifica de tempos em tempos usando a mesma RPC segura que já
+  // carregou o recibo a primeira vez.
+  useEffect(() => {
+    if (order.status === "entregue" || order.status === "cancelado") return;
+    const supabase = getSupabase();
+    const interval = setInterval(() => {
+      supabase.rpc("get_order_receipt", { p_order_id: order.order_id }).then(({ data }) => {
+        if (data?.[0]) setOrder(data[0] as OrderReceipt);
+      });
+    }, 15000);
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [order.order_id, order.status]);
+
   const subtotal = order.items.reduce(
     (sum, item) => sum + (item.line_total ?? item.price * item.quantity),
     0,

@@ -239,9 +239,28 @@ function ComplaintSection({ orderId }: { orderId: string }) {
   );
 }
 
-export default function ReciboHubClient({ rows }: { rows: HubReceiptRow[] }) {
+export default function ReciboHubClient({ rows: initialRows }: { rows: HubReceiptRow[] }) {
+  const [rows, setRows] = useState(initialRows);
   const first = rows[0];
   const createdAt = new Date(first.created_at).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" });
+
+  // Igual ao recibo de loja única: se qualquer perna do pedido combinado
+  // mudar de status enquanto o cliente está com o recibo aberto, atualiza
+  // sozinho. Cliente é anônimo (RLS de "orders" não libera select direto
+  // pra ele), então verifica de tempos em tempos pela mesma RPC segura,
+  // em vez de assinar a tabela.
+  const allFinal = rows.every((r) => r.status === "entregue" || r.status === "cancelado");
+  useEffect(() => {
+    if (allFinal) return;
+    const supabase = getSupabase();
+    const interval = setInterval(() => {
+      supabase.rpc("get_hub_order_receipt", { p_hub_order_id: first.hub_order_id }).then(({ data }) => {
+        if (data?.length) setRows(data as HubReceiptRow[]);
+      });
+    }, 15000);
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [first.hub_order_id, allFinal]);
 
   const anyEmRota = rows.some((r) => r.status === "entregando");
   const [now, setNow] = useState(() => Date.now());
