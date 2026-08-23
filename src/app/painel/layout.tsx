@@ -80,6 +80,7 @@ const HUB_HIDDEN_PATHS = new Set([
 
 const NAV_ITEMS = [
   { href: "/painel", label: "Início" },
+  { href: "/painel/assistente", label: "Assistente" },
   { href: "/painel/dashboard", label: "Dashboard" },
   { href: "/painel/pdv", label: "PDV" },
   { href: "/painel/caixa", label: "Caixa" },
