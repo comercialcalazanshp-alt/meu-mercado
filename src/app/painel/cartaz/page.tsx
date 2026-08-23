@@ -25,13 +25,32 @@ export default function Cartaz() {
           Um cartaz com QR code pra imprimir e deixar no balcão, na vitrine ou colar num ponto de entrega —
           quem escanear cai direto na sua loja online.
         </p>
-        <button
-          onClick={() => window.print()}
-          disabled={!qrDataUrl}
-          className="mt-4 rounded-lg bg-blue-900 px-4 py-2 text-sm font-semibold text-amber-300 disabled:opacity-60 dark:bg-blue-800"
-        >
-          Imprimir / salvar como PDF
-        </button>
+        <div className="mt-4 flex flex-wrap gap-2">
+          <button
+            onClick={() => window.print()}
+            disabled={!qrDataUrl}
+            className="rounded-lg bg-blue-900 px-4 py-2 text-sm font-semibold text-amber-300 disabled:opacity-60 dark:bg-blue-800"
+          >
+            Imprimir / salvar como PDF
+          </button>
+          {qrDataUrl && (
+            <a
+              href={qrDataUrl}
+              download={`qrcode-${store.slug}.png`}
+              className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-600 dark:border-slate-700 dark:text-slate-300"
+            >
+              ⬇️ Baixar QR code
+            </a>
+          )}
+          <a
+            href={`https://wa.me/?text=${encodeURIComponent(`Peça online na ${store.name}! Acesse: ${storeUrl}`)}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-600 dark:border-slate-700 dark:text-slate-300"
+          >
+            Compartilhar no WhatsApp
+          </a>
+        </div>
       </div>
 
       <div

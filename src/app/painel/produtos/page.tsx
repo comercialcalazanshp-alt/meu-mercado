@@ -629,6 +629,11 @@ export default function Produtos() {
     await getSupabase().from("products").update(patch).eq("id", id);
   }
 
+  async function bulkUpdate(ids: string[], patch: Partial<Product>) {
+    setProducts((prev) => prev.map((p) => (ids.includes(p.id) ? { ...p, ...patch } : p)));
+    await getSupabase().from("products").update(patch).in("id", ids);
+  }
+
   function promoDraftFor(p: Product) {
     return (
       promoDrafts[p.id] ?? {
@@ -1557,6 +1562,34 @@ export default function Produtos() {
           >
             🏷️ Imprimir etiquetas de promoção
           </button>
+          <button
+            onClick={() => bulkUpdate([...selectedIds], { active: true })}
+            className="text-sm font-medium text-green-700 underline dark:text-green-400"
+          >
+            ✅ Ativar
+          </button>
+          <button
+            onClick={() => bulkUpdate([...selectedIds], { active: false })}
+            className="text-sm font-medium text-red-600 underline dark:text-red-400"
+          >
+            🚫 Desativar
+          </button>
+          <select
+            defaultValue=""
+            onChange={(e) => {
+              if (!e.target.value) return;
+              bulkUpdate([...selectedIds], { category: e.target.value });
+              e.target.value = "";
+            }}
+            className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300"
+          >
+            <option value="">Mudar categoria pra…</option>
+            {categories.map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
+          </select>
           <button
             onClick={() => setSelectedIds(new Set())}
             className="text-sm text-slate-500 underline dark:text-slate-400"

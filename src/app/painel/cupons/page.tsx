@@ -18,6 +18,15 @@ type Coupon = {
   single_use_per_customer: boolean;
 };
 
+type CouponReport = {
+  coupon_id: string;
+  code: string;
+  orders_count: number;
+  revenue_generated: number;
+  discount_given: number;
+  last_order_at: string | null;
+};
+
 type Influencer = {
   id: string;
   name: string;
@@ -98,13 +107,14 @@ export default function Cupons() {
   const [expandedInfluencerId, setExpandedInfluencerId] = useState<string | null>(null);
   const [influencerOrders, setInfluencerOrders] = useState<Record<string, InfluencerOrder[]>>({});
   const [loadingOrders, setLoadingOrders] = useState<string | null>(null);
+  const [couponReports, setCouponReports] = useState<CouponReport[]>([]);
   const [paymentDrafts, setPaymentDrafts] = useState<Record<string, { amount: string; note: string }>>({});
   const [savingPayment, setSavingPayment] = useState<string | null>(null);
 
   async function loadAll() {
     setLoading(true);
     const supabase = getSupabase();
-    const [{ data: couponsData }, { data: influencersData }, { data: reportsData }] = await Promise.all([
+    const [{ data: couponsData }, { data: influencersData }, { data: reportsData }, { data: couponReportsData }] = await Promise.all([
       supabase
         .from("coupons")
         .select(
@@ -118,10 +128,12 @@ export default function Cupons() {
         .eq("store_id", store.id)
         .order("name", { ascending: true }),
       supabase.rpc("influencer_report", { p_store_id: store.id }),
+      supabase.rpc("coupon_report", { p_store_id: store.id }),
     ]);
     setCoupons(couponsData ?? []);
     setInfluencers(influencersData ?? []);
     setReports((reportsData as InfluencerReport[]) ?? []);
+    setCouponReports((couponReportsData as CouponReport[]) ?? []);
     setLoading(false);
   }
 
@@ -628,6 +640,15 @@ export default function Cupons() {
                       (1x/cliente)
                     </span>
                   )}
+                  {(() => {
+                    const r = couponReports.find((x) => x.code.toLowerCase() === c.code.toLowerCase());
+                    if (!r || r.orders_count === 0) return null;
+                    return (
+                      <p className="mt-0.5 text-xs text-slate-400">
+                        {formatCurrency(r.revenue_generated)} em vendas · {formatCurrency(r.discount_given)} de desconto
+                      </p>
+                    );
+                  })()}
                 </td>
                 <td className="px-3 py-2 text-slate-600 dark:text-slate-400">
                   {c.expires_at ? new Date(c.expires_at).toLocaleDateString("pt-BR") : "Sem prazo"}
