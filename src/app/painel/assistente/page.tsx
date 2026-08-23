@@ -29,7 +29,9 @@ export default function Assistente() {
   const [listening, setListening] = useState(false);
   const [voiceReplies, setVoiceReplies] = useState(true);
   const [voiceSupported, setVoiceSupported] = useState(false);
+  const [speaking, setSpeaking] = useState(false);
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -57,12 +59,32 @@ export default function Assistente() {
     setVoiceSupported(!!Recognition && "speechSynthesis" in window);
   }, []);
 
-  function speak(text: string) {
-    if (!voiceReplies || !("speechSynthesis" in window)) return;
-    window.speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = "pt-BR";
-    window.speechSynthesis.speak(utterance);
+  async function speak(text: string) {
+    if (!voiceReplies) return;
+    const {
+      data: { session },
+    } = await getSupabase().auth.getSession();
+    if (!session) return;
+
+    try {
+      setSpeaking(true);
+      const res = await fetch("/api/assistente/voz", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify({ text }),
+      });
+      if (!res.ok) return;
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      audioRef.current?.pause();
+      const audio = new Audio(url);
+      audioRef.current = audio;
+      audio.onended = () => setSpeaking(false);
+      audio.onerror = () => setSpeaking(false);
+      await audio.play();
+    } catch {
+      setSpeaking(false);
+    }
   }
 
   function toggleListening() {
@@ -202,9 +224,13 @@ export default function Assistente() {
         )}
         <button
           type="button"
-          onClick={() => setVoiceReplies((v) => !v)}
+          onClick={() => {
+            setVoiceReplies((v) => !v);
+            audioRef.current?.pause();
+            setSpeaking(false);
+          }}
           title={voiceReplies ? "Respostas por voz ligadas" : "Respostas por voz desligadas"}
-          className="shrink-0 rounded-full border border-slate-300 p-2.5 text-slate-600 dark:border-slate-700 dark:text-slate-300"
+          className={`shrink-0 rounded-full border border-slate-300 p-2.5 text-slate-600 dark:border-slate-700 dark:text-slate-300 ${speaking ? "animate-pulse" : ""}`}
         >
           {voiceReplies ? "🔊" : "🔇"}
         </button>
