@@ -174,6 +174,8 @@ export default function StorefrontClient({
     referral_code: string;
   } | null>(null);
   const [savedAddresses, setSavedAddresses] = useState<{ id: string; label: string; address: string }[]>([]);
+  const [favoriteIds, setFavoriteIds] = useState<Set<string>>(new Set());
+  const [showOnlyFavorites, setShowOnlyFavorites] = useState(false);
   const [saveThisAddress, setSaveThisAddress] = useState(false);
   const [newAddressLabel, setNewAddressLabel] = useState("");
   const [subscribingKitId, setSubscribingKitId] = useState<string | null>(null);
@@ -225,9 +227,10 @@ export default function StorefrontClient({
         setCustomerLoggedIn(false);
         setCustomerAccountName(null);
         setCustomerRecord(null);
+        setFavoriteIds(new Set());
         return;
       }
-      const [{ data: profile }, { data: record }, { data: addresses }] = await Promise.all([
+      const [{ data: profile }, { data: record }, { data: addresses }, { data: favorites }] = await Promise.all([
         customerSupabase.from("customer_profiles").select("full_name, phone, default_address").eq("id", userId).maybeSingle(),
         customerSupabase
           .from("customers")
@@ -236,8 +239,10 @@ export default function StorefrontClient({
           .eq("profile_id", userId)
           .maybeSingle(),
         customerSupabase.from("customer_addresses").select("id, label, address").eq("profile_id", userId).order("created_at"),
+        customerSupabase.from("customer_favorites").select("product_id").eq("profile_id", userId).eq("store_id", store.id),
       ]);
       setSavedAddresses(addresses ?? []);
+      setFavoriteIds(new Set((favorites ?? []).map((f: { product_id: string }) => f.product_id)));
       if (!profile) {
         // Sessão válida, mas não é uma conta de cliente de verdade (ex: uma
         // conta de dono de loja com a mesma senha) — nunca trata como
@@ -416,14 +421,40 @@ export default function StorefrontClient({
 
   const visibleProducts = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
-    if (!q) return products;
-    return products.filter((p) => p.name.toLowerCase().includes(q));
-  }, [products, searchQuery]);
+    let list = products;
+    if (q) list = list.filter((p) => p.name.toLowerCase().includes(q));
+    if (showOnlyFavorites) list = list.filter((p) => favoriteIds.has(p.id));
+    return list;
+  }, [products, searchQuery, showOnlyFavorites, favoriteIds]);
 
   const categories = useMemo(() => groupProductsByCategory(visibleProducts), [visibleProducts]);
 
   function setQuantity(key: string, quantity: number) {
     setCart((prev) => ({ ...prev, [key]: Math.max(0, quantity) }));
+  }
+
+  async function toggleFavorite(productId: string) {
+    if (!customerLoggedIn) {
+      alert("Entra na sua conta pra favoritar produtos.");
+      return;
+    }
+    const customerSupabase = getCustomerSupabase();
+    const {
+      data: { session },
+    } = await customerSupabase.auth.getSession();
+    if (!session) return;
+    const isFavorite = favoriteIds.has(productId);
+    setFavoriteIds((prev) => {
+      const next = new Set(prev);
+      if (isFavorite) next.delete(productId);
+      else next.add(productId);
+      return next;
+    });
+    if (isFavorite) {
+      await customerSupabase.from("customer_favorites").delete().eq("profile_id", session.user.id).eq("product_id", productId);
+    } else {
+      await customerSupabase.from("customer_favorites").insert({ profile_id: session.user.id, store_id: store.id, product_id: productId });
+    }
   }
 
   function reorder(order: (typeof customerOrders)[number]) {
@@ -1864,6 +1895,12 @@ export default function StorefrontClient({
             </button>
           )}
         </form>
+        {customerLoggedIn && (
+          <label className="mt-2 flex w-fit items-center gap-1.5 text-xs text-white/60">
+            <input type="checkbox" checked={showOnlyFavorites} onChange={(e) => setShowOnlyFavorites(e.target.checked)} />
+            Mostrar só favoritos ❤️
+          </label>
+        )}
         {searchQuery.trim() && (
           <p className="mt-2 text-xs text-white/60">
             {visibleProducts.length === 0
@@ -2250,6 +2287,17 @@ export default function StorefrontClient({
                               </span>
                             </div>
                           )}
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              toggleFavorite(product.id);
+                            }}
+                            className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-full bg-white/90 text-base shadow-sm dark:bg-slate-900/80"
+                            aria-label="Favoritar"
+                          >
+                            {favoriteIds.has(product.id) ? "❤️" : "🤍"}
+                          </button>
                         </div>
                       </div>
 
