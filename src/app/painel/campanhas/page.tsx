@@ -41,6 +41,7 @@ export default function Campanhas() {
   const [segment, setSegment] = useState<Segment>("todos");
   const [message, setMessage] = useState(DEFAULT_MESSAGE);
   const [hideRecentlyContacted, setHideRecentlyContacted] = useState(false);
+  const [report, setReport] = useState<{ segment: string; contacted_count: number; returned_count: number; revenue_generated: number }[]>([]);
 
   async function loadContacts() {
     const { data } = await getSupabase()
@@ -83,6 +84,8 @@ export default function Campanhas() {
       }
       setLastOrderByCustomer(lastOrder);
       await loadContacts();
+      const { data: reportData } = await supabase.rpc("campaign_report", { p_store_id: store.id });
+      setReport(reportData ?? []);
       setLoading(false);
     }
     load();
@@ -138,6 +141,25 @@ export default function Campanhas() {
         Escolha um grupo de clientes, escreva a mensagem e clique em cada um pra abrir o WhatsApp já
         com o texto pronto. Nada é enviado automaticamente — você confirma o envio um por um.
       </p>
+
+      {report.length > 0 && (
+        <div className="mt-4 rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
+          <p className="text-xs font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+            Resultado das campanhas
+          </p>
+          <div className="mt-2 space-y-1.5">
+            {report.map((r) => (
+              <p key={r.segment} className="flex flex-wrap justify-between gap-2 text-sm text-slate-600 dark:text-slate-400">
+                <span>{SEGMENTS.find((s) => s.value === r.segment)?.label ?? r.segment}</span>
+                <span>
+                  {r.contacted_count} contatado(s) · {r.returned_count} voltou(aram) a comprar ·{" "}
+                  <b className="text-slate-900 dark:text-slate-50">{formatCurrency(r.revenue_generated)}</b> gerado
+                </span>
+              </p>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="mt-4 grid grid-cols-1 gap-3 rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900 sm:grid-cols-2">
         <div>

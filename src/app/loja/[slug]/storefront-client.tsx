@@ -173,6 +173,9 @@ export default function StorefrontClient({
     cashback_balance: number;
     referral_code: string;
   } | null>(null);
+  const [savedAddresses, setSavedAddresses] = useState<{ id: string; label: string; address: string }[]>([]);
+  const [saveThisAddress, setSaveThisAddress] = useState(false);
+  const [newAddressLabel, setNewAddressLabel] = useState("");
   const [subscribingKitId, setSubscribingKitId] = useState<string | null>(null);
   const [subName, setSubName] = useState("");
   const [subPhone, setSubPhone] = useState("");
@@ -224,7 +227,7 @@ export default function StorefrontClient({
         setCustomerRecord(null);
         return;
       }
-      const [{ data: profile }, { data: record }] = await Promise.all([
+      const [{ data: profile }, { data: record }, { data: addresses }] = await Promise.all([
         customerSupabase.from("customer_profiles").select("full_name, phone, default_address").eq("id", userId).maybeSingle(),
         customerSupabase
           .from("customers")
@@ -232,7 +235,9 @@ export default function StorefrontClient({
           .eq("store_id", store.id)
           .eq("profile_id", userId)
           .maybeSingle(),
+        customerSupabase.from("customer_addresses").select("id, label, address").eq("profile_id", userId).order("created_at"),
       ]);
+      setSavedAddresses(addresses ?? []);
       if (!profile) {
         // Sessão válida, mas não é uma conta de cliente de verdade (ex: uma
         // conta de dono de loja com a mesma senha) — nunca trata como
@@ -894,10 +899,9 @@ export default function StorefrontClient({
         cashback_balance: (prev?.cashback_balance ?? 0) - cashbackUsed + cashbackEarned,
         referral_code: data?.[0]?.referral_code ?? prev?.referral_code ?? "",
       }));
-      // Guarda telefone e o endereço usado nesse pedido como padrão do
-      // perfil — só quando é entrega de verdade (retirada não é um
-      // endereço válido pra salvar) — assim o próximo pedido já vem
-      // pré-preenchido, sem precisar de tela/botão extra pra "salvar".
+      // Guarda telefone — endereço só é salvo se o cliente marcar a opção
+      // (vira um novo endereço nomeado, nunca sobrescreve os que já
+      // existem, já que agora dá pra ter mais de um: casa, trabalho...).
       if (neighborhoodId !== "retirada" && deliveryAddress.trim()) {
         const customerSupabase = getCustomerSupabase();
         const {
@@ -906,8 +910,15 @@ export default function StorefrontClient({
         if (customerSession) {
           await customerSupabase
             .from("customer_profiles")
-            .update({ phone: customerPhone.trim(), default_address: deliveryAddress.trim() })
+            .update({ phone: customerPhone.trim() })
             .eq("id", customerSession.user.id);
+          if (saveThisAddress) {
+            await customerSupabase.from("customer_addresses").insert({
+              profile_id: customerSession.user.id,
+              label: newAddressLabel.trim() || "Endereço",
+              address: deliveryAddress.trim(),
+            });
+          }
         }
       }
     }
@@ -1390,6 +1401,23 @@ export default function StorefrontClient({
               )}
               {neighborhoodId !== "retirada" && (
                 <div className="mt-2">
+                  {savedAddresses.length > 0 && (
+                    <select
+                      defaultValue=""
+                      onChange={(e) => {
+                        const found = savedAddresses.find((a) => a.id === e.target.value);
+                        if (found) setDeliveryAddress(found.address);
+                      }}
+                      className="mb-1.5 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                    >
+                      <option value="">Usar um endereço salvo…</option>
+                      {savedAddresses.map((a) => (
+                        <option key={a.id} value={a.id}>
+                          {a.label}
+                        </option>
+                      ))}
+                    </select>
+                  )}
                   <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
                     Endereço completo
                   </label>
@@ -1401,6 +1429,22 @@ export default function StorefrontClient({
                     rows={2}
                     className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
                   />
+                  {customerLoggedIn && (
+                    <div className="mt-1.5 flex items-center gap-2">
+                      <label className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
+                        <input type="checkbox" checked={saveThisAddress} onChange={(e) => setSaveThisAddress(e.target.checked)} />
+                        Salvar esse endereço como
+                      </label>
+                      {saveThisAddress && (
+                        <input
+                          value={newAddressLabel}
+                          onChange={(e) => setNewAddressLabel(e.target.value)}
+                          placeholder="ex: Casa, Trabalho"
+                          className="min-w-0 flex-1 rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                        />
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
