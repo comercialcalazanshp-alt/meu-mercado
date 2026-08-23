@@ -108,6 +108,8 @@ function formatCurrency(value: number) {
 
 export default function ReciboClient({ order: initialOrder }: { order: OrderReceipt }) {
   const [order, setOrder] = useState(initialOrder);
+  const [notifyEnabled, setNotifyEnabled] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
 
   // Se o status mudar (entregador marcou "saiu pra entrega"/"entregue")
   // enquanto o cliente está com o recibo aberto, atualiza sozinho — sem
@@ -121,12 +123,28 @@ export default function ReciboClient({ order: initialOrder }: { order: OrderRece
     const supabase = getSupabase();
     const interval = setInterval(() => {
       supabase.rpc("get_order_receipt", { p_order_id: order.order_id }).then(({ data }) => {
-        if (data?.[0]) setOrder(data[0] as OrderReceipt);
+        const updated = data?.[0] as OrderReceipt | undefined;
+        if (!updated) return;
+        if (notifyEnabled && updated.status !== order.status && Notification.permission === "granted") {
+          new Notification("Seu pedido mudou de status", {
+            body: STATUS_LABEL[updated.status] ?? updated.status,
+          });
+        }
+        setOrder(updated);
       });
     }, 15000);
     return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [order.order_id, order.status]);
+  }, [order.order_id, order.status, notifyEnabled]);
+
+  function handleEnableNotify() {
+    if (!("Notification" in window)) return;
+    if (Notification.permission === "granted") {
+      setNotifyEnabled(true);
+      return;
+    }
+    Notification.requestPermission().then((perm) => setNotifyEnabled(perm === "granted"));
+  }
 
   const subtotal = order.items.reduce(
     (sum, item) => sum + (item.line_total ?? item.price * item.quantity),
@@ -214,6 +232,34 @@ export default function ReciboClient({ order: initialOrder }: { order: OrderRece
           >
             Imprimir / salvar como PDF
           </button>
+          {order.status !== "entregue" && order.status !== "cancelado" && (
+            <button
+              onClick={handleEnableNotify}
+              disabled={notifyEnabled}
+              className="mt-2 w-full rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-600 disabled:opacity-60 dark:border-slate-700 dark:text-slate-300"
+            >
+              {notifyEnabled ? "🔔 Você será avisado quando mudar" : "🔔 Avisar quando o status mudar"}
+            </button>
+          )}
+          {(order.status === "pendente" || order.status === "confirmado") && (
+            <button
+              onClick={async () => {
+                if (!confirm("Cancelar esse pedido? Não dá pra desfazer.")) return;
+                setCancelling(true);
+                const { error } = await getSupabase().rpc("customer_cancel_order", { p_order_id: order.order_id });
+                setCancelling(false);
+                if (error) {
+                  alert(error.message);
+                  return;
+                }
+                setOrder((prev) => ({ ...prev, status: "cancelado" }));
+              }}
+              disabled={cancelling}
+              className="mt-2 w-full rounded-lg border border-red-300 px-4 py-2 text-sm font-medium text-red-600 disabled:opacity-60 dark:border-red-800 dark:text-red-400"
+            >
+              {cancelling ? "Cancelando…" : "Cancelar pedido"}
+            </button>
+          )}
         </div>
 
         <div

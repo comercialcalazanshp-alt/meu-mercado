@@ -241,6 +241,7 @@ function ComplaintSection({ orderId }: { orderId: string }) {
 
 export default function ReciboHubClient({ rows: initialRows }: { rows: HubReceiptRow[] }) {
   const [rows, setRows] = useState(initialRows);
+  const [notifyEnabled, setNotifyEnabled] = useState(false);
   const first = rows[0];
   const createdAt = new Date(first.created_at).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" });
 
@@ -255,12 +256,31 @@ export default function ReciboHubClient({ rows: initialRows }: { rows: HubReceip
     const supabase = getSupabase();
     const interval = setInterval(() => {
       supabase.rpc("get_hub_order_receipt", { p_hub_order_id: first.hub_order_id }).then(({ data }) => {
-        if (data?.length) setRows(data as HubReceiptRow[]);
+        const updated = data as HubReceiptRow[] | undefined;
+        if (!updated?.length) return;
+        if (notifyEnabled && Notification.permission === "granted") {
+          const changed = updated.find((u) => rows.find((r) => r.order_id === u.order_id)?.status !== u.status);
+          if (changed) {
+            new Notification("Seu pedido mudou de status", {
+              body: `${changed.store_name}: ${STATUS_LABEL[changed.status] ?? changed.status}`,
+            });
+          }
+        }
+        setRows(updated);
       });
     }, 15000);
     return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [first.hub_order_id, allFinal]);
+  }, [first.hub_order_id, allFinal, notifyEnabled]);
+
+  function handleEnableNotify() {
+    if (!("Notification" in window)) return;
+    if (Notification.permission === "granted") {
+      setNotifyEnabled(true);
+      return;
+    }
+    Notification.requestPermission().then((perm) => setNotifyEnabled(perm === "granted"));
+  }
 
   const anyEmRota = rows.some((r) => r.status === "entregando");
   const [now, setNow] = useState(() => Date.now());
@@ -280,6 +300,15 @@ export default function ReciboHubClient({ rows: initialRows }: { rows: HubReceip
           >
             Imprimir / salvar como PDF
           </button>
+          {!allFinal && (
+            <button
+              onClick={handleEnableNotify}
+              disabled={notifyEnabled}
+              className="mt-2 w-full rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-600 disabled:opacity-60 dark:border-slate-700 dark:text-slate-300"
+            >
+              {notifyEnabled ? "🔔 Você será avisado quando mudar" : "🔔 Avisar quando o status mudar"}
+            </button>
+          )}
         </div>
 
         <div
