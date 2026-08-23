@@ -30,12 +30,22 @@ export default function Assistente() {
   const [voiceReplies, setVoiceReplies] = useState(true);
   const [voiceSupported, setVoiceSupported] = useState(false);
   const [speaking, setSpeaking] = useState(false);
+  const [accessChecked, setAccessChecked] = useState(false);
+  const [accessAllowed, setAccessAllowed] = useState(true);
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     async function load() {
+      const { data: enabled } = await getSupabase().rpc("affiliate_assistant_enabled", { p_store_id: store.id });
+      setAccessAllowed(enabled !== false);
+      setAccessChecked(true);
+      if (enabled === false) {
+        setLoading(false);
+        return;
+      }
+
       setLoading(true);
       const { data } = await getSupabase()
         .from("assistant_messages")
@@ -71,7 +81,7 @@ export default function Assistente() {
       const res = await fetch("/api/assistente/voz", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
-        body: JSON.stringify({ text }),
+        body: JSON.stringify({ text, store_id: store.id }),
       });
       if (!res.ok) return;
       const blob = await res.blob();
@@ -172,6 +182,19 @@ export default function Assistente() {
     if (!confirm("Apagar todo o histórico de conversa com o assistente?")) return;
     await getSupabase().from("assistant_messages").delete().eq("store_id", store.id);
     setMessages([]);
+  }
+
+  if (accessChecked && !accessAllowed) {
+    return (
+      <div className="mx-auto max-w-2xl">
+        <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-50">Assistente</h1>
+        <div className="mt-4 rounded-xl border border-slate-200 bg-white p-6 text-center dark:border-slate-800 dark:bg-slate-900">
+          <p className="text-sm text-slate-600 dark:text-slate-300">
+            Esse recurso não está incluído no seu plano ainda. Fala com quem administra o Hub pra liberar o Assistente de IA.
+          </p>
+        </div>
+      </div>
+    );
   }
 
   return (

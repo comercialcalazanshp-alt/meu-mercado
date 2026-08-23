@@ -1,10 +1,12 @@
 import "server-only";
+import { createClient } from "@supabase/supabase-js";
 import OpenAI from "openai";
 
 // Converte o texto da resposta do assistente em áudio (voz natural da
-// OpenAI, bem melhor que a voz sintética do navegador). Só exige estar
-// autenticado — não precisa validar dono da loja aqui porque o texto já
-// veio de uma resposta que o próprio painel do dono gerou.
+// OpenAI, bem melhor que a voz sintética do navegador). Exige store_id +
+// a mesma checagem de plano do chat — senão um afiliado sem o extra
+// "Assistente de IA" ligado poderia gerar áudio à toa, gastando a chave
+// da OpenAI do Hub sem pagar por isso.
 export async function POST(request: Request) {
   const authHeader = request.headers.get("authorization");
   if (!authHeader) {
@@ -16,9 +18,25 @@ export async function POST(request: Request) {
     return Response.json({ error: "Voz ainda não configurada" }, { status: 500 });
   }
 
-  const { text } = (await request.json()) as { text?: string };
-  if (!text?.trim()) {
-    return Response.json({ error: "Faltou o texto" }, { status: 400 });
+  const { text, store_id } = (await request.json()) as { text?: string; store_id?: string };
+  if (!text?.trim() || !store_id) {
+    return Response.json({ error: "Faltou o texto ou a loja" }, { status: 400 });
+  }
+
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
+  const scoped = createClient(supabaseUrl, supabaseAnonKey, {
+    global: { headers: { Authorization: authHeader } },
+  });
+
+  const { data: store } = await scoped.from("stores").select("id").eq("id", store_id).maybeSingle();
+  if (!store) {
+    return Response.json({ error: "Não autorizado" }, { status: 403 });
+  }
+
+  const { data: enabled } = await scoped.rpc("affiliate_assistant_enabled", { p_store_id: store_id });
+  if (!enabled) {
+    return Response.json({ error: "Esse recurso não está incluído no seu plano." }, { status: 402 });
   }
 
   const client = new OpenAI({ apiKey });

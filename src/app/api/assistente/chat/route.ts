@@ -97,6 +97,11 @@ export async function POST(request: Request) {
     return Response.json({ error: "Não autorizado" }, { status: 403 });
   }
 
+  const { data: enabled } = await scoped.rpc("affiliate_assistant_enabled", { p_store_id: store_id });
+  if (!enabled) {
+    return Response.json({ error: "Esse recurso não está incluído no seu plano. Fala com quem administra o Hub pra liberar." }, { status: 402 });
+  }
+
   const admin = getSupabaseAdmin();
 
   const [{ data: history }, summary] = await Promise.all([
