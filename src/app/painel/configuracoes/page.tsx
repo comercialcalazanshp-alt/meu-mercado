@@ -90,6 +90,7 @@ export default function Configuracoes() {
   const [alertGoalReached, setAlertGoalReached] = useState(true);
   const [weeklySummary, setWeeklySummary] = useState(true);
   const [alertNewComplaint, setAlertNewComplaint] = useState(true);
+  const [alertBadReview, setAlertBadReview] = useState(true);
   const [savingAlerts, setSavingAlerts] = useState(false);
   const [alertsSaved, setAlertsSaved] = useState(false);
 
@@ -99,7 +100,7 @@ export default function Configuracoes() {
     getSupabase()
       .from("stores")
       .select(
-        "business_hours_enabled, opens_at, closes_at, open_days, manually_closed, accountant_token, brand_color, accent_color, cashback_percent, referral_bonus, loyalty_silver_threshold, loyalty_gold_threshold, credit_interest_percent, sales_goal, alert_low_stock_enabled, alert_stalled_order_enabled, alert_delivery_delay_enabled, alert_goal_reached_enabled, weekly_summary_enabled, complaint_notification_enabled, card_installment_interest_enabled, card_installment_interest_percent, fee_pix_percent, fee_card_percent, fee_boleto_fixed",
+        "business_hours_enabled, opens_at, closes_at, open_days, manually_closed, accountant_token, brand_color, accent_color, cashback_percent, referral_bonus, loyalty_silver_threshold, loyalty_gold_threshold, credit_interest_percent, sales_goal, alert_low_stock_enabled, alert_stalled_order_enabled, alert_delivery_delay_enabled, alert_goal_reached_enabled, weekly_summary_enabled, complaint_notification_enabled, card_installment_interest_enabled, card_installment_interest_percent, fee_pix_percent, fee_card_percent, fee_boleto_fixed, bad_review_notification_enabled",
       )
       .eq("id", store.id)
       .single()
@@ -130,6 +131,7 @@ export default function Configuracoes() {
         setFeePixPercent(data.fee_pix_percent > 0 ? String(data.fee_pix_percent) : "");
         setFeeCardPercent(data.fee_card_percent > 0 ? String(data.fee_card_percent) : "");
         setFeeBoletoFixed(data.fee_boleto_fixed > 0 ? String(data.fee_boleto_fixed) : "");
+        setAlertBadReview(data.bad_review_notification_enabled);
       });
   }, [store.id]);
 
@@ -325,6 +327,7 @@ export default function Configuracoes() {
         alert_goal_reached_enabled: alertGoalReached,
         weekly_summary_enabled: weeklySummary,
         complaint_notification_enabled: alertNewComplaint,
+        bad_review_notification_enabled: alertBadReview,
       })
       .eq("id", store.id);
     setSavingAlerts(false);
@@ -871,6 +874,15 @@ export default function Configuracoes() {
               className="h-4 w-4 rounded border-slate-300"
             />
             Nova reclamação de cliente
+          </label>
+          <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200">
+            <input
+              type="checkbox"
+              checked={alertBadReview}
+              onChange={(e) => setAlertBadReview(e.target.checked)}
+              className="h-4 w-4 rounded border-slate-300"
+            />
+            Avaliação ruim (nota 1 ou 2 na loja)
           </label>
           <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200">
             <input

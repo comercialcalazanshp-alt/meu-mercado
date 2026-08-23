@@ -69,6 +69,7 @@ export default function Equipe() {
   const [generatingId, setGeneratingId] = useState<string | null>(null);
   const [credentials, setCredentials] = useState<Record<string, { email: string; senha: string }>>({});
   const [deliveryCounts, setDeliveryCounts] = useState<Record<string, number>>({});
+  const [completedCounts, setCompletedCounts] = useState<Record<string, number>>({});
   const [payingId, setPayingId] = useState<string | null>(null);
 
   async function load() {
@@ -97,6 +98,21 @@ export default function Equipe() {
       counts[o.delivered_by] = (counts[o.delivered_by] ?? 0) + 1;
     }
     setDeliveryCounts(counts);
+
+    const since30d = new Date();
+    since30d.setDate(since30d.getDate() - 30);
+    const { data: completed } = await supabase
+      .from("orders")
+      .select("delivered_by")
+      .eq("store_id", store.id)
+      .eq("status", "entregue")
+      .gte("created_at", since30d.toISOString())
+      .not("delivered_by", "is", null);
+    const completedByMember: Record<string, number> = {};
+    for (const o of (completed ?? []) as { delivered_by: string }[]) {
+      completedByMember[o.delivered_by] = (completedByMember[o.delivered_by] ?? 0) + 1;
+    }
+    setCompletedCounts(completedByMember);
 
     setLoading(false);
   }
@@ -394,6 +410,9 @@ export default function Equipe() {
 
             {m.role === "entregador" && m.full_name && (
               <div className="mt-2 border-t border-slate-100 pt-2 dark:border-slate-800">
+                <p className="mb-2 text-xs text-slate-500 dark:text-slate-400">
+                  📦 {completedCounts[m.id] ?? 0} entrega(s) concluída(s) nos últimos 30 dias
+                </p>
                 {!m.terms_accepted_at ? (
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-medium text-amber-800 dark:bg-amber-900/40 dark:text-amber-400">
