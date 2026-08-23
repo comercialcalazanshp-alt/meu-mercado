@@ -179,6 +179,21 @@ export default function Entregas() {
     return Array.from(map.values()).sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
   }, [hubLegs]);
 
+  async function reportIssue(orderId: string) {
+    const description = prompt("O que aconteceu com essa entrega? (endereço errado, cliente ausente, recusou o pedido, etc.)");
+    if (!description || !description.trim()) return;
+    const { error } = await getSupabase().from("delivery_issues").insert({
+      order_id: orderId,
+      store_id: store.id,
+      description: description.trim(),
+    });
+    if (error) {
+      alert("Não deu pra registrar: " + error.message);
+      return;
+    }
+    alert("Avisado! O dono da loja vai receber uma notificação.");
+  }
+
   async function markEmRota(id: string) {
     setUpdatingId(id);
     await getSupabase()
@@ -430,6 +445,12 @@ export default function Entregas() {
                   </button>
                 )}
               </div>
+              <button
+                onClick={() => reportIssue(order.id)}
+                className="mt-2 w-full rounded-lg border border-red-200 px-3 py-1.5 text-xs font-medium text-red-600 dark:border-red-900 dark:text-red-400"
+              >
+                🚨 Reportar problema
+              </button>
             </div>
           );
         })}

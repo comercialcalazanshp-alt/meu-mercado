@@ -59,6 +59,7 @@ const PERIODS = [
   { key: "7d", label: "7 dias" },
   { key: "30d", label: "30 dias" },
   { key: "mes", label: "Este mês" },
+  { key: "custom", label: "Personalizado" },
 ] as const;
 type PeriodKey = (typeof PERIODS)[number]["key"];
 
@@ -314,6 +315,8 @@ function Card({ children, className = "", delay = 0 }: { children: React.ReactNo
 export default function Dashboard() {
   const store = useStore();
   const [period, setPeriod] = useState<PeriodKey>("30d");
+  const [customSince, setCustomSince] = useState("");
+  const [customUntil, setCustomUntil] = useState("");
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<"mercado" | "afiliados" | "assinaturas" | "entregadores">("mercado");
   // A aba/série "Afiliados" (comissão ganha de parceiros) só faz sentido pra
@@ -333,7 +336,17 @@ export default function Dashboard() {
   const [profit, setProfit] = useState<Profit | null>(null);
   const [prevProfit, setPrevProfit] = useState<Profit | null>(null);
 
-  const range = useMemo(() => periodRange(period), [period]);
+  const range = useMemo(() => {
+    if (period === "custom" && customSince && customUntil) {
+      const since = new Date(customSince + "T00:00:00");
+      const until = new Date(customUntil + "T23:59:59");
+      const rangeMs = Math.max(0, until.getTime() - since.getTime());
+      const prevUntil = since;
+      const prevSince = new Date(since.getTime() - rangeMs);
+      return { since, until, prevSince, prevUntil };
+    }
+    return periodRange(period);
+  }, [period, customSince, customUntil]);
 
   useEffect(() => {
     let cancelled = false;
@@ -635,6 +648,24 @@ export default function Dashboard() {
             ))}
           </div>
         </div>
+
+        {period === "custom" && (
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <input
+              type="date"
+              value={customSince}
+              onChange={(e) => setCustomSince(e.target.value)}
+              className="rounded-lg border border-white/[0.12] bg-white/[0.03] px-3 py-1.5 text-xs text-white"
+            />
+            <span className="text-xs text-white/40">até</span>
+            <input
+              type="date"
+              value={customUntil}
+              onChange={(e) => setCustomUntil(e.target.value)}
+              className="rounded-lg border border-white/[0.12] bg-white/[0.03] px-3 py-1.5 text-xs text-white"
+            />
+          </div>
+        )}
 
         {loading ? (
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
