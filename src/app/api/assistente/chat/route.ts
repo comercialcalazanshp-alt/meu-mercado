@@ -1,7 +1,7 @@
 import "server-only";
 import { createClient } from "@supabase/supabase-js";
 import { getSupabaseAdmin } from "@/lib/supabase-admin";
-import Anthropic from "@anthropic-ai/sdk";
+import OpenAI from "openai";
 
 const HISTORY_LIMIT = 20;
 
@@ -76,7 +76,7 @@ export async function POST(request: Request) {
     return Response.json({ error: "Não autenticado" }, { status: 401 });
   }
 
-  const apiKey = process.env.ANTHROPIC_API_KEY;
+  const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) {
     return Response.json({ error: "Assistente ainda não configurado" }, { status: 500 });
   }
@@ -111,21 +111,22 @@ export async function POST(request: Request) {
 
   const orderedHistory = (history ?? []).reverse();
 
-  const client = new Anthropic({ apiKey });
+  const client = new OpenAI({ apiKey });
 
   try {
-    const response = await client.messages.create({
-      model: "claude-sonnet-5",
-      max_tokens: 1024,
-      system: `Você é o assistente de negócios de um pequeno mercado/loja de delivery brasileiro, dentro do painel de gestão dele. Fala em português do Brasil, direto e prático, como um consultor experiente que já viu muito mercadinho pequeno. Debate ideias com o dono, questiona quando faz sentido, mas nunca enrola. Usa os dados reais abaixo — nunca invente número. Se não tiver dado suficiente pra responder algo, diz isso claramente.\n\n${summary}`,
+    const completion = await client.chat.completions.create({
+      model: "gpt-5.5",
       messages: [
+        {
+          role: "developer",
+          content: `Você é o assistente de negócios de um pequeno mercado/loja de delivery brasileiro, dentro do painel de gestão dele. Fala em português do Brasil, direto e prático, como um consultor experiente que já viu muito mercadinho pequeno. Debate ideias com o dono, questiona quando faz sentido, mas nunca enrola. Usa os dados reais abaixo — nunca invente número. Se não tiver dado suficiente pra responder algo, diz isso claramente.\n\n${summary}`,
+        },
         ...orderedHistory.map((m) => ({ role: m.role as "user" | "assistant", content: m.content })),
         { role: "user" as const, content: message.trim() },
       ],
     });
 
-    const textBlock = response.content.find((b): b is Anthropic.TextBlock => b.type === "text");
-    const reply = textBlock?.text ?? "Não consegui pensar numa resposta agora — tenta de novo.";
+    const reply = completion.choices[0]?.message?.content ?? "Não consegui pensar numa resposta agora — tenta de novo.";
 
     await admin.from("assistant_messages").insert([
       { store_id, role: "user", content: message.trim() },
