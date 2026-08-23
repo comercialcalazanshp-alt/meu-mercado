@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { getSupabase } from "@/lib/supabase";
+import { getCustomerSupabase } from "@/lib/supabase-customer";
 import {
   type Product,
   type Neighborhood,
@@ -103,6 +104,14 @@ type ReceiptRow = {
 
 type View = "inicio" | "modulos" | "modulo" | "carrinho" | "entrega" | "pagamento" | "confirmado" | "conta";
 
+const ACCOUNT_ORDER_STATUS_LABELS: Record<string, string> = {
+  pendente: "Pendente",
+  confirmado: "Confirmado",
+  entregando: "A caminho",
+  entregue: "Entregue",
+  cancelado: "Cancelado",
+};
+
 function cartKey(storeId: string, productId: string) {
   return `${storeId}|${productId}`;
 }
@@ -161,6 +170,27 @@ export default function HubStorefrontClient({ hubStore, modules }: { hubStore: S
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
   const [customerCpf, setCustomerCpf] = useState("");
+  const [customerLoggedIn, setCustomerLoggedIn] = useState(false);
+  const [customerAccountName, setCustomerAccountName] = useState<string | null>(null);
+  const [hubCustomerSummary, setHubCustomerSummary] = useState<
+    { store_id: string; store_name: string; brand_color: string; cashback_balance: number; referral_code: string }[]
+  >([]);
+  const [hubOrders, setHubOrders] = useState<
+    {
+      order_id: string;
+      hub_order_id: string;
+      store_id: string;
+      store_name: string;
+      items: { name: string; quantity: number }[];
+      total: number;
+      status: string;
+      created_at: string;
+      cashback_earned: number;
+      payment_method: string | null;
+    }[]
+  >([]);
+  const [loadingAccountData, setLoadingAccountData] = useState(false);
+  const [accountDataLoaded, setAccountDataLoaded] = useState(false);
   const [deliveryByStore, setDeliveryByStore] = useState<Record<string, { neighborhoodId: string; address: string }>>({});
   const [paymentMethod, setPaymentMethod] = useState<"dinheiro" | "cartao_entrega" | "pix" | "cartao">("dinheiro");
   const [saving, setSaving] = useState(false);
@@ -196,6 +226,72 @@ export default function HubStorefrontClient({ hubStore, modules }: { hubStore: S
     setCartLoaded(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cartStorageKey]);
+
+  // Mesma conta de cliente da loja única (identidade única pra toda a
+  // plataforma, ver lib/supabase-customer.ts) — só precisa checar a
+  // sessão e pré-preencher nome/telefone se ainda estiverem vazios.
+  useEffect(() => {
+    const customerSupabase = getCustomerSupabase();
+
+    async function loadCustomerAccount(userId: string | undefined) {
+      if (!userId) {
+        setCustomerLoggedIn(false);
+        setCustomerAccountName(null);
+        return;
+      }
+      const { data: profile } = await customerSupabase
+        .from("customer_profiles")
+        .select("full_name, phone")
+        .eq("id", userId)
+        .maybeSingle();
+      if (!profile) {
+        await customerSupabase.auth.signOut();
+        setCustomerLoggedIn(false);
+        setCustomerAccountName(null);
+        return;
+      }
+      setCustomerLoggedIn(true);
+      setCustomerAccountName(profile.full_name);
+      setCustomerName((prev) => prev || profile.full_name || "");
+      setCustomerPhone((prev) => prev || profile.phone || "");
+    }
+
+    customerSupabase.auth.getSession().then(({ data: { session } }) => {
+      loadCustomerAccount(session?.user.id);
+    });
+
+    const {
+      data: { subscription },
+    } = customerSupabase.auth.onAuthStateChange((_event, session) => {
+      loadCustomerAccount(session?.user.id);
+      setAccountDataLoaded(false);
+    });
+    return () => subscription.unsubscribe();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  async function openAccountData() {
+    if (accountDataLoaded || loadingAccountData || !customerLoggedIn) return;
+    setLoadingAccountData(true);
+    const customerSupabase = getCustomerSupabase();
+    const [{ data: summary }, { data: ordersData }] = await Promise.all([
+      customerSupabase.rpc("get_hub_customer_summary", { p_hub_store_id: hubStore.id }),
+      customerSupabase.rpc("get_customer_hub_orders", { p_hub_store_id: hubStore.id }),
+    ]);
+    setHubCustomerSummary(summary ?? []);
+    setHubOrders(ordersData ?? []);
+    setAccountDataLoaded(true);
+    setLoadingAccountData(false);
+  }
+
+  async function handleCustomerSignOut() {
+    await getCustomerSupabase().auth.signOut();
+    setCustomerLoggedIn(false);
+    setCustomerAccountName(null);
+    setHubCustomerSummary([]);
+    setHubOrders([]);
+    setAccountDataLoaded(false);
+  }
 
   useEffect(() => {
     if (!cartLoaded) return;
@@ -460,6 +556,17 @@ export default function HubStorefrontClient({ hubStore, modules }: { hubStore: S
     setConfirmedHubOrderId(hubOrderId);
     setView("confirmado");
     setCart({});
+    setAccountDataLoaded(false);
+
+    if (customerLoggedIn) {
+      const customerSupabase = getCustomerSupabase();
+      const {
+        data: { session: customerSession },
+      } = await customerSupabase.auth.getSession();
+      if (customerSession) {
+        await customerSupabase.from("customer_profiles").update({ phone: customerPhone.trim() }).eq("id", customerSession.user.id);
+      }
+    }
     if (hubOrderId) {
       try {
         localStorage.setItem(lastOrderStorageKey, hubOrderId);
@@ -571,6 +678,7 @@ export default function HubStorefrontClient({ hubStore, modules }: { hubStore: S
               onClick={() => {
                 setView(item.key);
                 if (isSearch) setTimeout(() => searchInputRef.current?.focus(), 50);
+                if (item.key === "conta") openAccountData();
               }}
               className="flex flex-1 flex-col items-center gap-0.5 py-1.5 text-[10px] font-medium transition"
               style={{ color: isActive || (isSearch && i === 1 && view === "inicio") ? PLATFORM_ACCENT : "rgba(255,255,255,0.45)" }}
@@ -652,7 +760,10 @@ export default function HubStorefrontClient({ hubStore, modules }: { hubStore: S
             return (
               <button
                 key={item.key}
-                onClick={() => setView(item.key)}
+                onClick={() => {
+                  setView(item.key);
+                  if (item.key === "conta") openAccountData();
+                }}
                 className="relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition"
                 style={{ backgroundColor: isActive ? "rgba(255,255,255,0.08)" : "transparent", color: isActive ? "#fff" : "rgba(255,255,255,0.55)" }}
               >
@@ -1662,15 +1773,143 @@ export default function HubStorefrontClient({ hubStore, modules }: { hubStore: S
   // ============================================================
   function AccountScreen() {
     const whatsappUrl = hubStore.whatsapp ? `https://wa.me/55${hubStore.whatsapp.replace(/\D/g, "")}` : null;
+    const totalCashback = hubCustomerSummary.reduce((s, c) => s + c.cashback_balance, 0);
+
+    // Um pedido do Hub sempre tem hub_order_id (checkout_hub cria isso
+    // pra qualquer carrinho, mesmo de 1 loja só) — agrupa as pernas por
+    // pedido combinado pra mostrar um card só, não um por loja.
+    const ordersByHub = new Map<string, typeof hubOrders>();
+    for (const o of hubOrders) {
+      if (!ordersByHub.has(o.hub_order_id)) ordersByHub.set(o.hub_order_id, []);
+      ordersByHub.get(o.hub_order_id)!.push(o);
+    }
+
     return (
       <div className="flex flex-1 flex-col pb-24">
         <div className="px-4 pb-4 pt-5 sm:px-6" style={{ backgroundColor: PLATFORM_SURFACE }}>
           <h1 className="text-lg font-bold text-white" style={FONT_DISPLAY}>
-            Conta
+            {customerLoggedIn ? `Olá, ${customerAccountName ?? "cliente"}` : "Conta"}
           </h1>
         </div>
         <div className="space-y-2 px-4 pt-4 sm:px-6">
-          {lastOrderId && (
+          {!customerLoggedIn && (
+            <div className="rounded-2xl bg-white p-4 shadow-sm">
+              <p className="text-sm text-slate-600">Entra na sua conta pra ver cashback, indicação e o histórico de pedidos.</p>
+              <div className="mt-3 flex gap-2">
+                <a
+                  href={`/cliente/entrar?loja=${hubStore.slug}`}
+                  className="flex-1 rounded-xl px-3 py-2.5 text-center text-sm font-semibold"
+                  style={{ backgroundColor: PLATFORM_ACCENT, color: PLATFORM_ACCENT_TEXT }}
+                >
+                  Entrar
+                </a>
+                <a
+                  href={`/cliente/cadastro?loja=${hubStore.slug}`}
+                  className="flex-1 rounded-xl border border-slate-300 px-3 py-2.5 text-center text-sm font-semibold text-slate-700"
+                >
+                  Criar conta
+                </a>
+              </div>
+            </div>
+          )}
+
+          {customerLoggedIn && (
+            <div className="rounded-2xl bg-white p-4 shadow-sm">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Cashback total no Hub</p>
+              <p className="mt-0.5 text-xl font-bold text-green-700">{formatCurrency(totalCashback)}</p>
+              {loadingAccountData ? (
+                <p className="mt-2 text-xs text-slate-400">Carregando saldo por loja…</p>
+              ) : (
+                hubCustomerSummary.length > 0 && (
+                  <div className="mt-2 space-y-1.5 border-t border-slate-100 pt-2">
+                    {hubCustomerSummary.map((c) => (
+                      <div key={c.store_id} className="flex items-center justify-between gap-2 text-xs">
+                        <span className="flex items-center gap-1.5 text-slate-600">
+                          <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: c.brand_color }} />
+                          {c.store_name}
+                        </span>
+                        <span className="flex items-center gap-2 text-slate-500">
+                          {formatCurrency(c.cashback_balance)} cashback
+                          {c.referral_code && (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                navigator.clipboard.writeText(`${window.location.origin}/loja/${hubStore.slug}?ref=${c.referral_code}`)
+                              }
+                              title={`Copiar link de indicação de ${c.store_name}`}
+                              className="underline"
+                            >
+                              indicar
+                            </button>
+                          )}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )
+              )}
+            </div>
+          )}
+
+          {customerLoggedIn && (
+            <div className="rounded-2xl bg-white p-4 shadow-sm">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Histórico de pedidos</p>
+              {loadingAccountData ? (
+                <p className="mt-2 text-sm text-slate-400">Carregando…</p>
+              ) : ordersByHub.size === 0 ? (
+                <p className="mt-2 text-sm text-slate-400">Você ainda não fez nenhum pedido no Hub.</p>
+              ) : (
+                <ul className="mt-2 space-y-2">
+                  {[...ordersByHub.entries()].map(([hubOrderId, legs]) => {
+                    const total = legs.reduce((s, l) => s + l.total, 0);
+                    const cashback = legs.reduce((s, l) => s + l.cashback_earned, 0);
+                    const createdAt = legs[0].created_at;
+                    const status = legs.every((l) => l.status === "entregue")
+                      ? "entregue"
+                      : legs.some((l) => l.status === "cancelado") && legs.every((l) => l.status === "cancelado")
+                        ? "cancelado"
+                        : legs.some((l) => l.status === "entregando")
+                          ? "entregando"
+                          : legs[0].status;
+                    return (
+                      <li key={hubOrderId} className="rounded-xl border border-slate-200 p-3 text-sm">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <p className="font-medium text-slate-900">
+                              {new Date(createdAt).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" })}
+                            </p>
+                            <p className="truncate text-xs text-slate-500">
+                              {legs.map((l) => l.store_name).join(" + ")}
+                            </p>
+                          </div>
+                          <div className="shrink-0 text-right">
+                            <p className="font-semibold text-slate-900">{formatCurrency(total)}</p>
+                            <span
+                              className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                                status === "cancelado"
+                                  ? "bg-red-100 text-red-700"
+                                  : status === "entregue"
+                                    ? "bg-green-100 text-green-700"
+                                    : "bg-amber-100 text-amber-700"
+                              }`}
+                            >
+                              {ACCOUNT_ORDER_STATUS_LABELS[status] ?? status}
+                            </span>
+                          </div>
+                        </div>
+                        {cashback > 0 && <p className="mt-1 text-xs text-green-700">+ {formatCurrency(cashback)} de cashback</p>}
+                        <a href={`/loja/${hubStore.slug}/pedido-hub/${hubOrderId}`} className="mt-1 inline-block text-xs font-medium underline" style={{ color: PLATFORM_ACCENT }}>
+                          Ver recibo
+                        </a>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </div>
+          )}
+
+          {!customerLoggedIn && lastOrderId && (
             <a href={`/loja/${hubStore.slug}/pedido-hub/${lastOrderId}`} className="flex items-center gap-3 rounded-2xl bg-white p-4 shadow-sm">
               <Package size={18} className="text-slate-400" />
               <span className="text-sm font-medium text-slate-700">Meu último pedido</span>
@@ -1692,6 +1931,15 @@ export default function HubStorefrontClient({ hubStore, modules }: { hubStore: S
             <span className="text-sm font-medium text-slate-700">Termo de uso</span>
             <ChevronRight size={16} className="ml-auto text-slate-300" />
           </a>
+          {customerLoggedIn && (
+            <button
+              type="button"
+              onClick={handleCustomerSignOut}
+              className="flex w-full items-center gap-3 rounded-2xl bg-white p-4 text-left shadow-sm"
+            >
+              <span className="text-sm font-medium text-red-600">Sair da conta</span>
+            </button>
+          )}
         </div>
       </div>
     );
