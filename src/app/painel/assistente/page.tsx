@@ -14,7 +14,7 @@ type SpeechRecognitionLike = {
   interimResults: boolean;
   onresult: ((event: { results: { [i: number]: { [j: number]: { transcript: string } } } }) => void) | null;
   onend: (() => void) | null;
-  onerror: (() => void) | null;
+  onerror: ((event: { error?: string }) => void) | null;
   start: () => void;
   stop: () => void;
 };
@@ -56,7 +56,7 @@ export default function Assistente() {
   useEffect(() => {
     const w = window as unknown as { SpeechRecognition?: new () => SpeechRecognitionLike; webkitSpeechRecognition?: new () => SpeechRecognitionLike };
     const Recognition = w.SpeechRecognition ?? w.webkitSpeechRecognition;
-    setVoiceSupported(!!Recognition && "speechSynthesis" in window);
+    setVoiceSupported(!!Recognition);
   }, []);
 
   async function speak(text: string) {
@@ -90,13 +90,17 @@ export default function Assistente() {
   function toggleListening() {
     const w = window as unknown as { SpeechRecognition?: new () => SpeechRecognitionLike; webkitSpeechRecognition?: new () => SpeechRecognitionLike };
     const Recognition = w.SpeechRecognition ?? w.webkitSpeechRecognition;
-    if (!Recognition) return;
+    if (!Recognition) {
+      setError("Seu navegador não tem suporte a voz. Tenta digitar, ou usa o Chrome.");
+      return;
+    }
 
     if (listening) {
       recognitionRef.current?.stop();
       return;
     }
 
+    setError(null);
     const recognition = new Recognition();
     recognition.lang = "pt-BR";
     recognition.continuous = false;
@@ -106,10 +110,26 @@ export default function Assistente() {
       if (transcript) sendMessage(transcript);
     };
     recognition.onend = () => setListening(false);
-    recognition.onerror = () => setListening(false);
+    recognition.onerror = (event) => {
+      setListening(false);
+      if (event.error === "not-allowed" || event.error === "service-not-allowed") {
+        setError("O navegador bloqueou o microfone. Vai em configurações do site/navegador e libera o microfone pra esse endereço.");
+      } else if (event.error === "no-speech") {
+        setError("Não ouvi nada — tenta falar de novo, mais perto do microfone.");
+      } else if (event.error === "audio-capture") {
+        setError("Não achei um microfone nesse aparelho.");
+      } else {
+        setError(`Não deu pra usar o microfone agora (${event.error ?? "erro desconhecido"}).`);
+      }
+    };
     recognitionRef.current = recognition;
-    setListening(true);
-    recognition.start();
+    try {
+      setListening(true);
+      recognition.start();
+    } catch {
+      setListening(false);
+      setError("Não deu pra ligar o microfone agora. Tenta de novo.");
+    }
   }
 
   async function sendMessage(text: string) {
