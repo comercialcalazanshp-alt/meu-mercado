@@ -98,6 +98,7 @@ export default function Clientes() {
   const [noteDraft, setNoteDraft] = useState("");
   const [blockedDraft, setBlockedDraft] = useState(false);
   const [savingNote, setSavingNote] = useState(false);
+  const [savingPayment, setSavingPayment] = useState(false);
   const [noteSaved, setNoteSaved] = useState(false);
 
   async function loadCustomers() {
@@ -250,9 +251,11 @@ export default function Clientes() {
   }
 
   async function handleRegisterPayment(customer: MergedCustomer) {
+    if (savingPayment) return;
     const value = Number(paymentAmount.replace(",", "."));
     if (Number.isNaN(value) || value <= 0 || !customer.creditCustomerId) return;
 
+    setSavingPayment(true);
     await getSupabase().from("credit_transactions").insert({
       customer_id: customer.creditCustomerId,
       type: "pagamento",
@@ -268,6 +271,7 @@ export default function Clientes() {
       .eq("customer_id", customer.creditCustomerId)
       .order("created_at", { ascending: false });
     setTransactions(data ?? []);
+    setSavingPayment(false);
   }
 
   function reprintOrder(order: OrderRow) {
@@ -464,9 +468,10 @@ export default function Clientes() {
                           />
                           <button
                             onClick={() => handleRegisterPayment(customer)}
-                            className="rounded-lg bg-green-600 px-3 py-1 text-sm font-medium text-white"
+                            disabled={savingPayment}
+                            className="rounded-lg bg-green-600 px-3 py-1 text-sm font-medium text-white disabled:opacity-50"
                           >
-                            Confirmar
+                            {savingPayment ? "Salvando…" : "Confirmar"}
                           </button>
                           <button
                             onClick={() => setPayingOpen(false)}

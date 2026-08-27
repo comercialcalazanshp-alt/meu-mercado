@@ -29,9 +29,9 @@ export async function POST(request: Request) {
     global: { headers: { Authorization: authHeader } },
   });
 
-  const { data: store } = await scoped.from("stores").select("id").eq("id", store_id).maybeSingle();
-  if (!store) {
-    return Response.json({ error: "Não autorizado" }, { status: 403 });
+  const { data: myStoreIds, error: storeIdsError } = await scoped.rpc("my_store_ids");
+  if (storeIdsError || !myStoreIds?.some((id: string) => id === store_id)) {
+    return Response.json({ error: "Essa loja não é sua" }, { status: 403 });
   }
 
   const { data: enabled } = await scoped.rpc("affiliate_assistant_enabled", { p_store_id: store_id });

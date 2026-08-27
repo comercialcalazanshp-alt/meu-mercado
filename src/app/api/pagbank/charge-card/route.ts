@@ -49,9 +49,15 @@ export async function POST(request: Request) {
   // Sem isso, esse endpoint público aceitaria tentativas de cobrança
   // repetidas pro mesmo pedido — um jeito clássico de testar cartão roubado
   // em massa (o pedido já pago vira um alvo reutilizável pra validar
-  // números). Um pedido só pode ser cobrado uma vez.
+  // números), ou cobrar duas vezes com duplo clique. A reserva é atômica
+  // no banco (claim_card_charge), diferente de só ler card_paid_at aqui.
   if (order.card_paid_at) {
     return Response.json({ error: "Esse pedido já foi pago." }, { status: 409 });
+  }
+
+  const { data: claimed } = await supabase.rpc("claim_card_charge", { p_order_id: id, p_is_hub: !!hub_order_id });
+  if (!claimed) {
+    return Response.json({ error: "Esse pedido já foi pago ou já está sendo cobrado. Aguarda um instante." }, { status: 409 });
   }
 
   // Sem juros por padrão — o valor cobrado só muda se a loja tiver ligado
@@ -127,6 +133,9 @@ export async function POST(request: Request) {
     // PagBank) ficam só no log do servidor — não fazem sentido pro cliente.
     const declineReason = charge?.status === "DECLINED" ? charge?.payment_response?.message : null;
     console.error("PagBank charge failed:", JSON.stringify(pagbankData));
+    // Libera a reserva pra deixar tentar de novo (outro cartão, etc.) sem
+    // esperar os 30s de expiração automática da trava.
+    await supabase.from(table).update({ card_charging_at: null }).eq("id", order.id);
     return Response.json(
       { error: "Pagamento não aprovado", reason: declineReason },
       { status: 502 },
@@ -151,8 +160,11 @@ export async function POST(request: Request) {
   // precisa propagar pra cada "orders" individual (uma por loja do
   // carrinho), que é o que o painel de Entregas e o extrato de comissão
   // realmente leem, e só agora criar a comissão (pagamento confirmado).
+  // syncHubOrderPayment também credita o cashback pendente de cada perna.
   if (hub_order_id) {
     await syncHubOrderPayment(supabase, hub_order_id, "cartao", { lastDigits, brand });
+  } else {
+    await supabase.rpc("credit_pending_cashback", { p_order_id: order.id });
   }
 
   return Response.json({ paid: true });

@@ -63,6 +63,7 @@ export async function POST(request: Request) {
         .update({ pix_paid_at: now, payment_method: "pix" })
         .eq("id", orderId)
         .is("pix_paid_at", null);
+      await supabase.rpc("credit_pending_cashback", { p_order_id: orderId });
       return new Response("OK", { status: 200 });
     }
 

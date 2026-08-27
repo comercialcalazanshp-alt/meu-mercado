@@ -653,16 +653,11 @@ export default function StorefrontClient({
     if (!listaId) return;
 
     (async () => {
-      const { data } = await getSupabase()
-        .from("shared_lists")
-        .select("items")
-        .eq("id", listaId)
-        .eq("store_id", store.id)
-        .maybeSingle();
+      const { data: items } = await getSupabase().rpc("get_shared_list", { p_id: listaId, p_store_id: store.id });
 
-      if (data?.items) {
+      if (items) {
         const restored: Record<string, number> = {};
-        for (const item of data.items as { kind: string; id: string; quantity: number }[]) {
+        for (const item of items as { kind: string; id: string; quantity: number }[]) {
           restored[`${item.kind}:${item.id}`] = item.quantity;
         }
         setCart(restored);

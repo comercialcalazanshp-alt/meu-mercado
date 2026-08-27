@@ -51,6 +51,11 @@ export async function POST(request: Request) {
       .from("orders")
       .update({ pix_refunded_at: new Date().toISOString(), refund_resolved: true })
       .eq("id", order.id);
+    // Desfaz a comissão do afiliado (se essa venda tinha uma lançada) e o
+    // cashback/bônus já creditado — sem isso o dinheiro devolvido pro
+    // cliente ainda contaria como venda no extrato do afiliado, e o
+    // cliente ficaria com cashback de um pedido que foi estornado.
+    await admin.rpc("reverse_order_settlement", { p_order_id: order.id });
     return Response.json({ ok: true });
   } catch (err) {
     console.error("Efí refund-pix failed:", err instanceof Error ? err.message : err, (err as { body?: unknown })?.body);

@@ -85,12 +85,20 @@ export async function POST(request: Request) {
   if (!store_id || !message?.trim()) {
     return Response.json({ error: "store_id e message são obrigatórios" }, { status: 400 });
   }
+  if (message.length > 2000) {
+    return Response.json({ error: "Mensagem muito longa (máximo 2000 caracteres)" }, { status: 400 });
+  }
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
   const scoped = createClient(supabaseUrl, supabaseAnonKey, {
     global: { headers: { Authorization: authHeader } },
   });
+
+  const { data: myStoreIds, error: storeIdsError } = await scoped.rpc("my_store_ids");
+  if (storeIdsError || !myStoreIds?.some((id: string) => id === store_id)) {
+    return Response.json({ error: "Essa loja não é sua" }, { status: 403 });
+  }
 
   const { data: store } = await scoped.from("stores").select("id, name").eq("id", store_id).maybeSingle();
   if (!store) {
@@ -131,12 +139,15 @@ export async function POST(request: Request) {
       ],
     });
 
-    const reply = completion.choices[0]?.message?.content ?? "Não consegui pensar numa resposta agora — tenta de novo.";
+    const reply = completion.choices[0]?.message?.content?.trim() || "Não consegui pensar numa resposta agora — tenta de novo.";
 
-    await admin.from("assistant_messages").insert([
+    const { error: insertError } = await admin.from("assistant_messages").insert([
       { store_id, role: "user", content: message.trim() },
       { store_id, role: "assistant", content: reply },
     ]);
+    if (insertError) {
+      console.error("Não salvou a conversa do assistente:", insertError.message);
+    }
 
     return Response.json({ reply });
   } catch (err) {

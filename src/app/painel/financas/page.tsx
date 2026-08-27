@@ -41,6 +41,7 @@ export default function Financas() {
   const [purchases, setPurchases] = useState<AffiliateAiPurchase[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [loading, setLoading] = useState(true);
+  const [anticipationFees, setAnticipationFees] = useState({ fee48h: 0, fee72h: 0 });
 
   useEffect(() => {
     let cancelled = false;
@@ -50,7 +51,7 @@ export default function Financas() {
       // hospedagem etc.) — cadastradas aqui igual qualquer loja, mas sem
       // relação com afiliado nenhum, por isso busca em paralelo com
       // partnerships e não depende de ter afiliado cadastrado.
-      const [partnershipsRes, expensesRes] = await Promise.all([
+      const [partnershipsRes, expensesRes, settingsRes] = await Promise.all([
         supabase.from("affiliate_partnerships").select("*").eq("hub_store_id", store.id),
         supabase
           .from("expenses")
@@ -58,11 +59,20 @@ export default function Financas() {
           .eq("store_id", store.id)
           .order("expense_date", { ascending: false })
           .limit(60),
+        supabase
+          .from("affiliate_settings")
+          .select("anticipation_fee_48h_percent, anticipation_fee_72h_percent")
+          .eq("hub_store_id", store.id)
+          .maybeSingle(),
       ]);
       if (cancelled) return;
       const list = (partnershipsRes.data as AffiliatePartnership[]) ?? [];
       setPartnerships(list);
       setExpenses((expensesRes.data as Expense[]) ?? []);
+      setAnticipationFees({
+        fee48h: settingsRes.data?.anticipation_fee_48h_percent ?? 0,
+        fee72h: settingsRes.data?.anticipation_fee_72h_percent ?? 0,
+      });
 
       const ids = list.map((p) => p.id);
       if (ids.length === 0) {
@@ -143,14 +153,29 @@ export default function Financas() {
   const [payingId, setPayingId] = useState<string | null>(null);
   async function marcarComoPago(p: AffiliatePartnership) {
     if (p.balance <= 0) return;
-    if (!confirm(`Confirma que já pagou ${formatCurrency(p.balance)} pra ${p.owner_name} por fora (Pix, transferência etc.)?`)) return;
+    // payout_speed '48h'/'72h' cobra a taxa de antecipação configurada em
+    // Afiliados — sem isso o campo existia mas nunca era aplicado de
+    // verdade, e o dono achava que estava cobrando quando não estava. O
+    // repasse é manual (por fora), então a única forma de aplicar a taxa é
+    // avisar aqui o valor líquido certo a transferir.
+    const feePercent = p.payout_speed === "48h" ? anticipationFees.fee48h : p.payout_speed === "72h" ? anticipationFees.fee72h : 0;
+    const feeAmount = feePercent > 0 ? Math.round(p.balance * (feePercent / 100) * 100) / 100 : 0;
+    const netAmount = p.balance - feeAmount;
+    const confirmMsg =
+      feeAmount > 0
+        ? `Repasse com antecipação (${p.payout_speed}, taxa de ${feePercent}%): transfira ${formatCurrency(netAmount)} pra ${p.owner_name} por fora (Pix, transferência etc.) — R$ ${feeAmount.toFixed(2)} ficam retidos como taxa. Confirma que já pagou?`
+        : `Confirma que já pagou ${formatCurrency(p.balance)} pra ${p.owner_name} por fora (Pix, transferência etc.)?`;
+    if (!confirm(confirmMsg)) return;
     setPayingId(p.id);
     const supabase = getSupabase();
     const { error } = await supabase.from("affiliate_settlement_transactions").insert({
       partnership_id: p.id,
       type: "repasse",
       amount: p.balance,
-      note: "Marcado como pago manualmente no painel",
+      note:
+        feeAmount > 0
+          ? `Marcado como pago manualmente no painel — repassado ${formatCurrency(netAmount)}, taxa de antecipação (${feePercent}%) retida: ${formatCurrency(feeAmount)}`
+          : "Marcado como pago manualmente no painel",
     });
     setPayingId(null);
     if (error) {

@@ -253,9 +253,11 @@ export default function ReciboHubClient({ rows: initialRows }: { rows: HubReceip
   const allFinal = rows.every((r) => r.status === "entregue" || r.status === "cancelado");
   useEffect(() => {
     if (allFinal) return;
+    let active = true;
     const supabase = getSupabase();
     const interval = setInterval(() => {
       supabase.rpc("get_hub_order_receipt", { p_hub_order_id: first.hub_order_id }).then(({ data }) => {
+        if (!active) return;
         const updated = data as HubReceiptRow[] | undefined;
         if (!updated?.length) return;
         if (notifyEnabled && Notification.permission === "granted") {
@@ -269,9 +271,12 @@ export default function ReciboHubClient({ rows: initialRows }: { rows: HubReceip
         setRows(updated);
       });
     }, 15000);
-    return () => clearInterval(interval);
+    return () => {
+      active = false;
+      clearInterval(interval);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [first.hub_order_id, allFinal, notifyEnabled]);
+  }, [first.hub_order_id, allFinal, notifyEnabled, rows]);
 
   function handleEnableNotify() {
     if (!("Notification" in window)) return;

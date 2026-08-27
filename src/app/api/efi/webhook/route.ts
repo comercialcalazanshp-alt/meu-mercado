@@ -53,6 +53,7 @@ export async function POST(request: Request) {
         .update({ pix_paid_at: now, payment_method: "pix", pix_end_to_end_id: endToEndId })
         .eq("id", order.id)
         .is("pix_paid_at", null);
+      await supabase.rpc("credit_pending_cashback", { p_order_id: order.id });
       continue;
     }
 

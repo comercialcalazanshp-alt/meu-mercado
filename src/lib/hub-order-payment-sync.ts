@@ -40,6 +40,7 @@ export async function syncHubOrderPayment(
             card_brand: cardDetails?.brand ?? null,
           };
     await admin.from("orders").update(patch).eq("id", order.id);
+    await admin.rpc("credit_pending_cashback", { p_order_id: order.id });
 
     const { data: partnership } = await admin
       .from("affiliate_partnerships")
@@ -59,13 +60,21 @@ export async function syncHubOrderPayment(
 
     const amount = Math.round((Number(order.total) * (100 - partnership.commission_percent)) / 100 * 100) / 100;
     if (amount > 0) {
-      await admin.from("affiliate_settlement_transactions").insert({
+      // Um índice único em (order_id) pra type='venda' é a trava de
+      // verdade contra duplicar — a checagem acima ajuda a evitar a
+      // chamada à toa, mas só o banco garante contra duas notificações de
+      // webhook quase simultâneas. Se ainda assim colidir, ignora (a
+      // outra chamada já inseriu).
+      const { error: insertError } = await admin.from("affiliate_settlement_transactions").insert({
         partnership_id: partnership.id,
         type: "venda",
         amount,
         order_id: order.id,
         note: method === "pix" ? "Venda via vitrine do hub (Pix confirmado)" : "Venda via vitrine do hub (cartão confirmado)",
       });
+      if (insertError && insertError.code !== "23505") {
+        console.error("Falha ao lançar comissão do afiliado:", insertError.message);
+      }
     }
   }
 }

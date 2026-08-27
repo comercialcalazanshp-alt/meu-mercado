@@ -69,6 +69,11 @@ export default function Assistente() {
     setVoiceSupported(!!Recognition);
   }, []);
 
+  const voiceRepliesRef = useRef(voiceReplies);
+  useEffect(() => {
+    voiceRepliesRef.current = voiceReplies;
+  }, [voiceReplies]);
+
   async function speak(text: string) {
     if (!voiceReplies) return;
     const {
@@ -83,7 +88,7 @@ export default function Assistente() {
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
         body: JSON.stringify({ text, store_id: store.id }),
       });
-      if (!res.ok) return;
+      if (!res.ok || !voiceRepliesRef.current) return;
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       audioRef.current?.pause();
@@ -251,6 +256,7 @@ export default function Assistente() {
           value={input}
           onChange={(e) => setInput(e.target.value)}
           placeholder="Escreva ou toque no microfone..."
+          maxLength={2000}
           className="flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
         />
         {voiceSupported && (

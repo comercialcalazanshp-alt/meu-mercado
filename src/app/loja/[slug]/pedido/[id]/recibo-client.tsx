@@ -120,9 +120,11 @@ export default function ReciboClient({ order: initialOrder }: { order: OrderRece
   // carregou o recibo a primeira vez.
   useEffect(() => {
     if (order.status === "entregue" || order.status === "cancelado") return;
+    let active = true;
     const supabase = getSupabase();
     const interval = setInterval(() => {
       supabase.rpc("get_order_receipt", { p_order_id: order.order_id }).then(({ data }) => {
+        if (!active) return;
         const updated = data?.[0] as OrderReceipt | undefined;
         if (!updated) return;
         if (notifyEnabled && updated.status !== order.status && Notification.permission === "granted") {
@@ -133,7 +135,10 @@ export default function ReciboClient({ order: initialOrder }: { order: OrderRece
         setOrder(updated);
       });
     }, 15000);
-    return () => clearInterval(interval);
+    return () => {
+      active = false;
+      clearInterval(interval);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [order.order_id, order.status, notifyEnabled]);
 
