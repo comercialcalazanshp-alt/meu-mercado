@@ -1450,7 +1450,7 @@ export default function Produtos() {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Buscar por nome, categoria ou código de barras…"
-          className="min-w-0 flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+          className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50 sm:min-w-0 sm:flex-1"
         />
         <button
           onClick={exportCsv}
@@ -1600,19 +1600,19 @@ export default function Produtos() {
       )}
 
       <div ref={productsTableRef} className="mt-4 overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800">
-        <table className="w-full min-w-[900px] text-left text-sm">
+        <table className="w-full min-w-[640px] text-left text-sm md:min-w-[900px]">
           <thead className="bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300">
             <tr>
               <th className="px-3 py-2 font-medium"></th>
               <th className="px-3 py-2 font-medium">Nome</th>
               <th className="px-3 py-2 font-medium">Categoria</th>
               <th className="px-3 py-2 font-medium">Preço</th>
-              <th className="px-3 py-2 font-medium">Custo</th>
-              <th className="px-3 py-2 font-medium">Margem / markup</th>
+              <th className="hidden px-3 py-2 font-medium md:table-cell">Custo</th>
+              <th className="hidden px-3 py-2 font-medium md:table-cell">Margem / markup</th>
               <th className="px-3 py-2 font-medium">Estoque</th>
-              <th className="px-3 py-2 font-medium">Por peso?</th>
-              <th className="px-3 py-2 font-medium">Promoção (leve/pague)</th>
-              <th className="px-3 py-2 font-medium">Alertas</th>
+              <th className="hidden px-3 py-2 font-medium md:table-cell">Por peso?</th>
+              <th className="hidden px-3 py-2 font-medium md:table-cell">Promoção (leve/pague)</th>
+              <th className="hidden px-3 py-2 font-medium md:table-cell">Alertas</th>
               <th className="px-3 py-2 font-medium">Ativo</th>
               <th className="px-3 py-2 font-medium"></th>
             </tr>
@@ -1707,7 +1707,7 @@ export default function Produtos() {
                       className="w-24 rounded border border-slate-300 bg-white px-2 py-1 text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
                     />
                   </td>
-                  <td className="px-3 py-2">
+                  <td className="hidden px-3 py-2 md:table-cell">
                     <input
                       key={`cost-${p.id}-${p.cost_price}`}
                       type="number"
@@ -1722,7 +1722,7 @@ export default function Produtos() {
                       className="w-24 rounded border border-slate-300 bg-white px-2 py-1 text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
                     />
                   </td>
-                  <td className="px-3 py-2 text-slate-600 dark:text-slate-400">
+                  <td className="hidden px-3 py-2 text-slate-600 dark:text-slate-400 md:table-cell">
                     {margin !== null ? (
                       <>
                         <p className={margin < 10 ? "font-medium text-red-600 dark:text-red-400" : ""}>
@@ -1757,7 +1757,7 @@ export default function Produtos() {
                       <p className="mt-0.5 text-[10px] text-red-600 dark:text-red-400">estoque baixo</p>
                     )}
                   </td>
-                  <td className="px-3 py-2 text-center">
+                  <td className="hidden px-3 py-2 text-center md:table-cell">
                     <input
                       type="checkbox"
                       checked={p.sold_by_weight}
@@ -1768,7 +1768,7 @@ export default function Produtos() {
                       <p className="mt-0.5 text-[10px] text-slate-500 dark:text-slate-400">⚖️ kg</p>
                     )}
                   </td>
-                  <td className="px-3 py-2">
+                  <td className="hidden px-3 py-2 md:table-cell">
                     <div className="flex items-center gap-1">
                       <input
                         type="number"
@@ -1804,7 +1804,7 @@ export default function Produtos() {
                       </button>
                     </div>
                   </td>
-                  <td className="px-3 py-2 space-y-0.5">
+                  <td className="hidden px-3 py-2 space-y-0.5 md:table-cell">
                     {expiryWarning !== null && expiryWarning <= 7 && (
                       <p className={`text-[10px] font-medium ${expiryWarning < 0 ? "text-red-600" : "text-amber-600"} dark:text-amber-400`}>
                         {expiryWarning < 0 ? "⏰ venceu" : `⏰ vence em ${expiryWarning}d`}
