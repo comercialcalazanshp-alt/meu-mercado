@@ -205,10 +205,10 @@ function PriceHistoryChart({ productId }: { productId: string }) {
   }, [productId]);
 
   if (history === null) {
-    return <p className="text-xs text-slate-400">Carregando histórico…</p>;
+    return <p className="text-xs text-white/30">Carregando histórico…</p>;
   }
   if (history.length <= 1) {
-    return <p className="text-xs text-slate-400">Ainda não teve mudança de preço registrada.</p>;
+    return <p className="text-xs text-white/30">Ainda não teve mudança de preço registrada.</p>;
   }
 
   const prices = history.map((h) => h.price);
@@ -231,7 +231,7 @@ function PriceHistoryChart({ productId }: { productId: string }) {
     <div>
       <svg
         viewBox={`0 0 ${width} ${height}`}
-        className="h-14 w-full max-w-xs text-blue-900 dark:text-blue-400"
+        className="h-14 w-full max-w-xs text-[#5CACFF]"
       >
         <path
           d={path}
@@ -249,7 +249,7 @@ function PriceHistoryChart({ productId }: { productId: string }) {
           </circle>
         ))}
       </svg>
-      <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-slate-500 dark:text-slate-400">
+      <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-white/40">
         {history.map((h, i) => (
           <span key={i}>
             {new Date(h.changed_at).toLocaleDateString("pt-BR")}: {formatCurrency(h.price)}
@@ -1100,16 +1100,33 @@ export default function Produtos() {
   }
 
   return (
-    <div>
-      <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-50">Produtos</h1>
+    <div className="relative overflow-hidden rounded-[22px] bg-black">
+      <div
+        aria-hidden
+        className="pointer-events-none absolute left-1/2 -top-44 h-[520px] w-[520px] -translate-x-1/2 rounded-full opacity-50 blur-[90px]"
+        style={{ background: "radial-gradient(circle, rgba(92,172,255,0.16), transparent 65%)" }}
+      />
+      <div
+        aria-hidden
+        className="pointer-events-none absolute -right-36 top-56 h-[420px] w-[420px] rounded-full opacity-50 blur-[90px]"
+        style={{ background: "radial-gradient(circle, rgba(52,232,140,0.12), transparent 65%)" }}
+      />
+      <div
+        aria-hidden
+        className="pointer-events-none absolute -left-36 -bottom-16 h-[380px] w-[380px] rounded-full opacity-30 blur-[90px]"
+        style={{ background: "radial-gradient(circle, rgba(240,187,94,0.12), transparent 65%)" }}
+      />
+
+      <div className="relative p-4 sm:p-6">
+      <h1 className="text-2xl font-bold text-[#F5F3EF]">Produtos</h1>
 
       <form
         onSubmit={handleAdd}
-        className="mt-4 space-y-5 rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900"
+        className="mt-4 space-y-5 rounded-2xl border border-white/[0.09] bg-white/[0.035] p-4 backdrop-blur-xl"
       >
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <div>
-            <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">
+            <label className="block text-xs font-medium text-white/40">
               1. Código de barras (opcional)
             </label>
             <div className="mt-1 flex items-center gap-1">
@@ -1118,20 +1135,20 @@ export default function Produtos() {
                 onChange={(e) => setBarcode(e.target.value)}
                 onBlur={(e) => lookupBarcodeProduct(e.target.value)}
                 placeholder="Escaneie ou digite primeiro"
-                className="min-w-0 flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                className="min-w-0 flex-1 rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2 text-sm text-[#F5F3EF]"
               />
               <button
                 type="button"
                 onClick={openBarcodeScanner}
                 title="Ler código de barras com a câmera"
-                className="shrink-0 rounded-lg border border-slate-300 px-2 py-2 text-sm dark:border-slate-700"
+                className="shrink-0 rounded-lg border border-white/10 bg-white/[0.04] px-2 py-2 text-sm"
               >
                 📷
               </button>
             </div>
           </div>
           <div>
-            <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">2. Nome do produto</label>
+            <label className="block text-xs font-medium text-white/40">2. Nome do produto</label>
             <input
               value={name}
               onChange={(e) => {
@@ -1139,30 +1156,30 @@ export default function Produtos() {
                 setBarcodeLookupResult(null);
               }}
               placeholder="Nome do produto"
-              className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+              className="mt-1 w-full rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2 text-sm text-[#F5F3EF]"
             />
             {lookingUpBarcode && (
-              <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">🔎 procurando esse produto…</p>
+              <p className="mt-1 text-xs text-white/30">🔎 procurando esse produto…</p>
             )}
             {barcodeLookupResult === "achou" && (
-              <p className="mt-1 text-xs text-green-700 dark:text-green-400">
+              <p className="mt-1 text-xs text-[#34E88C]">
                 ✅ preenchido automaticamente, confira se está certo
               </p>
             )}
             {barcodeLookupResult === "nao_achou" && (
-              <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
+              <p className="mt-1 text-xs text-white/30">
                 não achei esse produto, digite o nome
               </p>
             )}
           </div>
           <div>
-            <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">Categoria</label>
+            <label className="block text-xs font-medium text-white/40">Categoria</label>
             <input
               value={category}
               onChange={(e) => setCategory(e.target.value)}
               placeholder="Categoria"
               list="categorias-existentes"
-              className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+              className="mt-1 w-full rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2 text-sm text-[#F5F3EF]"
             />
             <datalist id="categorias-existentes">
               {categories.map((c) => (
@@ -1173,30 +1190,30 @@ export default function Produtos() {
         </div>
 
         <div>
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">Preço</p>
+          <p className="text-xs font-semibold uppercase tracking-wide text-white/30">Preço</p>
           <div className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-3">
             <div>
-              <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">Preço de venda (R$)</label>
+              <label className="block text-xs font-medium text-white/40">Preço de venda (R$)</label>
               <input
                 value={price}
                 onChange={(e) => setPrice(e.target.value)}
                 placeholder="R$"
                 inputMode="decimal"
-                className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                className="mt-1 w-full rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2 text-sm text-[#F5F3EF]"
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">Custo (opcional)</label>
+              <label className="block text-xs font-medium text-white/40">Custo (opcional)</label>
               <input
                 value={costPrice}
                 onChange={(e) => setCostPrice(e.target.value)}
                 placeholder="R$"
                 inputMode="decimal"
-                className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                className="mt-1 w-full rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2 text-sm text-[#F5F3EF]"
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">
+              <label className="block text-xs font-medium text-white/40">
                 Ou: % que eu quero ganhar
               </label>
               <input
@@ -1213,7 +1230,7 @@ export default function Produtos() {
                 placeholder={costPrice.trim() ? "%" : "preencha o custo primeiro"}
                 inputMode="decimal"
                 disabled={!costPrice.trim()}
-                className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                className="mt-1 w-full rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-50 text-[#F5F3EF]"
               />
             </div>
           </div>
@@ -1225,7 +1242,7 @@ export default function Produtos() {
             if (!priceOk) return null;
             if (!costOk) {
               return (
-                <p className="mt-2 text-xs text-slate-400 dark:text-slate-500">
+                <p className="mt-2 text-xs text-white/30">
                   preencha o custo pra ver a margem
                 </p>
               );
@@ -1233,7 +1250,7 @@ export default function Produtos() {
             const margin = ((p - c) / p) * 100;
             const markup = ((p - c) / c) * 100;
             return (
-              <p className="mt-2 text-xs font-medium text-slate-600 dark:text-slate-300">
+              <p className="mt-2 text-xs font-medium text-white/50">
                 margem {margin.toFixed(0)}% · markup {markup.toFixed(0)}%
               </p>
             );
@@ -1241,10 +1258,10 @@ export default function Produtos() {
         </div>
 
         <div>
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">Estoque</p>
+          <p className="text-xs font-semibold uppercase tracking-wide text-white/30">Estoque</p>
           <div className="mt-2 grid grid-cols-1 items-end gap-3 sm:grid-cols-2">
             <div>
-              <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">
+              <label className="block text-xs font-medium text-white/40">
                 {soldByWeight ? "Estoque (kg)" : "Estoque"}
               </label>
               <input
@@ -1252,15 +1269,15 @@ export default function Produtos() {
                 onChange={(e) => setStock(e.target.value)}
                 placeholder="0"
                 inputMode="decimal"
-                className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                className="mt-1 w-full rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2 text-sm text-[#F5F3EF]"
               />
             </div>
-            <label className="flex items-center gap-2 text-sm text-slate-700 sm:pb-2 dark:text-slate-300">
+            <label className="flex items-center gap-2 text-sm text-white/55 sm:pb-2">
               <input
                 type="checkbox"
                 checked={soldByWeight}
                 onChange={(e) => setSoldByWeight(e.target.checked)}
-                className="h-4 w-4 rounded border-slate-300"
+                className="h-4 w-4 rounded border-white/20 bg-transparent"
               />
               ⚖️ Vendido por peso (kg)
             </label>
@@ -1268,17 +1285,17 @@ export default function Produtos() {
         </div>
 
         <div>
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
+          <p className="text-xs font-semibold uppercase tracking-wide text-white/30">
             Atacado (opcional)
           </p>
           <div className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div>
-              <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">Preço atacado</label>
+              <label className="block text-xs font-medium text-white/40">Preço atacado</label>
               <div className="mt-1 flex items-center gap-1">
                 <select
                   value={wholesaleModeNew}
                   onChange={(e) => setWholesaleModeNew(e.target.value as "valor" | "percentual")}
-                  className="rounded-lg border border-slate-300 bg-white px-2 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                  className="rounded-lg border border-white/10 bg-white/[0.04] px-2 py-2 text-sm text-[#F5F3EF]"
                 >
                   <option value="valor">R$</option>
                   <option value="percentual">%</option>
@@ -1288,11 +1305,11 @@ export default function Produtos() {
                   onChange={(e) => setWholesalePriceNew(e.target.value)}
                   placeholder={wholesaleModeNew === "percentual" ? "ex: 10" : "R$"}
                   inputMode="decimal"
-                  className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                  className="w-full rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2 text-sm text-[#F5F3EF]"
                 />
               </div>
               {wholesaleModeNew === "percentual" && price && wholesalePriceNew.trim() && (
-                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                <p className="mt-1 text-xs text-white/40">
                   = {formatCurrency(
                     Math.round(
                       Number(price.replace(",", ".")) *
@@ -1305,7 +1322,7 @@ export default function Produtos() {
               )}
             </div>
             <div>
-              <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">
+              <label className="block text-xs font-medium text-white/40">
                 Sai em atacado a partir de quantos
               </label>
               <input
@@ -1313,7 +1330,7 @@ export default function Produtos() {
                 onChange={(e) => setWholesaleMinQtyNew(e.target.value)}
                 placeholder="ex: 12"
                 inputMode="numeric"
-                className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                className="mt-1 w-full rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2 text-sm text-[#F5F3EF]"
               />
             </div>
           </div>
@@ -1321,29 +1338,29 @@ export default function Produtos() {
 
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div>
-            <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">Fornecedor (opcional)</label>
+            <label className="block text-xs font-medium text-white/40">Fornecedor (opcional)</label>
             <input
               value={supplier}
               onChange={(e) => setSupplier(e.target.value)}
               placeholder="Fornecedor"
-              className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+              className="mt-1 w-full rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2 text-sm text-[#F5F3EF]"
             />
           </div>
           <div>
-            <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">
+            <label className="block text-xs font-medium text-white/40">
               Validade (opcional, pra perecíveis)
             </label>
             <input
               type="date"
               value={expiryDate}
               onChange={(e) => setExpiryDate(e.target.value)}
-              className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+              className="mt-1 w-full rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2 text-sm text-[#F5F3EF]"
             />
           </div>
         </div>
 
         <div>
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">Foto</p>
+          <p className="text-xs font-semibold uppercase tracking-wide text-white/30">Foto</p>
           <div className="mt-2">
             <PhotoField
               storeId={store.id}
@@ -1359,21 +1376,21 @@ export default function Produtos() {
         <button
           type="submit"
           disabled={saving}
-          className="rounded-lg bg-blue-900 px-4 py-2 text-sm font-semibold text-amber-300 disabled:opacity-60 dark:bg-blue-800"
+          className="rounded-lg bg-[#F0BB5E] px-4 py-2 text-sm font-bold text-[#241705] disabled:opacity-50"
         >
           {saving ? "Salvando…" : "Adicionar produto"}
         </button>
       </form>
-      {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
+      {error && <p className="mt-2 text-sm text-[#FF5C68]">{error}</p>}
 
       {scanningBarcode && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
-          <div className="w-full max-w-sm rounded-xl bg-white p-4 dark:bg-slate-900">
-            <p className="text-sm font-medium text-slate-900 dark:text-slate-50">
+          <div className="w-full max-w-sm rounded-2xl border border-white/[0.09] bg-[#141414] p-4">
+            <p className="text-sm font-medium text-[#F5F3EF]">
               Aponte a câmera pro código de barras
             </p>
             {scanError ? (
-              <p className="mt-2 text-sm text-red-600">{scanError}</p>
+              <p className="mt-2 text-sm text-[#FF5C68]">{scanError}</p>
             ) : (
               // eslint-disable-next-line jsx-a11y/media-has-caption
               <video ref={scanVideoRef} className="mt-2 w-full rounded-lg bg-black" muted playsInline />
@@ -1381,7 +1398,7 @@ export default function Produtos() {
             <button
               type="button"
               onClick={closeBarcodeScanner}
-              className="mt-3 w-full rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 dark:border-slate-700 dark:text-slate-300"
+              className="mt-3 w-full rounded-lg border border-white/10 px-4 py-2 text-sm font-medium text-white/55"
             >
               Cancelar
             </button>
@@ -1390,8 +1407,8 @@ export default function Produtos() {
       )}
 
       {(catalogGaps.withoutPhoto > 0 || catalogGaps.withoutCost > 0 || catalogGaps.withoutCategory > 0) && (
-        <div className="mt-4 rounded-lg bg-amber-50 px-3 py-2 dark:bg-amber-900/30">
-          <p className="text-sm text-amber-800 dark:text-amber-400">📋 Falta completar o catálogo — clique pra ver e corrigir:</p>
+        <div className="mt-4 rounded-xl border border-[#F0BB5E]/20 bg-[#F0BB5E]/[0.06] px-3 py-2">
+          <p className="text-sm text-[#F0BB5E]">📋 Falta completar o catálogo — clique pra ver e corrigir:</p>
           <div className="mt-2 flex flex-wrap gap-2">
             {catalogGaps.withoutPhoto > 0 && (
               <button
@@ -1399,8 +1416,8 @@ export default function Produtos() {
                 onClick={() => jumpToGap("photo")}
                 className={`rounded-full px-3 py-1 text-xs font-medium ${
                   gapFilter === "photo"
-                    ? "bg-amber-700 text-white"
-                    : "bg-amber-100 text-amber-800 hover:bg-amber-200 dark:bg-amber-900/50 dark:text-amber-300"
+                    ? "bg-[#F0BB5E] text-[#241705]"
+                    : "bg-[#F0BB5E]/10 text-[#F0BB5E] hover:bg-[#F0BB5E]/20"
                 }`}
               >
                 📷 {catalogGaps.withoutPhoto} sem foto
@@ -1412,8 +1429,8 @@ export default function Produtos() {
                 onClick={() => jumpToGap("cost")}
                 className={`rounded-full px-3 py-1 text-xs font-medium ${
                   gapFilter === "cost"
-                    ? "bg-amber-700 text-white"
-                    : "bg-amber-100 text-amber-800 hover:bg-amber-200 dark:bg-amber-900/50 dark:text-amber-300"
+                    ? "bg-[#F0BB5E] text-[#241705]"
+                    : "bg-[#F0BB5E]/10 text-[#F0BB5E] hover:bg-[#F0BB5E]/20"
                 }`}
               >
                 💰 {catalogGaps.withoutCost} sem custo
@@ -1425,8 +1442,8 @@ export default function Produtos() {
                 onClick={() => jumpToGap("category")}
                 className={`rounded-full px-3 py-1 text-xs font-medium ${
                   gapFilter === "category"
-                    ? "bg-amber-700 text-white"
-                    : "bg-amber-100 text-amber-800 hover:bg-amber-200 dark:bg-amber-900/50 dark:text-amber-300"
+                    ? "bg-[#F0BB5E] text-[#241705]"
+                    : "bg-[#F0BB5E]/10 text-[#F0BB5E] hover:bg-[#F0BB5E]/20"
                 }`}
               >
                 🏷️ {catalogGaps.withoutCategory} sem categoria
@@ -1436,7 +1453,7 @@ export default function Produtos() {
               <button
                 type="button"
                 onClick={() => setGapFilter(null)}
-                className="rounded-full px-3 py-1 text-xs font-medium text-amber-700 underline dark:text-amber-400"
+                className="rounded-full px-3 py-1 text-xs font-medium text-[#F0BB5E] underline"
               >
                 ✕ limpar filtro
               </button>
@@ -1450,18 +1467,18 @@ export default function Produtos() {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Buscar por nome, categoria ou código de barras…"
-          className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50 sm:min-w-0 sm:flex-1"
+          className="w-full rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2 text-sm text-[#F5F3EF] sm:min-w-0 sm:flex-1"
         />
         <button
           onClick={exportCsv}
-          className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 dark:border-slate-700 dark:text-slate-300"
+          className="rounded-lg border border-white/10 px-3 py-2 text-sm font-medium text-white/55"
         >
           Exportar CSV
         </button>
         <button
           onClick={() => fileInputRef.current?.click()}
           disabled={importing}
-          className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 disabled:opacity-60 dark:border-slate-700 dark:text-slate-300"
+          className="rounded-lg border border-white/10 px-3 py-2 text-sm font-medium text-white/55 disabled:opacity-60"
         >
           {importing ? "Importando…" : "Importar CSV"}
         </button>
@@ -1473,22 +1490,22 @@ export default function Produtos() {
           className="hidden"
         />
       </div>
-      <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+      <p className="mt-1 text-xs text-white/40">
         Colunas do CSV: nome, categoria, preco, estoque, preco_custo, codigo_barras, por_peso (sim/nao),
         preco_atacado, qtd_minima_atacado, preco_fiado, leve, pague, fornecedor, validade, alerta_estoque —
         produto existente (mesmo nome) é atualizado, o resto é criado.
       </p>
-      {importMessage && <p className="mt-2 text-sm text-green-700 dark:text-green-400">{importMessage}</p>}
+      {importMessage && <p className="mt-2 text-sm text-[#34E88C]">{importMessage}</p>}
 
-      <details className="mt-4 rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
-        <summary className="cursor-pointer text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+      <details className="mt-4 rounded-2xl border border-white/[0.09] bg-white/[0.035] p-4 backdrop-blur-xl">
+        <summary className="cursor-pointer text-sm font-semibold uppercase tracking-wide text-white/40">
           Reajuste de preço em massa
         </summary>
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <select
             value={adjustCategory}
             onChange={(e) => setAdjustCategory(e.target.value)}
-            className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+            className="rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2 text-sm text-[#F5F3EF]"
           >
             <option value="">Todas as categorias</option>
             {categories.map((c) => (
@@ -1502,38 +1519,38 @@ export default function Produtos() {
             onChange={(e) => setAdjustPercent(e.target.value)}
             placeholder="% (ex: 8 ou -5)"
             inputMode="decimal"
-            className="w-40 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+            className="w-40 rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2 text-sm text-[#F5F3EF]"
           />
           <button
             onClick={handleBulkAdjust}
             disabled={adjustingPrices}
-            className="rounded-lg bg-blue-900 px-4 py-2 text-sm font-semibold text-amber-300 disabled:opacity-60 dark:bg-blue-800"
+            className="rounded-lg bg-[#F0BB5E] px-4 py-2 text-sm font-bold text-[#241705] disabled:opacity-50"
           >
             {adjustingPrices ? "Aplicando…" : "Aplicar reajuste"}
           </button>
         </div>
-        {adjustResult && <p className="mt-2 text-sm text-slate-700 dark:text-slate-300">{adjustResult}</p>}
+        {adjustResult && <p className="mt-2 text-sm text-white/55">{adjustResult}</p>}
       </details>
 
       {restockGroups.length > 0 && (
-        <details className="mt-4 rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
-          <summary className="cursor-pointer text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+        <details className="mt-4 rounded-2xl border border-white/[0.09] bg-white/[0.035] p-4 backdrop-blur-xl">
+          <summary className="cursor-pointer text-sm font-semibold uppercase tracking-wide text-white/40">
             📋 Lista de compras pro fornecedor ({restockGroups.reduce((sum, [, items]) => sum + items.length, 0)} produto(s) com
             estoque baixo)
           </summary>
           <div className="mt-3 space-y-3">
             {restockGroups.map(([supplierName, items]) => (
-              <div key={supplierName} className="rounded-lg border border-slate-200 p-3 dark:border-slate-800">
+              <div key={supplierName} className="rounded-xl border border-white/[0.09] bg-white/[0.03] p-3">
                 <div className="flex items-center justify-between gap-2">
-                  <p className="text-sm font-medium text-slate-900 dark:text-slate-50">{supplierName}</p>
+                  <p className="text-sm font-medium text-[#F5F3EF]">{supplierName}</p>
                   <button
                     onClick={() => openWhatsAppRestock(supplierName, items)}
-                    className="text-xs font-medium text-green-700 underline dark:text-green-400"
+                    className="text-xs font-medium text-[#34E88C] underline"
                   >
                     📱 Enviar por WhatsApp
                   </button>
                 </div>
-                <ul className="mt-1 space-y-0.5 text-xs text-slate-600 dark:text-slate-400">
+                <ul className="mt-1 space-y-0.5 text-xs text-white/45">
                   {items.map((p) => (
                     <li key={p.id}>
                       {p.name}: só {p.sold_by_weight ? p.stock.toFixed(3) : p.stock} (mínimo {p.stock_alert_threshold})
@@ -1548,29 +1565,29 @@ export default function Produtos() {
       )}
 
       {selectedIds.size > 0 && (
-        <div className="mt-4 flex flex-wrap items-center gap-2 rounded-lg bg-blue-50 px-3 py-2 dark:bg-blue-900/20">
-          <span className="text-sm text-blue-900 dark:text-blue-300">{selectedIds.size} selecionado(s)</span>
+        <div className="mt-4 flex flex-wrap items-center gap-2 rounded-xl border border-[#5CACFF]/20 bg-[#5CACFF]/[0.06] px-3 py-2">
+          <span className="text-sm text-[#5CACFF]">{selectedIds.size} selecionado(s)</span>
           <button
             onClick={() => printLabels(products.filter((p) => selectedIds.has(p.id)), false)}
-            className="text-sm font-medium text-blue-900 underline dark:text-blue-400"
+            className="text-sm font-medium text-[#5CACFF] underline"
           >
             🖨️ Imprimir etiquetas
           </button>
           <button
             onClick={() => printLabels(products.filter((p) => selectedIds.has(p.id)), true)}
-            className="text-sm font-medium text-blue-900 underline dark:text-blue-400"
+            className="text-sm font-medium text-[#5CACFF] underline"
           >
             🏷️ Imprimir etiquetas de promoção
           </button>
           <button
             onClick={() => bulkUpdate([...selectedIds], { active: true })}
-            className="text-sm font-medium text-green-700 underline dark:text-green-400"
+            className="text-sm font-medium text-[#34E88C] underline"
           >
             ✅ Ativar
           </button>
           <button
             onClick={() => bulkUpdate([...selectedIds], { active: false })}
-            className="text-sm font-medium text-red-600 underline dark:text-red-400"
+            className="text-sm font-medium text-[#FF5C68] underline"
           >
             🚫 Desativar
           </button>
@@ -1581,7 +1598,7 @@ export default function Produtos() {
               bulkUpdate([...selectedIds], { category: e.target.value });
               e.target.value = "";
             }}
-            className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300"
+            className="rounded-lg border border-white/10 bg-white/[0.04] px-2 py-1 text-sm text-white/55"
           >
             <option value="">Mudar categoria pra…</option>
             {categories.map((c) => (
@@ -1592,16 +1609,16 @@ export default function Produtos() {
           </select>
           <button
             onClick={() => setSelectedIds(new Set())}
-            className="text-sm text-slate-500 underline dark:text-slate-400"
+            className="text-sm text-white/40 underline"
           >
             Limpar seleção
           </button>
         </div>
       )}
 
-      <div ref={productsTableRef} className="mt-4 overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-800">
+      <div ref={productsTableRef} className="mt-4 overflow-hidden overflow-x-auto rounded-2xl border border-white/[0.09] bg-white/[0.025] backdrop-blur-xl">
         <table className="w-full min-w-[640px] text-left text-sm md:min-w-[900px]">
-          <thead className="bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+          <thead className="bg-white/[0.03] text-white/55">
             <tr>
               <th className="px-3 py-2 font-medium"></th>
               <th className="px-3 py-2 font-medium">Nome</th>
@@ -1617,17 +1634,17 @@ export default function Produtos() {
               <th className="px-3 py-2 font-medium"></th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-200 bg-white dark:divide-slate-800 dark:bg-slate-900">
+          <tbody className="divide-y divide-white/[0.06]">
             {loading && (
               <tr>
-                <td colSpan={12} className="px-3 py-6 text-center text-slate-500">
+                <td colSpan={12} className="px-3 py-6 text-center text-white/40">
                   Carregando…
                 </td>
               </tr>
             )}
             {!loading && filteredProducts.length === 0 && (
               <tr>
-                <td colSpan={12} className="px-3 py-6 text-center text-slate-500">
+                <td colSpan={12} className="px-3 py-6 text-center text-white/40">
                   {products.length === 0 ? "Nenhum produto cadastrado ainda." : "Nenhum produto encontrado pra essa busca."}
                 </td>
               </tr>
@@ -1652,14 +1669,14 @@ export default function Produtos() {
                       type="checkbox"
                       checked={selectedIds.has(p.id)}
                       onChange={() => toggleSelected(p.id)}
-                      className="h-4 w-4 rounded border-slate-300"
+                      className="h-4 w-4 rounded border-white/20 bg-transparent"
                     />
                   </td>
-                  <td className="px-3 py-2 text-slate-900 dark:text-slate-50">
+                  <td className="px-3 py-2 text-[#F5F3EF]">
                     <p>
                       {p.name}
                       {isNew && (
-                        <span className="ml-1 rounded-full bg-blue-100 px-1.5 py-0.5 text-[10px] font-medium text-blue-800 dark:bg-blue-900/40 dark:text-blue-300">
+                        <span className="ml-1 rounded-full bg-[#5CACFF]/12 px-1.5 py-0.5 text-[10px] font-medium text-[#5CACFF]">
                           🆕 novo
                         </span>
                       )}
@@ -1667,14 +1684,14 @@ export default function Produtos() {
                     <div className="mt-1 flex flex-wrap gap-2">
                       <button
                         onClick={() => printLabels([p], false)}
-                        className="text-xs font-medium text-blue-900 hover:underline dark:text-blue-400"
+                        className="text-xs font-medium text-[#5CACFF] hover:underline text-[#5CACFF]"
                       >
                         🏷️ Etiqueta
                       </button>
                       <button
                         onClick={() => handleDuplicate(p)}
                         disabled={duplicating === p.id}
-                        className="text-xs font-medium text-blue-900 hover:underline disabled:opacity-60 dark:text-blue-400"
+                        className="text-xs font-medium text-[#5CACFF] hover:underline disabled:opacity-60 text-[#5CACFF]"
                       >
                         {duplicating === p.id ? "duplicando…" : "📋 Duplicar"}
                       </button>
@@ -1687,10 +1704,10 @@ export default function Produtos() {
                       list="categorias-existentes"
                       placeholder="sem categoria"
                       onBlur={(e) => updateProduct(p.id, { category: e.target.value.trim() || null })}
-                      className={`w-28 rounded border px-2 py-1 dark:bg-slate-900 ${
+                      className={`w-28 rounded border px-2 py-1 ${
                         p.category
-                          ? "border-slate-300 bg-white text-slate-900 dark:border-slate-700 dark:text-slate-50"
-                          : "border-amber-300 bg-amber-50 text-amber-800 placeholder:text-amber-500 dark:border-amber-900/50 dark:bg-amber-900/20 dark:text-amber-300"
+                          ? "border-white/10 bg-white/[0.04] text-[#F5F3EF]"
+                          : "border-[#F0BB5E]/30 bg-[#F0BB5E]/[0.08] text-[#F0BB5E] placeholder:text-[#F0BB5E]/70"
                       }`}
                     />
                   </td>
@@ -1704,7 +1721,7 @@ export default function Produtos() {
                         const v = Number(e.target.value);
                         if (!Number.isNaN(v) && v >= 0) updateProduct(p.id, { price: v });
                       }}
-                      className="w-24 rounded border border-slate-300 bg-white px-2 py-1 text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                      className="w-24 rounded border border-white/10 bg-white/[0.04] px-2 py-1 text-[#F5F3EF]"
                     />
                   </td>
                   <td className="hidden px-3 py-2 md:table-cell">
@@ -1719,18 +1736,18 @@ export default function Produtos() {
                         const v = raw ? Number(raw) : null;
                         if (v === null || (!Number.isNaN(v) && v >= 0)) updateProduct(p.id, { cost_price: v });
                       }}
-                      className="w-24 rounded border border-slate-300 bg-white px-2 py-1 text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                      className="w-24 rounded border border-white/10 bg-white/[0.04] px-2 py-1 text-[#F5F3EF]"
                     />
                   </td>
-                  <td className="hidden px-3 py-2 text-slate-600 dark:text-slate-400 md:table-cell">
+                  <td className="hidden px-3 py-2 text-white/45 md:table-cell">
                     {margin !== null ? (
                       <>
-                        <p className={margin < 10 ? "font-medium text-red-600 dark:text-red-400" : ""}>
+                        <p className={margin < 10 ? "font-medium text-[#FF5C68]" : ""}>
                           margem {margin.toFixed(0)}%
                         </p>
-                        <p className="text-xs text-slate-400">markup {markup !== null ? `${markup.toFixed(0)}%` : "—"}</p>
+                        <p className="text-xs text-white/30">markup {markup !== null ? `${markup.toFixed(0)}%` : "—"}</p>
                         {p.price <= (p.cost_price ?? 0) && (
-                          <p className="text-xs font-semibold text-red-600 dark:text-red-400">⚠️ no prejuízo</p>
+                          <p className="text-xs font-semibold text-[#FF5C68]">⚠️ no prejuízo</p>
                         )}
                       </>
                     ) : (
@@ -1747,14 +1764,14 @@ export default function Produtos() {
                         const v = Number(e.target.value);
                         if (!Number.isNaN(v) && v >= 0) updateProduct(p.id, { stock: v });
                       }}
-                      className={`w-20 rounded border px-2 py-1 dark:bg-slate-900 ${
+                      className={`w-20 rounded border px-2 py-1 ${
                         p.stock <= p.stock_alert_threshold
-                          ? "border-red-300 bg-red-50 text-red-700 dark:border-red-900/50 dark:text-red-400"
-                          : "border-slate-300 bg-white text-slate-900 dark:border-slate-700 dark:text-slate-50"
+                          ? "border-[#FF5C68]/30 bg-[#FF5C68]/[0.08] text-[#FF5C68]"
+                          : "border-white/10 bg-white/[0.04] text-[#F5F3EF]"
                       }`}
                     />
                     {p.stock <= p.stock_alert_threshold && (
-                      <p className="mt-0.5 text-[10px] text-red-600 dark:text-red-400">estoque baixo</p>
+                      <p className="mt-0.5 text-[10px] text-[#FF5C68]">estoque baixo</p>
                     )}
                   </td>
                   <td className="hidden px-3 py-2 text-center md:table-cell">
@@ -1762,10 +1779,10 @@ export default function Produtos() {
                       type="checkbox"
                       checked={p.sold_by_weight}
                       onChange={(e) => updateProduct(p.id, { sold_by_weight: e.target.checked })}
-                      className="h-4 w-4 rounded border-slate-300"
+                      className="h-4 w-4 rounded border-white/20 bg-transparent"
                     />
                     {p.sold_by_weight && (
-                      <p className="mt-0.5 text-[10px] text-slate-500 dark:text-slate-400">⚖️ kg</p>
+                      <p className="mt-0.5 text-[10px] text-white/40">⚖️ kg</p>
                     )}
                   </td>
                   <td className="hidden px-3 py-2 md:table-cell">
@@ -1781,7 +1798,7 @@ export default function Produtos() {
                             [p.id]: { ...promoDraftFor(p), buy: e.target.value },
                           }))
                         }
-                        className="w-14 rounded border border-slate-300 bg-white px-2 py-1 text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                        className="w-14 rounded border border-white/10 bg-white/[0.04] px-2 py-1 text-[#F5F3EF]"
                       />
                       <input
                         type="number"
@@ -1794,11 +1811,11 @@ export default function Produtos() {
                             [p.id]: { ...promoDraftFor(p), pay: e.target.value },
                           }))
                         }
-                        className="w-16 rounded border border-slate-300 bg-white px-2 py-1 text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                        className="w-16 rounded border border-white/10 bg-white/[0.04] px-2 py-1 text-[#F5F3EF]"
                       />
                       <button
                         onClick={() => handleSavePromo(p)}
-                        className="text-xs font-medium text-blue-900 hover:underline dark:text-blue-400"
+                        className="text-xs font-medium text-[#5CACFF] hover:underline text-[#5CACFF]"
                       >
                         Salvar
                       </button>
@@ -1806,23 +1823,23 @@ export default function Produtos() {
                   </td>
                   <td className="hidden px-3 py-2 space-y-0.5 md:table-cell">
                     {expiryWarning !== null && expiryWarning <= 7 && (
-                      <p className={`text-[10px] font-medium ${expiryWarning < 0 ? "text-red-600" : "text-amber-600"} dark:text-amber-400`}>
+                      <p className={`text-[10px] font-medium ${expiryWarning < 0 ? "text-[#FF5C68]" : "text-[#F0BB5E]"} text-[#F0BB5E]`}>
                         {expiryWarning < 0 ? "⏰ venceu" : `⏰ vence em ${expiryWarning}d`}
                       </p>
                     )}
                     {priceIncoherent && (
-                      <p className="text-[10px] font-medium text-red-600 dark:text-red-400">⚠️ preço incoerente</p>
+                      <p className="text-[10px] font-medium text-[#FF5C68]">⚠️ preço incoerente</p>
                     )}
                     {isStalled && (
-                      <p className="text-[10px] font-medium text-slate-500 dark:text-slate-400">
+                      <p className="text-[10px] font-medium text-white/40">
                         😴 parado há {daysSince(stat!.last_sold_at!)}d
                       </p>
                     )}
                     {neverSold && !isNew && (
-                      <p className="text-[10px] font-medium text-slate-500 dark:text-slate-400">😴 nunca vendeu</p>
+                      <p className="text-[10px] font-medium text-white/40">😴 nunca vendeu</p>
                     )}
                     {daysToStockout !== null && daysToStockout <= 5 && (
-                      <p className="text-[10px] font-medium text-amber-600 dark:text-amber-400">
+                      <p className="text-[10px] font-medium text-[#F0BB5E]">
                         📉 acaba em ~{daysToStockout}d
                       </p>
                     )}
@@ -1832,15 +1849,15 @@ export default function Produtos() {
                       onClick={() => updateProduct(p.id, { active: !p.active })}
                       className={`rounded-full px-2.5 py-1 text-xs font-medium ${
                         p.active
-                          ? "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-400"
-                          : "bg-slate-200 text-slate-600 dark:bg-slate-700 dark:text-slate-300"
+                          ? "bg-[#34E88C]/12 text-[#34E88C]"
+                          : "bg-white/10 text-white/55"
                       }`}
                     >
                       {p.active ? "Ativo" : "Inativo"}
                     </button>
                     {p.blocked_by_hub && (
                       <p
-                        className="mt-1 text-[10px] font-semibold text-red-600 dark:text-red-400"
+                        className="mt-1 text-[10px] font-semibold text-[#FF5C68]"
                         title="A plataforma bloqueou esse produto — mesmo ativado aqui, ele não aparece no site até o Hub liberar."
                       >
                         🚫 bloqueado pelo Hub
@@ -1854,13 +1871,13 @@ export default function Produtos() {
                         setExpandedId(next);
                         if (next) loadMovements(p.id);
                       }}
-                      className="mr-2 text-xs font-medium text-blue-900 hover:underline dark:text-blue-400"
+                      className="mr-2 text-xs font-medium text-[#5CACFF] hover:underline text-[#5CACFF]"
                     >
                       {expandedId === p.id ? "Fechar" : "Detalhes"}
                     </button>
                     <button
                       onClick={() => deleteProduct(p.id, p.name)}
-                      className="text-xs font-medium text-red-600 hover:underline"
+                      className="text-xs font-medium text-[#FF5C68] hover:underline"
                     >
                       Excluir
                     </button>
@@ -1872,10 +1889,10 @@ export default function Produtos() {
               (p) =>
                 expandedId === p.id && (
                   <tr key={`${p.id}-detalhes`}>
-                    <td colSpan={12} className="bg-slate-50 px-4 py-4 dark:bg-slate-800/50">
+                    <td colSpan={12} className="bg-white/[0.02] px-4 py-4">
                       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
                         <div className="sm:col-span-2">
-                          <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">
+                          <label className="block text-xs font-medium text-white/40">
                             Foto
                           </label>
                           <div className="mt-1">
@@ -1890,7 +1907,7 @@ export default function Produtos() {
                           </div>
                         </div>
                         <div>
-                          <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">
+                          <label className="block text-xs font-medium text-white/40">
                             Código de barras
                           </label>
                           <input
@@ -1907,22 +1924,22 @@ export default function Produtos() {
                               }
                               updateProduct(p.id, { barcode: v });
                             }}
-                            className="mt-1 w-full rounded border border-slate-300 bg-white px-2 py-1 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                            className="mt-1 w-full rounded border border-white/10 bg-white/[0.04] px-2 py-1 text-sm text-[#F5F3EF]"
                           />
                         </div>
                         <div>
-                          <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">
+                          <label className="block text-xs font-medium text-white/40">
                             Fornecedor
                           </label>
                           <input
                             key={`supplier-${p.id}-${p.supplier}`}
                             defaultValue={p.supplier ?? ""}
                             onBlur={(e) => updateProduct(p.id, { supplier: e.target.value.trim() || null })}
-                            className="mt-1 w-full rounded border border-slate-300 bg-white px-2 py-1 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                            className="mt-1 w-full rounded border border-white/10 bg-white/[0.04] px-2 py-1 text-sm text-[#F5F3EF]"
                           />
                         </div>
                         <div>
-                          <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">
+                          <label className="block text-xs font-medium text-white/40">
                             Validade
                           </label>
                           <input
@@ -1930,11 +1947,11 @@ export default function Produtos() {
                             type="date"
                             defaultValue={p.expiry_date ?? ""}
                             onBlur={(e) => updateProduct(p.id, { expiry_date: e.target.value || null })}
-                            className="mt-1 w-full rounded border border-slate-300 bg-white px-2 py-1 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                            className="mt-1 w-full rounded border border-white/10 bg-white/[0.04] px-2 py-1 text-sm text-[#F5F3EF]"
                           />
                         </div>
                         <div>
-                          <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">
+                          <label className="block text-xs font-medium text-white/40">
                             Preço fiado (R$)
                           </label>
                           <input
@@ -1949,11 +1966,11 @@ export default function Produtos() {
                               if (v === null || (!Number.isNaN(v) && v >= 0))
                                 updateProduct(p.id, { price_fiado: v });
                             }}
-                            className="mt-1 w-full rounded border border-slate-300 bg-white px-2 py-1 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                            className="mt-1 w-full rounded border border-white/10 bg-white/[0.04] px-2 py-1 text-sm text-[#F5F3EF]"
                           />
                         </div>
                         <div>
-                          <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">
+                          <label className="block text-xs font-medium text-white/40">
                             Preço atacado / qtd mínima
                           </label>
                           <div className="mt-1 flex items-center gap-1">
@@ -1965,7 +1982,7 @@ export default function Produtos() {
                                   [p.id]: { ...wholesaleDraftFor(p), mode: e.target.value as "valor" | "percentual" },
                                 }))
                               }
-                              className="rounded border border-slate-300 bg-white px-1 py-1 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                              className="rounded border border-white/10 bg-white/[0.04] px-1 py-1 text-sm text-[#F5F3EF]"
                             >
                               <option value="valor">R$</option>
                               <option value="percentual">%</option>
@@ -1981,7 +1998,7 @@ export default function Produtos() {
                                   [p.id]: { ...wholesaleDraftFor(p), price: e.target.value },
                                 }))
                               }
-                              className="w-16 rounded border border-slate-300 bg-white px-2 py-1 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                              className="w-16 rounded border border-white/10 bg-white/[0.04] px-2 py-1 text-sm text-[#F5F3EF]"
                             />
                             <input
                               type="number"
@@ -1993,17 +2010,17 @@ export default function Produtos() {
                                   [p.id]: { ...wholesaleDraftFor(p), minQty: e.target.value },
                                 }))
                               }
-                              className="w-14 rounded border border-slate-300 bg-white px-2 py-1 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                              className="w-14 rounded border border-white/10 bg-white/[0.04] px-2 py-1 text-sm text-[#F5F3EF]"
                             />
                             <button
                               onClick={() => handleSaveWholesale(p)}
-                              className="text-xs font-medium text-blue-900 hover:underline dark:text-blue-400"
+                              className="text-xs font-medium text-[#5CACFF] hover:underline text-[#5CACFF]"
                             >
                               Salvar
                             </button>
                           </div>
                           {wholesaleDraftFor(p).mode === "percentual" && wholesaleDraftFor(p).price.trim() && (
-                            <p className="mt-0.5 text-[10px] text-slate-500 dark:text-slate-400">
+                            <p className="mt-0.5 text-[10px] text-white/40">
                               = {formatCurrency(
                                 Math.round(p.price * (1 - Number(wholesaleDraftFor(p).price.replace(",", ".")) / 100) * 100) / 100,
                               )}
@@ -2011,7 +2028,7 @@ export default function Produtos() {
                           )}
                         </div>
                         <div>
-                          <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">
+                          <label className="block text-xs font-medium text-white/40">
                             Alertar quando estoque ≤
                           </label>
                           <input
@@ -2023,11 +2040,11 @@ export default function Produtos() {
                               if (!Number.isNaN(v) && v >= 0)
                                 updateProduct(p.id, { stock_alert_threshold: v });
                             }}
-                            className="mt-1 w-20 rounded border border-slate-300 bg-white px-2 py-1 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                            className="mt-1 w-20 rounded border border-white/10 bg-white/[0.04] px-2 py-1 text-sm text-[#F5F3EF]"
                           />
                         </div>
                         <div>
-                          <label className="flex items-center gap-2 text-xs font-medium text-slate-500 dark:text-slate-400">
+                          <label className="flex items-center gap-2 text-xs font-medium text-white/40">
                             <input
                               type="checkbox"
                               checked={offerUiOpenFor(p)}
@@ -2045,7 +2062,7 @@ export default function Produtos() {
                                 onChange={(e) =>
                                   setOfferDrafts((prev) => ({ ...prev, [p.id]: e.target.value }))
                                 }
-                                className="w-24 rounded border border-slate-300 bg-white px-2 py-1 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                                className="w-24 rounded border border-white/10 bg-white/[0.04] px-2 py-1 text-sm text-[#F5F3EF]"
                               />
                               <input
                                 type="date"
@@ -2054,16 +2071,16 @@ export default function Produtos() {
                                 onChange={(e) =>
                                   setOfferEndsAtDrafts((prev) => ({ ...prev, [p.id]: e.target.value }))
                                 }
-                                className="rounded border border-slate-300 bg-white px-2 py-1 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                                className="rounded border border-white/10 bg-white/[0.04] px-2 py-1 text-sm text-[#F5F3EF]"
                               />
                               <button
                                 onClick={() => handleSaveOfferPrice(p)}
-                                className="text-xs font-medium text-blue-900 hover:underline dark:text-blue-400"
+                                className="text-xs font-medium text-[#5CACFF] hover:underline text-[#5CACFF]"
                               >
                                 Salvar
                               </button>
                               {p.on_offer && p.offer_ends_at && (
-                                <span className="w-full text-xs text-slate-400">
+                                <span className="w-full text-xs text-white/30">
                                   {new Date(p.offer_ends_at) > new Date()
                                     ? `Válida até ${new Date(p.offer_ends_at).toLocaleDateString("pt-BR")}`
                                     : "Prazo vencido — não aparece mais no site nem no balcão"}
@@ -2075,7 +2092,7 @@ export default function Produtos() {
                       </div>
                       <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
                         <div>
-                          <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">
+                          <label className="block text-xs font-medium text-white/40">
                             Histórico de preço
                           </label>
                           <div className="mt-1">
@@ -2083,11 +2100,11 @@ export default function Produtos() {
                           </div>
                         </div>
                         <div>
-                          <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">
+                          <label className="block text-xs font-medium text-white/40">
                             Vendas nos últimos 30 dias
                           </label>
                           {stats[p.id] ? (
-                            <p className="mt-1 text-sm text-slate-700 dark:text-slate-300">
+                            <p className="mt-1 text-sm text-white/55">
                               {stats[p.id].units_sold_recent} un. vendida{stats[p.id].units_sold_recent === 1 ? "" : "s"} ·{" "}
                               {formatCurrency(stats[p.id].revenue_recent)} em faturamento
                               {stats[p.id].profit_recent !== null && (
@@ -2099,13 +2116,13 @@ export default function Produtos() {
                                 : "Nunca vendeu"}
                             </p>
                           ) : (
-                            <p className="mt-1 text-xs text-slate-400">Carregando…</p>
+                            <p className="mt-1 text-xs text-white/30">Carregando…</p>
                           )}
                         </div>
                       </div>
 
                       <div className="mt-4">
-                        <label className="block text-xs font-medium text-slate-500 dark:text-slate-400">
+                        <label className="block text-xs font-medium text-white/40">
                           Registrar perda / quebra
                         </label>
                         <div className="mt-1 flex flex-wrap items-center gap-1">
@@ -2117,7 +2134,7 @@ export default function Produtos() {
                                 [p.id]: { ...lossDraftFor(p.id), type: e.target.value as StockMovement["type"] },
                               }))
                             }
-                            className="rounded border border-slate-300 bg-white px-2 py-1 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                            className="rounded border border-white/10 bg-white/[0.04] px-2 py-1 text-sm text-[#F5F3EF]"
                           >
                             <option value="quebra">Quebra</option>
                             <option value="perda">Perda / venceu / sumiu</option>
@@ -2131,7 +2148,7 @@ export default function Produtos() {
                             onChange={(e) =>
                               setLossDrafts((prev) => ({ ...prev, [p.id]: { ...lossDraftFor(p.id), quantity: e.target.value } }))
                             }
-                            className="w-24 rounded border border-slate-300 bg-white px-2 py-1 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                            className="w-24 rounded border border-white/10 bg-white/[0.04] px-2 py-1 text-sm text-[#F5F3EF]"
                           />
                           <input
                             placeholder="Nota (opcional)"
@@ -2139,18 +2156,18 @@ export default function Produtos() {
                             onChange={(e) =>
                               setLossDrafts((prev) => ({ ...prev, [p.id]: { ...lossDraftFor(p.id), note: e.target.value } }))
                             }
-                            className="min-w-0 flex-1 rounded border border-slate-300 bg-white px-2 py-1 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                            className="min-w-0 flex-1 rounded border border-white/10 bg-white/[0.04] px-2 py-1 text-sm text-[#F5F3EF]"
                           />
                           <button
                             onClick={() => handleRegisterLoss(p)}
                             disabled={savingLoss === p.id}
-                            className="rounded border border-slate-300 px-3 py-1 text-xs font-medium text-slate-700 disabled:opacity-60 dark:border-slate-700 dark:text-slate-300"
+                            className="rounded border border-white/10 px-3 py-1 text-xs font-medium text-white/55 disabled:opacity-60"
                           >
                             {savingLoss === p.id ? "Registrando…" : "Registrar baixa"}
                           </button>
                         </div>
                         {movements[p.id] && movements[p.id].length > 0 && (
-                          <ul className="mt-2 space-y-0.5 text-xs text-slate-500 dark:text-slate-400">
+                          <ul className="mt-2 space-y-0.5 text-xs text-white/40">
                             {movements[p.id].map((m) => (
                               <li key={m.id}>
                                 {MOVEMENT_LABEL[m.type]}: {m.quantity}
@@ -2168,6 +2185,7 @@ export default function Produtos() {
             )}
           </tbody>
         </table>
+      </div>
       </div>
     </div>
   );
