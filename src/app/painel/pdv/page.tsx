@@ -878,30 +878,47 @@ export default function Pdv() {
   ];
 
   return (
-    <div className="grid grid-cols-1 gap-5 lg:grid-cols-[1fr_400px]">
+    <div className="relative overflow-hidden rounded-[22px] bg-black">
+      <div
+        aria-hidden
+        className="pointer-events-none absolute left-1/2 -top-44 h-[520px] w-[520px] -translate-x-1/2 rounded-full opacity-50 blur-[90px]"
+        style={{ background: "radial-gradient(circle, rgba(52,232,140,0.16), transparent 65%)" }}
+      />
+      <div
+        aria-hidden
+        className="pointer-events-none absolute -right-36 top-56 h-[420px] w-[420px] rounded-full opacity-50 blur-[90px]"
+        style={{ background: "radial-gradient(circle, rgba(92,172,255,0.14), transparent 65%)" }}
+      />
+      <div
+        aria-hidden
+        className="pointer-events-none absolute -left-36 -bottom-16 h-[380px] w-[380px] rounded-full opacity-30 blur-[90px]"
+        style={{ background: "radial-gradient(circle, rgba(240,187,94,0.12), transparent 65%)" }}
+      />
+
+      <div className="relative grid grid-cols-1 gap-5 p-4 text-[#F5F3EF] sm:p-6 lg:grid-cols-[1fr_400px]">
       <div>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-slate-50">
-              PDV <span className="font-normal text-slate-400 dark:text-slate-500">— venda no balcão</span>
+            <h1 className="text-2xl font-extrabold tracking-tight text-[#F5F3EF]">
+              PDV <span className="font-normal text-white/35">— venda no balcão</span>
             </h1>
             {sellerEmail && (
-              <p className="mt-0.5 text-xs text-slate-400 dark:text-slate-500">Vendendo como {sellerEmail}</p>
+              <p className="mt-0.5 text-xs text-white/30">Vendendo como {sellerEmail}</p>
             )}
           </div>
           <div className="flex gap-2">
             <button
               onClick={() => setShowShortcuts((prev) => !prev)}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-600 shadow-sm transition hover:border-slate-400 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-white/[0.09] bg-white/[0.035] px-3 py-1.5 text-sm font-medium text-white/55 backdrop-blur-xl transition hover:bg-white/[0.06] hover:text-white/80"
             >
               <IconKeyboard className="h-4 w-4" />
               Atalhos
-              <kbd className="ml-0.5 rounded bg-slate-100 px-1 py-0.5 font-mono text-[10px] text-slate-500 dark:bg-slate-800 dark:text-slate-400">F1</kbd>
+              <kbd className="ml-0.5 rounded bg-white/10 px-1 py-0.5 font-mono text-[10px] text-white/45">F1</kbd>
             </button>
             {lastSale && lastSale.length > 0 && (
               <button
                 onClick={repeatLastSale}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium text-slate-600 shadow-sm transition hover:border-slate-400 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300"
+                className="inline-flex items-center gap-1.5 rounded-lg border border-white/[0.09] bg-white/[0.035] px-3 py-1.5 text-sm font-medium text-white/55 backdrop-blur-xl transition hover:bg-white/[0.06] hover:text-white/80"
               >
                 <IconRepeat className="h-4 w-4" />
                 Repetir última venda
@@ -911,11 +928,11 @@ export default function Pdv() {
         </div>
 
         {showShortcuts && (
-          <div className="mt-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+          <div className="mt-3 rounded-2xl border border-white/[0.09] bg-white/[0.035] p-4 backdrop-blur-xl">
             <div className="grid grid-cols-1 gap-2 text-sm sm:grid-cols-2">
               {SHORTCUTS.map(([key, label]) => (
-                <p key={key} className="flex items-center gap-2 text-slate-600 dark:text-slate-400">
-                  <kbd className="w-9 shrink-0 rounded-md bg-slate-100 py-1 text-center font-mono text-xs font-semibold text-slate-700 dark:bg-slate-800 dark:text-slate-300">
+                <p key={key} className="flex items-center gap-2 text-white/50">
+                  <kbd className="w-9 shrink-0 rounded-md bg-white/10 py-1 text-center font-mono text-xs font-semibold text-white/70">
                     {key}
                   </kbd>
                   {label}
@@ -926,7 +943,7 @@ export default function Pdv() {
         )}
 
         {caixaAberto === false && (
-          <p className="mt-3 flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-800 dark:border-amber-900/50 dark:bg-amber-900/20 dark:text-amber-400">
+          <p className="mt-3 flex items-center gap-2 rounded-xl border border-[#F0BB5E]/25 bg-[#F0BB5E]/10 px-3 py-2.5 text-sm text-[#F0BB5E]">
             <IconWarning className="h-4 w-4 shrink-0" />
             O caixa de hoje ainda não foi aberto.{" "}
             <a href="/painel/caixa" className="font-semibold underline underline-offset-2">
@@ -936,7 +953,7 @@ export default function Pdv() {
         )}
 
         <div className="relative mt-4">
-          <IconSearch className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
+          <IconSearch className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-white/30" />
           <input
             ref={searchInputRef}
             value={search}
@@ -944,26 +961,26 @@ export default function Pdv() {
             onKeyDown={handleSearchKeyDown}
             placeholder="Buscar por nome ou passar código de barras…"
             autoComplete="off"
-            className="w-full rounded-xl border border-slate-300 bg-white py-3.5 pl-11 pr-4 text-base text-slate-900 shadow-sm transition focus:border-blue-900 focus:outline-none focus:ring-2 focus:ring-blue-900/15 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50 dark:focus:border-blue-600"
+            className="w-full rounded-xl border border-white/[0.09] bg-white/[0.035] py-3.5 pl-11 pr-4 text-base text-[#F5F3EF] backdrop-blur-xl transition placeholder:text-white/25 focus:border-[#5CACFF]/50 focus:outline-none focus:ring-2 focus:ring-[#5CACFF]/15"
           />
 
           {search.trim() && (
-            <div className="absolute z-10 mt-1.5 w-full overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg dark:border-slate-800 dark:bg-slate-900">
+            <div className="absolute z-10 mt-1.5 w-full overflow-hidden rounded-xl border border-white/10 bg-[#141414] shadow-2xl shadow-black/50">
               {loadingProducts ? (
-                <p className="px-4 py-3 text-sm text-slate-500">Carregando…</p>
+                <p className="px-4 py-3 text-sm text-white/40">Carregando…</p>
               ) : filtered.length > 0 || filteredKits.length > 0 ? (
                 <>
                   {filtered.map((p) => (
                     <button
                       key={p.id}
                       onClick={() => addToCart(p, qtyPrefix?.qty)}
-                      className="flex w-full items-center justify-between px-4 py-2.5 text-left text-sm transition hover:bg-slate-50 dark:hover:bg-slate-800"
+                      className="flex w-full items-center justify-between px-4 py-2.5 text-left text-sm transition hover:bg-white/[0.06]"
                     >
-                      <span className="flex items-center gap-1.5 text-slate-900 dark:text-slate-50">
+                      <span className="flex items-center gap-1.5 text-[#F5F3EF]">
                         {p.name}
-                        {p.sold_by_weight && <IconScale className="h-3.5 w-3.5 text-slate-400" />}
+                        {p.sold_by_weight && <IconScale className="h-3.5 w-3.5 text-white/30" />}
                       </span>
-                      <span className="shrink-0 text-slate-500 dark:text-slate-400">
+                      <span className="shrink-0 text-white/40">
                         {formatCurrency(
                           p.on_offer && p.offer_price != null && (!p.offer_ends_at || new Date(p.offer_ends_at) > new Date())
                             ? p.offer_price
@@ -979,19 +996,19 @@ export default function Pdv() {
                       key={k.id}
                       onClick={() => addKitToCart(k, qtyPrefix?.qty)}
                       disabled={k.buildable <= 0}
-                      className="flex w-full items-center justify-between border-t border-slate-100 px-4 py-2.5 text-left text-sm transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-800 dark:hover:bg-slate-800"
+                      className="flex w-full items-center justify-between border-t border-white/[0.06] px-4 py-2.5 text-left text-sm transition hover:bg-white/[0.06] disabled:cursor-not-allowed disabled:opacity-50"
                     >
-                      <span className="inline-flex items-center gap-1.5 rounded-full bg-purple-50 px-2 py-0.5 text-xs font-semibold text-purple-700 dark:bg-purple-900/30 dark:text-purple-300">
+                      <span className="inline-flex items-center gap-1.5 rounded-full bg-[#B98CFF]/15 px-2 py-0.5 text-xs font-semibold text-[#B98CFF]">
                         Kit
                       </span>
-                      <span className="min-w-0 flex-1 truncate px-2 text-slate-900 dark:text-slate-50">{k.name}</span>
-                      <span className="shrink-0 text-slate-500 dark:text-slate-400">
+                      <span className="min-w-0 flex-1 truncate px-2 text-[#F5F3EF]">{k.name}</span>
+                      <span className="shrink-0 text-white/40">
                         {formatCurrency(k.price)} · {k.buildable > 0 ? `dá pra montar ${k.buildable}` : "sem estoque"}
                       </span>
                     </button>
                   ))}
                   {qtyPrefix && (
-                    <p className="flex items-center gap-1.5 border-t border-slate-100 bg-slate-50 px-4 py-1.5 text-xs text-slate-500 dark:border-slate-800 dark:bg-slate-800/60 dark:text-slate-400">
+                    <p className="flex items-center gap-1.5 border-t border-white/[0.06] bg-white/[0.03] px-4 py-1.5 text-xs text-white/40">
                       {qtyPrefix.mode === "peso" ? (
                         <>
                           <IconScale className="h-3.5 w-3.5" /> Vai adicionar {qtyPrefix.qty.toFixed(3)} kg do produto escolhido
@@ -1004,7 +1021,7 @@ export default function Pdv() {
                 </>
               ) : (
                 <div className="px-4 py-3">
-                  <p className="text-sm text-slate-500 dark:text-slate-400">
+                  <p className="text-sm text-white/40">
                     Nenhum produto encontrado pra &quot;{search.trim()}&quot;.
                   </p>
                   {!quickAddOpen ? (
@@ -1016,7 +1033,7 @@ export default function Pdv() {
                         setQuickAddBarcode(looksLikeBarcode ? q : "");
                         setQuickAddOpen(true);
                       }}
-                      className="mt-2 text-sm font-semibold text-blue-900 hover:underline dark:text-blue-400"
+                      className="mt-2 text-sm font-semibold text-[#5CACFF] hover:underline"
                     >
                       Cadastrar rápido
                     </button>
@@ -1027,42 +1044,42 @@ export default function Pdv() {
                         onChange={(e) => setQuickAddName(e.target.value)}
                         placeholder="Nome do produto"
                         autoFocus
-                        className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                        className="w-full rounded-lg border border-white/10 bg-white/[0.04] px-2.5 py-1.5 text-sm text-[#F5F3EF] placeholder:text-white/25"
                       />
                       <div className="flex flex-wrap items-center gap-2">
                         <input
                           value={quickAddBarcode}
                           onChange={(e) => setQuickAddBarcode(e.target.value)}
                           placeholder="Código de barras (opcional)"
-                          className="w-40 rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                          className="w-40 rounded-lg border border-white/10 bg-white/[0.04] px-2.5 py-1.5 text-sm text-[#F5F3EF] placeholder:text-white/25"
                         />
                         <input
                           value={quickAddPrice}
                           onChange={(e) => setQuickAddPrice(e.target.value)}
                           placeholder="Preço (R$)"
                           inputMode="decimal"
-                          className="w-28 rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                          className="w-28 rounded-lg border border-white/10 bg-white/[0.04] px-2.5 py-1.5 text-sm text-[#F5F3EF] placeholder:text-white/25"
                         />
                         <input
                           value={quickAddStock}
                           onChange={(e) => setQuickAddStock(e.target.value)}
                           placeholder={quickAddSoldByWeight ? "Estoque (kg)" : "Estoque"}
                           inputMode="decimal"
-                          className="w-24 rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                          className="w-24 rounded-lg border border-white/10 bg-white/[0.04] px-2.5 py-1.5 text-sm text-[#F5F3EF] placeholder:text-white/25"
                         />
-                        <label className="flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-400">
+                        <label className="flex items-center gap-1.5 text-xs text-white/45">
                           <input
                             type="checkbox"
                             checked={quickAddSoldByWeight}
                             onChange={(e) => setQuickAddSoldByWeight(e.target.checked)}
-                            className="h-4 w-4 rounded border-slate-300"
+                            className="h-4 w-4 rounded border-white/20 bg-transparent"
                           />
                           <IconScale className="h-3.5 w-3.5" /> por kg
                         </label>
                         <button
                           type="submit"
                           disabled={quickAddSaving}
-                          className="rounded-lg bg-blue-900 px-3 py-1.5 text-sm font-semibold text-amber-300 disabled:opacity-60 dark:bg-blue-800"
+                          className="rounded-lg bg-[#F0BB5E] px-3 py-1.5 text-sm font-semibold text-[#241705] disabled:opacity-60"
                         >
                           {quickAddSaving ? "Salvando…" : "Salvar e adicionar"}
                         </button>
@@ -1077,12 +1094,12 @@ export default function Pdv() {
 
         {cart.length > 0 && (
           <div className="mt-3 flex items-center justify-between">
-            <p className="text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">
+            <p className="text-xs font-bold uppercase tracking-wide text-white/30">
               {cart.length} {cart.length === 1 ? "item" : "itens"} no carrinho
             </p>
             <button
               onClick={cancelSale}
-              className="inline-flex items-center gap-1 text-sm font-medium text-red-600 hover:underline dark:text-red-400"
+              className="inline-flex items-center gap-1 text-sm font-medium text-[#FF5C68] hover:underline"
             >
               <IconTrash className="h-3.5 w-3.5" />
               Cancelar venda
@@ -1092,9 +1109,11 @@ export default function Pdv() {
 
         <div className="mt-2 space-y-2">
           {cart.length === 0 && (
-            <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-slate-300 px-4 py-10 text-center dark:border-slate-700">
-              <IconCart className="h-8 w-8 text-slate-300 dark:text-slate-600" />
-              <p className="text-sm text-slate-500 dark:text-slate-400">
+            <div className="flex flex-col items-center gap-3 rounded-2xl border border-white/[0.09] bg-white/[0.025] px-4 py-12 text-center backdrop-blur-xl">
+              <span className="flex h-14 w-14 items-center justify-center rounded-full bg-white/[0.05]">
+                <IconCart className="h-7 w-7 text-white/25" />
+              </span>
+              <p className="text-sm text-white/40">
                 Carrinho vazio — busque um produto acima pra começar a venda.
               </p>
             </div>
@@ -1102,53 +1121,53 @@ export default function Pdv() {
           {cart.map((line) => (
             <div
               key={line.productId}
-              className="flex flex-col gap-2.5 rounded-xl border border-slate-200 bg-white p-3.5 shadow-sm sm:flex-row sm:items-center sm:justify-between dark:border-slate-800 dark:bg-slate-900"
+              className="flex flex-col gap-2.5 rounded-2xl border border-white/[0.09] bg-white/[0.035] p-3.5 backdrop-blur-xl sm:flex-row sm:items-center sm:justify-between"
             >
               <div className="min-w-0 flex-1">
-                <p className="break-words font-medium text-slate-900 dark:text-slate-50">{line.name}</p>
-                <p className="text-sm text-slate-500 dark:text-slate-400">
+                <p className="break-words font-medium text-[#F5F3EF]">{line.name}</p>
+                <p className="text-sm text-white/40">
                   {formatCurrency(line.price)} {line.soldByWeight ? "/kg" : "un."}
                 </p>
                 {line.quantity > line.stock && (
-                  <p className="mt-1 inline-flex items-center gap-1 rounded-full bg-red-50 px-2 py-0.5 text-xs font-medium text-red-700 dark:bg-red-900/30 dark:text-red-400">
+                  <p className="mt-1 inline-flex items-center gap-1 rounded-full bg-[#FF5C68]/10 px-2 py-0.5 text-xs font-medium text-[#FF5C68]">
                     <IconWarning className="h-3 w-3" />
                     Só tem {line.soldByWeight ? line.stock.toFixed(3) : line.stock} em estoque
                   </p>
                 )}
                 {line.quantity <= line.stock && line.quantity === line.stock && (
-                  <p className="mt-1 inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-900/30 dark:text-amber-400">
+                  <p className="mt-1 inline-flex items-center gap-1 rounded-full bg-[#F0BB5E]/10 px-2 py-0.5 text-xs font-medium text-[#F0BB5E]">
                     <IconWarning className="h-3 w-3" />
                     Vai zerar o estoque
                   </p>
                 )}
               </div>
               <div className="flex shrink-0 items-center justify-between gap-3 sm:justify-end">
-                <div className="flex items-center gap-1.5 rounded-lg border border-slate-200 p-1 dark:border-slate-700">
+                <div className="flex items-center gap-1.5 rounded-lg border border-white/10 p-1">
                   <button
                     onClick={() => changeQuantity(line.productId, line.soldByWeight ? -0.1 : -1)}
-                    className="flex h-7 w-7 items-center justify-center rounded-md text-lg leading-none text-slate-600 transition hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
+                    className="flex h-7 w-7 items-center justify-center rounded-md text-lg leading-none text-white/55 transition hover:bg-white/10"
                     aria-label="Diminuir quantidade"
                   >
                     −
                   </button>
-                  <span className="w-16 text-center text-sm font-semibold tabular-nums text-slate-900 dark:text-slate-50">
+                  <span className="w-16 text-center text-sm font-semibold tabular-nums text-[#F5F3EF]">
                     {formatQty(line)}
                   </span>
                   <button
                     onClick={() => changeQuantity(line.productId, line.soldByWeight ? 0.1 : 1)}
-                    className="flex h-7 w-7 items-center justify-center rounded-md text-lg leading-none text-slate-600 transition hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
+                    className="flex h-7 w-7 items-center justify-center rounded-md text-lg leading-none text-white/55 transition hover:bg-white/10"
                     aria-label="Aumentar quantidade"
                   >
                     +
                   </button>
                 </div>
-                <p className="w-20 shrink-0 text-right font-semibold tabular-nums text-slate-900 dark:text-slate-50">
+                <p className="w-20 shrink-0 text-right font-semibold tabular-nums text-[#F5F3EF]">
                   {formatCurrency(pdvLineTotal(line, line.quantity, paymentMethod, splitMode))}
                 </p>
                 <button
                   onClick={() => removeLine(line.productId)}
                   aria-label="Remover item"
-                  className="shrink-0 rounded-lg p-1.5 text-slate-400 transition hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20"
+                  className="shrink-0 rounded-lg p-1.5 text-white/30 transition hover:bg-[#FF5C68]/10 hover:text-[#FF5C68]"
                 >
                   <IconTrash className="h-4 w-4" />
                 </button>
@@ -1158,13 +1177,13 @@ export default function Pdv() {
         </div>
 
         {recentSales.length > 0 && (
-          <details className="mt-6 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
-            <summary className="cursor-pointer px-4 py-3 text-sm font-medium text-slate-700 dark:text-slate-300">
-              Vendas de hoje no balcão <span className="text-slate-400 dark:text-slate-500">({recentSales.length})</span>
+          <details className="mt-6 overflow-hidden rounded-2xl border border-white/[0.09] bg-white/[0.035] backdrop-blur-xl">
+            <summary className="cursor-pointer px-4 py-3 text-sm font-medium text-white/55">
+              Vendas de hoje no balcão <span className="text-white/30">({recentSales.length})</span>
             </summary>
-            <div className="space-y-1 border-t border-slate-100 px-4 py-3 text-sm dark:border-slate-800">
+            <div className="space-y-1 border-t border-white/[0.06] px-4 py-3 text-sm">
               {recentSales.map((sale) => (
-                <div key={sale.id} className="flex justify-between text-slate-600 dark:text-slate-400">
+                <div key={sale.id} className="flex justify-between text-white/40">
                   <span>
                     {new Date(sale.created_at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
                     {" · "}
@@ -1176,7 +1195,7 @@ export default function Pdv() {
                         ? PAYMENT_LABELS[sale.payment_method] ?? sale.payment_method
                         : "—"}
                   </span>
-                  <span className="font-medium tabular-nums text-slate-900 dark:text-slate-50">
+                  <span className="font-medium tabular-nums text-[#F5F3EF]">
                     {formatCurrency(sale.total)}
                   </span>
                 </div>
@@ -1186,9 +1205,9 @@ export default function Pdv() {
         )}
       </div>
 
-      <div className="h-fit rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+      <div className="h-fit rounded-2xl border border-white/[0.09] bg-white/[0.035] p-5 backdrop-blur-xl">
         {success && (
-          <div className="mb-4 rounded-xl border border-green-200 bg-green-50 p-3.5 text-sm text-green-800 dark:border-green-900/50 dark:bg-green-900/20 dark:text-green-300">
+          <div className="mb-4 rounded-xl border border-[#34E88C]/25 bg-[#34E88C]/10 p-3.5 text-sm text-[#34E88C]">
             <p className="flex items-center gap-1.5 font-semibold">
               <IconCheck className="h-4 w-4" />
               Venda registrada! {formatCurrency(success.total)}
@@ -1217,45 +1236,54 @@ export default function Pdv() {
         )}
 
         <div className="mb-3 flex items-center justify-between gap-2">
-          <p className="text-sm font-medium text-slate-700 dark:text-slate-300">Desconto</p>
+          <p className="text-sm font-medium text-white/55">Desconto</p>
           <div className="flex items-center gap-1.5">
             <select
               value={discountType}
               onChange={(e) => setDiscountType(e.target.value as "valor" | "percentual")}
-              className="rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+              className="rounded-lg border border-white/10 bg-white/[0.04] px-2 py-1.5 text-sm text-[#F5F3EF]"
             >
-              <option value="valor">R$</option>
-              <option value="percentual">%</option>
+              <option value="valor" className="bg-[#141414]">R$</option>
+              <option value="percentual" className="bg-[#141414]">%</option>
             </select>
             <input
               value={discountValue}
               onChange={(e) => setDiscountValue(e.target.value)}
               placeholder="0"
               inputMode="decimal"
-              className="w-20 rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+              className="w-20 rounded-lg border border-white/10 bg-white/[0.04] px-2.5 py-1.5 text-sm text-[#F5F3EF] placeholder:text-white/25"
             />
           </div>
         </div>
 
-        <div className="rounded-xl bg-slate-50 p-4 dark:bg-slate-800/50">
+        <div className="rounded-2xl border border-white/[0.09] bg-white/[0.035] p-4 text-center backdrop-blur-xl">
           {discountAmount > 0 && (
-            <p className="text-sm text-slate-400 line-through dark:text-slate-500">{formatCurrency(subtotal)}</p>
+            <p className="text-sm text-white/30 line-through">{formatCurrency(subtotal)}</p>
           )}
-          <p className="text-sm text-slate-500 dark:text-slate-400">
+          <p className="text-[11px] font-bold uppercase tracking-wide text-white/30">
             Total{discountAmount > 0 ? ` (desconto de ${formatCurrency(discountAmount)})` : ""}
           </p>
-          <p className="text-4xl font-bold tabular-nums tracking-tight text-slate-900 dark:text-slate-50">
+          <p
+            className="my-0.5 text-4xl font-black tabular-nums tracking-tight"
+            style={{
+              backgroundImage: "linear-gradient(180deg, #EFFFF6 0%, #34E88C 130%)",
+              WebkitBackgroundClip: "text",
+              backgroundClip: "text",
+              color: "transparent",
+              textShadow: "0 0 40px rgba(52,232,140,0.3)",
+            }}
+          >
             {formatCurrency(total)}
           </p>
         </div>
 
         <div className="mt-4">
           <div className="mb-2 flex items-center justify-between">
-            <p className="text-sm font-medium text-slate-700 dark:text-slate-300">Forma de pagamento</p>
+            <p className="text-sm font-medium text-white/55">Forma de pagamento</p>
             <button
               onClick={toggleSplitMode}
               className={`inline-flex items-center gap-1 text-xs font-medium underline underline-offset-2 ${
-                splitMode ? "text-blue-900 dark:text-blue-400" : "text-slate-500 dark:text-slate-400"
+                splitMode ? "text-[#5CACFF]" : "text-white/40"
               }`}
             >
               {splitMode ? (
@@ -1280,42 +1308,42 @@ export default function Pdv() {
                     onClick={() => selectPayment(value)}
                     className={`flex items-center gap-2 rounded-xl border px-3 py-2.5 text-sm font-medium transition ${
                       selected
-                        ? "border-blue-900 bg-blue-900 text-amber-300 shadow-sm dark:border-blue-700 dark:bg-blue-800"
-                        : "border-slate-200 text-slate-700 hover:border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+                        ? "border-[#5CACFF]/35 bg-[#5CACFF]/12 text-[#5CACFF]"
+                        : "border-white/10 bg-white/[0.02] text-white/55 hover:border-white/20 hover:bg-white/[0.05]"
                     }`}
                   >
-                    <Icon className={`h-4 w-4 shrink-0 ${selected ? "text-amber-300" : "text-slate-400"}`} />
+                    <Icon className={`h-4 w-4 shrink-0 ${selected ? "text-[#5CACFF]" : "text-white/30"}`} />
                     {label}
                   </button>
                 );
               })}
             </div>
           ) : (
-            <div className="space-y-2 rounded-xl border border-slate-200 p-3 dark:border-slate-700">
+            <div className="space-y-2 rounded-xl border border-white/10 p-3">
               {splitPayments.map((row, i) => (
                 <div key={i} className="flex items-center gap-2">
                   <select
                     value={row.method}
                     onChange={(e) => updateSplitRow(i, { method: e.target.value as PaymentMethod })}
-                    className="rounded-lg border border-slate-300 bg-white px-2 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                    className="rounded-lg border border-white/10 bg-white/[0.04] px-2 py-2 text-sm text-[#F5F3EF]"
                   >
-                    <option value="dinheiro">Dinheiro</option>
-                    <option value="pix">Pix</option>
-                    <option value="cartao">Cartão</option>
-                    <option value="fiado">Crediário</option>
+                    <option value="dinheiro" className="bg-[#141414]">Dinheiro</option>
+                    <option value="pix" className="bg-[#141414]">Pix</option>
+                    <option value="cartao" className="bg-[#141414]">Cartão</option>
+                    <option value="fiado" className="bg-[#141414]">Crediário</option>
                   </select>
                   <input
                     value={row.amount}
                     onChange={(e) => updateSplitRow(i, { amount: e.target.value })}
                     placeholder="Valor (R$)"
                     inputMode="decimal"
-                    className="flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                    className="flex-1 rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2 text-sm text-[#F5F3EF] placeholder:text-white/25"
                   />
                   {splitPayments.length > 2 && (
                     <button
                       onClick={() => removeSplitRow(i)}
                       aria-label="Remover forma de pagamento"
-                      className="rounded-lg p-1.5 text-slate-400 transition hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20"
+                      className="rounded-lg p-1.5 text-white/30 transition hover:bg-[#FF5C68]/10 hover:text-[#FF5C68]"
                     >
                       <IconX className="h-4 w-4" />
                     </button>
@@ -1325,7 +1353,7 @@ export default function Pdv() {
               {splitPayments.length < 4 && (
                 <button
                   onClick={addSplitRow}
-                  className="text-xs font-medium text-blue-900 underline underline-offset-2 dark:text-blue-400"
+                  className="text-xs font-medium text-[#5CACFF] underline underline-offset-2"
                 >
                   + Adicionar forma
                 </button>
@@ -1333,10 +1361,10 @@ export default function Pdv() {
               <p
                 className={`flex items-center gap-1.5 text-sm font-semibold ${
                   Math.abs(splitDiff) < 0.005
-                    ? "text-green-600"
+                    ? "text-[#34E88C]"
                     : splitDiff > 0
-                      ? "text-amber-600 dark:text-amber-400"
-                      : "text-red-600"
+                      ? "text-[#F0BB5E]"
+                      : "text-[#FF5C68]"
                 }`}
               >
                 {Math.abs(splitDiff) < 0.005 ? (
@@ -1354,7 +1382,7 @@ export default function Pdv() {
         </div>
 
         {paymentMethod === "dinheiro" && (
-          <div className="mt-4 space-y-2.5 rounded-xl border border-slate-200 p-3.5 dark:border-slate-700">
+          <div className="mt-4 space-y-2.5 rounded-xl border border-white/10 p-3.5">
             <div className="flex flex-wrap gap-1.5">
               {CASH_BUTTONS.map((value) => (
                 <button
@@ -1362,14 +1390,14 @@ export default function Pdv() {
                   onClick={() =>
                     setCashReceived((prev) => String((Number(prev.replace(",", ".")) || 0) + value))
                   }
-                  className="rounded-lg border border-slate-300 bg-white px-3 py-1 text-sm font-medium text-slate-700 transition hover:border-blue-900 hover:text-blue-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-blue-500 dark:hover:text-blue-400"
+                  className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-1 text-sm font-medium text-white/60 transition hover:border-[#5CACFF]/40 hover:text-[#5CACFF]"
                 >
                   +{formatCurrency(value)}
                 </button>
               ))}
               <button
                 onClick={() => setCashReceived(String(total))}
-                className="rounded-lg border border-slate-300 bg-white px-3 py-1 text-sm font-medium text-slate-700 transition hover:border-blue-900 hover:text-blue-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:border-blue-500 dark:hover:text-blue-400"
+                className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-1 text-sm font-medium text-white/60 transition hover:border-[#5CACFF]/40 hover:text-[#5CACFF]"
               >
                 Valor exato
               </button>
@@ -1379,9 +1407,9 @@ export default function Pdv() {
               onChange={(e) => setCashReceived(e.target.value)}
               placeholder="Valor recebido (R$)"
               inputMode="decimal"
-              className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+              className="w-full rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2 text-sm text-[#F5F3EF] placeholder:text-white/25"
             />
-            <p className={`text-sm font-semibold tabular-nums ${troco < 0 ? "text-red-600" : "text-green-600"}`}>
+            <p className={`text-sm font-semibold tabular-nums ${troco < 0 ? "text-[#FF5C68]" : "text-[#34E88C]"}`}>
               Troco: {formatCurrency(Math.max(0, troco))}
               {troco < 0 && " (falta " + formatCurrency(-troco) + ")"}
             </p>
@@ -1389,7 +1417,7 @@ export default function Pdv() {
         )}
 
         {(paymentMethod === "fiado" || (splitMode && splitHasFiado)) && (
-          <div className="mt-4 space-y-2.5 rounded-xl border border-slate-200 p-3.5 dark:border-slate-700">
+          <div className="mt-4 space-y-2.5 rounded-xl border border-white/10 p-3.5">
             <div className="relative">
               <input
                 ref={creditSearchRef}
@@ -1404,19 +1432,19 @@ export default function Pdv() {
                 }}
                 placeholder="Buscar cliente já cadastrado no crediário"
                 autoComplete="off"
-                className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                className="w-full rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2 text-sm text-[#F5F3EF] placeholder:text-white/25"
               />
               {creditMatches.length > 0 && (
-                <div className="absolute z-10 mt-1 w-full overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg dark:border-slate-800 dark:bg-slate-900">
+                <div className="absolute z-10 mt-1 w-full overflow-hidden rounded-lg border border-white/10 bg-[#141414] shadow-2xl shadow-black/50">
                   {creditMatches.map((c) => (
                     <button
                       key={c.id}
                       type="button"
                       onClick={() => selectCreditCustomer(c)}
-                      className="flex w-full items-center justify-between px-3 py-2 text-left text-sm hover:bg-slate-50 dark:hover:bg-slate-800"
+                      className="flex w-full items-center justify-between px-3 py-2 text-left text-sm hover:bg-white/[0.06]"
                     >
-                      <span className="text-slate-900 dark:text-slate-50">{c.name}</span>
-                      <span className="text-slate-500 dark:text-slate-400">{c.phone}</span>
+                      <span className="text-[#F5F3EF]">{c.name}</span>
+                      <span className="text-white/40">{c.phone}</span>
                     </button>
                   ))}
                 </div>
@@ -1424,26 +1452,26 @@ export default function Pdv() {
             </div>
 
             {creditCustomerId ? (
-              <p className="flex items-center gap-1.5 rounded-lg bg-green-50 px-3 py-2 text-sm text-green-800 dark:bg-green-900/30 dark:text-green-300">
+              <p className="flex items-center gap-1.5 rounded-lg bg-[#34E88C]/10 px-3 py-2 text-sm text-[#34E88C]">
                 <IconCheck className="h-4 w-4 shrink-0" />
                 Cliente encontrado: {customerName} · {customerPhone}
               </p>
             ) : (
               <>
-                <p className="text-xs text-slate-500 dark:text-slate-400">
+                <p className="text-xs text-white/40">
                   Cliente novo? Preencha os dados abaixo pra cadastrar.
                 </p>
                 <input
                   value={customerName}
                   onChange={(e) => setCustomerName(e.target.value)}
                   placeholder="Nome do cliente"
-                  className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                  className="w-full rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2 text-sm text-[#F5F3EF] placeholder:text-white/25"
                 />
                 <input
                   value={customerPhone}
                   onChange={(e) => setCustomerPhone(e.target.value)}
                   placeholder="WhatsApp do cliente (obrigatório pra cliente novo)"
-                  className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                  className="w-full rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2 text-sm text-[#F5F3EF] placeholder:text-white/25"
                 />
               </>
             )}
@@ -1451,7 +1479,7 @@ export default function Pdv() {
         )}
 
         {error && (
-          <p className="mt-3 flex items-center gap-1.5 text-sm text-red-600 dark:text-red-400">
+          <p className="mt-3 flex items-center gap-1.5 text-sm text-[#FF5C68]">
             <IconWarning className="h-4 w-4 shrink-0" />
             {error}
           </p>
@@ -1460,10 +1488,11 @@ export default function Pdv() {
         <button
           onClick={handleFinalize}
           disabled={!canFinalize}
-          className="mt-4 w-full rounded-xl bg-blue-900 px-4 py-3.5 text-base font-semibold text-amber-300 shadow-sm transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:brightness-100 dark:bg-blue-800"
+          className="mt-4 w-full rounded-xl bg-[#F0BB5E] px-4 py-3.5 text-base font-bold text-[#241705] shadow-[0_0_30px_rgba(240,187,94,0.25)] transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-30 disabled:shadow-none disabled:hover:brightness-100"
         >
           {saving ? "Registrando…" : "Finalizar venda"}
         </button>
+      </div>
       </div>
     </div>
   );
