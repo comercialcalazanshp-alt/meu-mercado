@@ -366,7 +366,7 @@ export default function Caixa() {
                 value={movementDescription}
                 onChange={(e) => setMovementDescription(e.target.value)}
                 placeholder="Motivo (opcional)"
-                className="min-w-0 flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+                className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50 sm:min-w-0 sm:flex-1"
               />
               <button
                 type="submit"
