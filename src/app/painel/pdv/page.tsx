@@ -4,6 +4,18 @@ import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEven
 import { getSupabase } from "@/lib/supabase";
 import { useStore } from "@/lib/store-context";
 import { buildReceiptHtml, printHtml } from "@/lib/receipt";
+import {
+  cacheProducts,
+  getCachedProducts,
+  cacheKits,
+  getCachedKits,
+  queueSale,
+  getPendingSales,
+  removePendingSale,
+  markPendingSaleFailed,
+  isOfflineCapable,
+  type PendingSale,
+} from "@/lib/pdv-offline";
 
 type Product = {
   id: string;
@@ -303,6 +315,7 @@ export default function Pdv() {
     items: CartLine[];
     method: PaymentMethod | "dividido";
     split: { method: PaymentMethod; amount: number }[] | null;
+    offline: boolean;
   } | null>(null);
 
   const [quickAddOpen, setQuickAddOpen] = useState(false);
@@ -329,16 +342,32 @@ export default function Pdv() {
   const [discountType, setDiscountType] = useState<"valor" | "percentual">("valor");
   const [discountValue, setDiscountValue] = useState("");
 
+  // Suporte a venda sem internet: se a conexão cair, o PDV continua
+  // funcionando com o catálogo salvo localmente (IndexedDB) e guarda as
+  // vendas numa fila pra sincronizar assim que a conexão voltar.
+  const [isOnline, setIsOnline] = useState(true);
+  const [pendingSaleCount, setPendingSaleCount] = useState(0);
+  const [syncing, setSyncing] = useState(false);
+  const offlineCapable = isOfflineCapable();
+
   async function loadProducts() {
     setLoadingProducts(true);
-    const { data } = await getSupabase()
+    const { data, error: fetchError } = await getSupabase()
       .from("products")
       .select(
         "id, name, price, stock, barcode, sold_by_weight, promo_buy_qty, promo_pay_qty, price_wholesale, wholesale_min_qty, price_fiado, on_offer, offer_price, offer_ends_at",
       )
       .eq("store_id", store.id)
       .order("name", { ascending: true });
-    setProducts(data ?? []);
+    if (data) {
+      setProducts(data);
+      if (offlineCapable) cacheProducts(store.id, data).catch(() => {});
+    } else if (offlineCapable) {
+      const cached = await getCachedProducts(store.id).catch(() => []);
+      setProducts(cached as Product[]);
+    } else if (fetchError) {
+      setProducts([]);
+    }
     setLoadingProducts(false);
   }
 
@@ -348,18 +377,24 @@ export default function Pdv() {
       .select("id, name, price, active, kit_items(quantity, products(stock))")
       .eq("store_id", store.id)
       .eq("active", true);
-    const options: KitOption[] = (
-      (data as unknown as { id: string; name: string; price: number; kit_items: { quantity: number; products: { stock: number } | null }[] }[]) ?? []
-    ).map((k) => ({
-      id: k.id,
-      name: k.name,
-      price: k.price,
-      buildable:
-        k.kit_items.length === 0
-          ? 0
-          : Math.min(...k.kit_items.map((i) => Math.floor((i.products?.stock ?? 0) / (i.quantity || 1)))),
-    }));
-    setKits(options);
+    if (data) {
+      const options: KitOption[] = (
+        (data as unknown as { id: string; name: string; price: number; kit_items: { quantity: number; products: { stock: number } | null }[] }[]) ?? []
+      ).map((k) => ({
+        id: k.id,
+        name: k.name,
+        price: k.price,
+        buildable:
+          k.kit_items.length === 0
+            ? 0
+            : Math.min(...k.kit_items.map((i) => Math.floor((i.products?.stock ?? 0) / (i.quantity || 1)))),
+      }));
+      setKits(options);
+      if (offlineCapable) cacheKits(store.id, options).catch(() => {});
+    } else if (offlineCapable) {
+      const cached = await getCachedKits(store.id).catch(() => []);
+      setKits(cached as KitOption[]);
+    }
   }
 
   async function loadRecentSales() {
@@ -375,14 +410,26 @@ export default function Pdv() {
     setRecentSales(data ?? []);
   }
 
+  const caixaStatusKey = `mm_pdv_caixa_${store.id}`;
+
   async function loadCaixaStatus() {
-    const { data } = await getSupabase()
+    const { data, error: fetchError } = await getSupabase()
       .from("cash_sessions")
       .select("id")
       .eq("store_id", store.id)
       .eq("status", "aberto")
       .maybeSingle();
+    if (fetchError && !data) {
+      // Sem conexão: usa o último status conhecido (salvo localmente da
+      // última vez que consultamos com internet) em vez de travar o PDV.
+      const cached = localStorage.getItem(caixaStatusKey);
+      if (cached !== null) {
+        setCaixaAberto(cached === "1");
+        return;
+      }
+    }
     setCaixaAberto(!!data);
+    localStorage.setItem(caixaStatusKey, data ? "1" : "0");
   }
 
   useEffect(() => {
@@ -393,6 +440,75 @@ export default function Pdv() {
     getSupabase()
       .auth.getSession()
       .then(({ data }) => setSellerEmail(data.session?.user.email ?? null));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [store.id]);
+
+  async function refreshPendingSaleCount() {
+    if (!offlineCapable) return;
+    const pending = await getPendingSales(store.id).catch(() => []);
+    setPendingSaleCount(pending.length);
+  }
+
+  // Reenvia pro servidor cada venda que ficou guardada localmente enquanto
+  // estava sem internet. p_allow_negative_stock: true porque a venda já
+  // aconteceu de verdade no balcão — não faz sentido rejeitar por estoque
+  // agora, só avisar o dono se sobrou diferença.
+  async function syncPendingSales() {
+    if (!offlineCapable || syncing) return;
+    const pending = await getPendingSales(store.id).catch(() => [] as PendingSale[]);
+    if (pending.length === 0) {
+      setPendingSaleCount(0);
+      return;
+    }
+    setSyncing(true);
+    let conflicts = 0;
+    let stillPending = 0;
+    for (const sale of pending) {
+      try {
+        const { data, error: rpcError } = await getSupabase().rpc("pdv_sale", {
+          ...sale.payload,
+          p_allow_negative_stock: true,
+        });
+        if (rpcError || !data || data.length === 0) {
+          await markPendingSaleFailed(sale.localId, rpcError?.message ?? "Falha desconhecida");
+          stillPending++;
+          continue;
+        }
+        if (data[0].stock_conflict) conflicts++;
+        await removePendingSale(sale.localId);
+      } catch {
+        stillPending += pending.length - pending.indexOf(sale);
+        break;
+      }
+    }
+    setSyncing(false);
+    setPendingSaleCount(stillPending);
+    if (conflicts > 0) {
+      alert(
+        `${conflicts} venda${conflicts > 1 ? "s" : ""} feita${conflicts > 1 ? "s" : ""} offline sincronizada${conflicts > 1 ? "s" : ""}, mas com estoque negativo — confere o estoque físico desses produtos.`,
+      );
+    }
+    loadProducts();
+    loadRecentSales();
+  }
+
+  useEffect(() => {
+    function goOnline() {
+      setIsOnline(true);
+      syncPendingSales();
+    }
+    function goOffline() {
+      setIsOnline(false);
+    }
+    setIsOnline(navigator.onLine);
+    refreshPendingSaleCount();
+    window.addEventListener("online", goOnline);
+    window.addEventListener("offline", goOffline);
+    if (navigator.onLine) syncPendingSales();
+    return () => {
+      window.removeEventListener("online", goOnline);
+      window.removeEventListener("offline", goOffline);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [store.id]);
 
@@ -777,23 +893,81 @@ export default function Pdv() {
           p_discount_amount: discountAmount,
         };
 
-    const { data, error: rpcError } = await getSupabase().rpc("pdv_sale", payload);
-    setSaving(false);
+    let saleTotal = total;
+    let wentOffline = false;
 
-    if (rpcError || !data || data.length === 0) {
-      setError(rpcError?.message ?? "Não deu pra registrar a venda.");
+    // Sem internet: nem tenta a chamada, guarda direto na fila local pra
+    // não travar o caixa esperando um pedido que nunca vai responder.
+    const shouldTryNetwork = navigator.onLine;
+    let networkFailed = false;
+    let rpcMessage: string | null = null;
+
+    if (shouldTryNetwork) {
+      try {
+        const { data, error: rpcError } = await getSupabase().rpc("pdv_sale", payload);
+        if (rpcError) {
+          // Erro de verdade do banco (ex: "Estoque insuficiente...") sempre
+          // vem com um "code" do Postgres — falha de rede/conexão não tem
+          // esse code, é só um fetch que não completou.
+          const looksNetworkish = !rpcError.code || /fetch|network/i.test(rpcError.message ?? "");
+          if (looksNetworkish) {
+            networkFailed = true;
+          } else {
+            rpcMessage = rpcError.message;
+          }
+        } else if (!data || data.length === 0) {
+          rpcMessage = "Não deu pra registrar a venda.";
+        } else {
+          saleTotal = data[0].total;
+        }
+      } catch {
+        networkFailed = true;
+      }
+    } else {
+      networkFailed = true;
+    }
+
+    if (rpcMessage) {
+      setSaving(false);
+      setError(rpcMessage);
       return;
     }
 
-    const sale = data[0];
+    if (networkFailed) {
+      if (!offlineCapable) {
+        setSaving(false);
+        setError("Sem internet e esse navegador não guarda vendas offline. Tenta de novo quando a conexão voltar.");
+        return;
+      }
+      await queueSale(store.id, payload, cart);
+      wentOffline = true;
+      setPendingSaleCount((n) => n + 1);
+      // Desconta o estoque só localmente pros próximos itens da sessão
+      // offline não venderem além do que realmente existe — o valor de
+      // verdade é recalculado no servidor quando sincronizar.
+      setProducts((prev) => {
+        const next = prev.map((p) => ({ ...p }));
+        for (const line of cart) {
+          if (line.isKit) continue;
+          const p = next.find((x) => x.id === line.productId);
+          if (p) p.stock = Math.max(0, p.stock - line.quantity);
+        }
+        if (offlineCapable) cacheProducts(store.id, next).catch(() => {});
+        return next;
+      });
+    }
+
+    setSaving(false);
+
     setSuccess({
-      total: sale.total,
+      total: saleTotal,
       subtotal,
       discountAmount,
-      troco: !splitMode && paymentMethod === "dinheiro" ? cashReceivedValue - sale.total : null,
+      troco: !splitMode && paymentMethod === "dinheiro" ? cashReceivedValue - saleTotal : null,
       items: cart,
       method: splitMode ? "dividido" : (paymentMethod as PaymentMethod),
       split: splitMode ? splitPayments.map((p, i) => ({ method: p.method, amount: splitAmounts[i] })) : null,
+      offline: wentOffline,
     });
     setLastSale(cart);
     setCart([]);
@@ -811,9 +985,11 @@ export default function Pdv() {
         { method: "fiado", amount: "" },
       ]);
     }
-    loadProducts();
-    loadKits();
-    loadRecentSales();
+    if (!wentOffline) {
+      loadProducts();
+      loadKits();
+      loadRecentSales();
+    }
     focusSearch();
   }
 
@@ -949,6 +1125,22 @@ export default function Pdv() {
             <a href="/painel/caixa" className="font-semibold underline underline-offset-2">
               Abrir caixa
             </a>
+          </p>
+        )}
+
+        {!isOnline && (
+          <p className="mt-3 flex items-center gap-2 rounded-xl border border-[#FF5C68]/25 bg-[#FF5C68]/10 px-3 py-2.5 text-sm text-[#FF5C68]">
+            <IconWarning className="h-4 w-4 shrink-0" />
+            Sem internet — o PDV continua vendendo normal e guarda tudo pra sincronizar quando a conexão voltar.
+          </p>
+        )}
+
+        {isOnline && pendingSaleCount > 0 && (
+          <p className="mt-3 flex items-center gap-2 rounded-xl border border-[#5CACFF]/25 bg-[#5CACFF]/10 px-3 py-2.5 text-sm text-[#5CACFF]">
+            <IconWarning className="h-4 w-4 shrink-0" />
+            {syncing
+              ? "Sincronizando vendas feitas sem internet…"
+              : `${pendingSaleCount} venda${pendingSaleCount > 1 ? "s" : ""} ainda não sincronizada${pendingSaleCount > 1 ? "s" : ""}.`}
           </p>
         )}
 
@@ -1207,11 +1399,20 @@ export default function Pdv() {
 
       <div className="h-fit rounded-2xl border border-white/[0.09] bg-white/[0.035] p-5 backdrop-blur-xl">
         {success && (
-          <div className="mb-4 rounded-xl border border-[#34E88C]/25 bg-[#34E88C]/10 p-3.5 text-sm text-[#34E88C]">
+          <div
+            className={`mb-4 rounded-xl border p-3.5 text-sm ${
+              success.offline
+                ? "border-[#F0BB5E]/25 bg-[#F0BB5E]/10 text-[#F0BB5E]"
+                : "border-[#34E88C]/25 bg-[#34E88C]/10 text-[#34E88C]"
+            }`}
+          >
             <p className="flex items-center gap-1.5 font-semibold">
               <IconCheck className="h-4 w-4" />
-              Venda registrada! {formatCurrency(success.total)}
+              {success.offline ? "Venda guardada (sem internet)!" : "Venda registrada!"} {formatCurrency(success.total)}
             </p>
+            {success.offline && (
+              <p className="mt-0.5 pl-6">Vai sincronizar sozinha assim que a internet voltar.</p>
+            )}
             {success.troco !== null && (
               <p className="mt-0.5 pl-6">Troco: {formatCurrency(Math.max(0, success.troco))}</p>
             )}
