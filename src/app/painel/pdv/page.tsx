@@ -906,14 +906,16 @@ export default function Pdv() {
       try {
         const { data, error: rpcError } = await getSupabase().rpc("pdv_sale", payload);
         if (rpcError) {
-          // Erro de verdade do banco (ex: "Estoque insuficiente...") sempre
-          // vem com um "code" do Postgres — falha de rede/conexão não tem
-          // esse code, é só um fetch que não completou.
-          const looksNetworkish = !rpcError.code || /fetch|network/i.test(rpcError.message ?? "");
-          if (looksNetworkish) {
-            networkFailed = true;
-          } else {
+          // pdv_sale() só recusa venda com "raise exception" liso, sem
+          // SQLSTATE próprio — isso sempre vira o código P0001 no Postgres.
+          // Qualquer OUTRA coisa (rede caiu, sessão expirou depois de
+          // horas offline, erro 500 inesperado) não é isso — mais seguro
+          // tratar como "sem internet" e guardar na fila pra tentar de
+          // novo depois do que arriscar mostrar erro e perder a venda.
+          if (rpcError.code === "P0001") {
             rpcMessage = rpcError.message;
+          } else {
+            networkFailed = true;
           }
         } else if (!data || data.length === 0) {
           rpcMessage = "Não deu pra registrar a venda.";
