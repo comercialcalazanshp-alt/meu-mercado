@@ -48,6 +48,35 @@ function playNewOrderChime() {
 
 const CAIXA_ALLOWED_PATHS = new Set(["/painel/pdv", "/painel/caixa"]);
 const ENTREGADOR_ALLOWED_PATHS = new Set(["/painel/entregas"]);
+// Módulos operacionais (venda, estoque, atendimento) não fazem sentido no
+// painel do Hub — cada afiliado tem o dele, próprio, gerando os dados dele.
+// O Hub só orquestra o marketplace (Início, Dashboard, Afiliados etc).
+const HUB_HIDDEN_PATHS = new Set([
+  "/painel/pdv",
+  "/painel/caixa",
+  "/painel/produtos",
+  "/painel/kits",
+  "/painel/assinaturas",
+  "/painel/receitas",
+  "/painel/banners",
+  "/painel/ofertas",
+  "/painel/raspadinha",
+  "/painel/cupons",
+  "/painel/cashback",
+  "/painel/mensagens",
+  "/painel/cartaz",
+  "/painel/avaliacoes",
+  "/painel/reclamacoes",
+  "/painel/bairros",
+  "/painel/clientes",
+  "/painel/fiado",
+  "/painel/campanhas",
+  "/painel/pedidos",
+  "/painel/entregas",
+  "/painel/catalogo",
+  "/painel/relatorios",
+  "/painel/trafego",
+]);
 
 const NAV_ITEMS = [
   { href: "/painel", label: "Início" },
@@ -200,6 +229,8 @@ export default function PainelLayout({ children }: { children: ReactNode }) {
       router.replace("/painel/pdv");
     } else if (role === "entregador" && !ENTREGADOR_ALLOWED_PATHS.has(pathname)) {
       router.replace("/painel/entregas");
+    } else if (role === "completo" && isHub && HUB_HIDDEN_PATHS.has(pathname)) {
+      router.replace("/painel");
     } else if (
       role === "completo" &&
       !isHub &&
@@ -487,19 +518,15 @@ export default function PainelLayout({ children }: { children: ReactNode }) {
             ? NAV_ITEMS.filter((item) => CAIXA_ALLOWED_PATHS.has(item.href))
             : role === "entregador"
               ? NAV_ITEMS.filter((item) => ENTREGADOR_ALLOWED_PATHS.has(item.href))
-              : // Hub deixou de esconder os módulos operacionais (PDV, Produtos,
-                // Pedidos etc.) — uma loja pode ser Hub E vender direto ao mesmo
-                // tempo (não é só orquestrar afiliado). Dono continua vendo tudo,
-                // com as ferramentas de Hub (Afiliados/Finanças/Moderação/
-                // Reputação) só aparecendo quando a loja de fato é um Hub.
-                NAV_ITEMS.filter(
-                  (item) =>
-                    isHub ||
-                    (item.href !== "/painel/afiliados" &&
+              : isHub
+                ? NAV_ITEMS.filter((item) => !HUB_HIDDEN_PATHS.has(item.href))
+                : NAV_ITEMS.filter(
+                    (item) =>
+                      item.href !== "/painel/afiliados" &&
                       item.href !== "/painel/financas" &&
                       item.href !== "/painel/moderacao" &&
-                      item.href !== "/painel/reputacao"),
-                )
+                      item.href !== "/painel/reputacao",
+                  )
           )
             .filter((item) => item.href !== "/painel/parceria" || isAffiliate)
             .map((item) => {
