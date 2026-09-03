@@ -242,6 +242,11 @@ export default function PainelLayout({ children }: { children: ReactNode }) {
       router.replace("/painel");
     } else if (role === "completo" && !isAffiliate && pathname === "/painel/parceria") {
       router.replace("/painel");
+    } else if (role === "completo" && !isHub && pathname === "/painel") {
+      // "Início" é a visão do marketplace (soma comissão de cada afiliado) —
+      // só faz sentido pra quem é Hub de verdade. Loja comum (ou afiliada)
+      // já tem o Dashboard pra isso, cai direto nele.
+      router.replace("/painel/dashboard");
     }
   }, [status, role, isHub, isAffiliate, pathname, router]);
 
@@ -522,6 +527,7 @@ export default function PainelLayout({ children }: { children: ReactNode }) {
                 ? NAV_ITEMS.filter((item) => !HUB_HIDDEN_PATHS.has(item.href))
                 : NAV_ITEMS.filter(
                     (item) =>
+                      item.href !== "/painel" &&
                       item.href !== "/painel/afiliados" &&
                       item.href !== "/painel/financas" &&
                       item.href !== "/painel/moderacao" &&
