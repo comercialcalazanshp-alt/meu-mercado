@@ -457,14 +457,27 @@ export default function Produtos() {
 
   async function loadProducts() {
     setLoading(true);
-    const { data } = await getSupabase()
-      .from("products")
-      .select(
-        "id, name, category, price, cost_price, image_url, stock, active, blocked_by_hub, promo_buy_qty, promo_pay_qty, barcode, price_fiado, price_wholesale, wholesale_min_qty, stock_alert_threshold, expiry_date, supplier, on_offer, offer_price, offer_ends_at, sold_by_weight, created_at",
-      )
-      .eq("store_id", store.id)
-      .order("created_at", { ascending: false });
-    setProducts(data ?? []);
+    // O Supabase só devolve até 1000 linhas por consulta, mesmo sem pedir
+    // limite nenhum — sem paginar, loja com catálogo grande (ex: planilha
+    // importada) perdia os produtos depois do milésimo, sem nenhum aviso.
+    const PAGE_SIZE = 1000;
+    const all: typeof products = [];
+    let from = 0;
+    while (true) {
+      const { data } = await getSupabase()
+        .from("products")
+        .select(
+          "id, name, category, price, cost_price, image_url, stock, active, blocked_by_hub, promo_buy_qty, promo_pay_qty, barcode, price_fiado, price_wholesale, wholesale_min_qty, stock_alert_threshold, expiry_date, supplier, on_offer, offer_price, offer_ends_at, sold_by_weight, created_at",
+        )
+        .eq("store_id", store.id)
+        .order("created_at", { ascending: false })
+        .range(from, from + PAGE_SIZE - 1);
+      if (!data || data.length === 0) break;
+      all.push(...data);
+      if (data.length < PAGE_SIZE) break;
+      from += PAGE_SIZE;
+    }
+    setProducts(all);
     setLoading(false);
   }
 

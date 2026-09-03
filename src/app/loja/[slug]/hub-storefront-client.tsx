@@ -388,16 +388,34 @@ export default function HubStorefrontClient({ hubStore, modules }: { hubStore: S
     if (catalogs[storeId]?.loaded || catalogs[storeId]?.loading) return;
 
     const supabase = getSupabase();
+    // Supabase só devolve até 1000 linhas por consulta — sem paginar, loja
+    // com catálogo grande sumia com produto na vitrine do Hub.
+    async function fetchAllProducts(): Promise<{ data: Product[]; error: unknown }> {
+      const PAGE_SIZE = 1000;
+      const all: Product[] = [];
+      let from = 0;
+      while (true) {
+        const { data, error } = await supabase
+          .from("products")
+          .select(
+            "id, name, category, price, image_url, stock, promo_buy_qty, promo_pay_qty, price_wholesale, wholesale_min_qty, on_offer, offer_price, offer_ends_at, created_at, barcode",
+          )
+          .eq("store_id", storeId)
+          .eq("active", true)
+          .order("category", { ascending: true })
+          .order("name", { ascending: true })
+          .range(from, from + PAGE_SIZE - 1);
+        if (error) return { data: all, error };
+        if (!data || data.length === 0) break;
+        all.push(...(data as Product[]));
+        if (data.length < PAGE_SIZE) break;
+        from += PAGE_SIZE;
+      }
+      return { data: all, error: null };
+    }
+
     const [{ data: products, error: productsError }, { data: neighborhoods }, { data: storeSettings }] = await Promise.all([
-      supabase
-        .from("products")
-        .select(
-          "id, name, category, price, image_url, stock, promo_buy_qty, promo_pay_qty, price_wholesale, wholesale_min_qty, on_offer, offer_price, offer_ends_at, created_at, barcode",
-        )
-        .eq("store_id", storeId)
-        .eq("active", true)
-        .order("category", { ascending: true })
-        .order("name", { ascending: true }),
+      fetchAllProducts(),
       supabase
         .from("neighborhoods")
         .select("id, name, fee, eta_min_minutes, eta_max_minutes")

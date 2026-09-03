@@ -70,16 +70,38 @@ export default async function Loja({ params }: { params: Promise<{ slug: string 
     { data: recipeRows },
   ] = await Promise.all([
     supabase.rpc("get_hub_modules", { p_hub_store_id: store.id }),
-    (() => {
-      let query = supabase
-        .from("products")
-        .select(
-          "id, name, category, price, image_url, stock, promo_buy_qty, promo_pay_qty, price_wholesale, wholesale_min_qty, on_offer, offer_price, offer_ends_at, created_at, barcode",
-        )
-        .eq("store_id", store.id)
-        .eq("active", true);
-      if (store.hide_out_of_stock) query = query.gt("stock", 0);
-      return query.order("category", { ascending: true }).order("name", { ascending: true });
+    (async () => {
+      // Supabase só devolve até 1000 linhas por consulta — sem paginar, loja
+      // com catálogo grande (ex: planilha importada) sumia com produto na
+      // vitrine pro cliente comprar.
+      const PAGE_SIZE = 1000;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const all: any[] = [];
+      let from = 0;
+      let lastError: unknown = null;
+      while (true) {
+        let query = supabase
+          .from("products")
+          .select(
+            "id, name, category, price, image_url, stock, promo_buy_qty, promo_pay_qty, price_wholesale, wholesale_min_qty, on_offer, offer_price, offer_ends_at, created_at, barcode",
+          )
+          .eq("store_id", store.id)
+          .eq("active", true);
+        if (store.hide_out_of_stock) query = query.gt("stock", 0);
+        const { data, error } = await query
+          .order("category", { ascending: true })
+          .order("name", { ascending: true })
+          .range(from, from + PAGE_SIZE - 1);
+        if (error) {
+          lastError = error;
+          break;
+        }
+        if (!data || data.length === 0) break;
+        all.push(...data);
+        if (data.length < PAGE_SIZE) break;
+        from += PAGE_SIZE;
+      }
+      return { data: all, error: lastError };
     })(),
     supabase
       .from("banners")

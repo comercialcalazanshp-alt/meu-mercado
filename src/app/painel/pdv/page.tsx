@@ -352,20 +352,39 @@ export default function Pdv() {
 
   async function loadProducts() {
     setLoadingProducts(true);
-    const { data, error: fetchError } = await getSupabase()
-      .from("products")
-      .select(
-        "id, name, price, stock, barcode, sold_by_weight, promo_buy_qty, promo_pay_qty, price_wholesale, wholesale_min_qty, price_fiado, on_offer, offer_price, offer_ends_at",
-      )
-      .eq("store_id", store.id)
-      .order("name", { ascending: true });
-    if (data) {
-      setProducts(data);
-      if (offlineCapable) cacheProducts(store.id, data).catch(() => {});
+    // Supabase só devolve até 1000 linhas por consulta por padrão — sem
+    // paginar, loja com catálogo grande não encontrava produto nenhum
+    // depois do milésimo na busca do PDV (bem mais grave que só a lista
+    // não mostrar: o caixa não conseguia vender o produto).
+    const PAGE_SIZE = 1000;
+    const all: Product[] = [];
+    let from = 0;
+    let fetchFailed = false;
+    while (true) {
+      const { data, error: fetchError } = await getSupabase()
+        .from("products")
+        .select(
+          "id, name, price, stock, barcode, sold_by_weight, promo_buy_qty, promo_pay_qty, price_wholesale, wholesale_min_qty, price_fiado, on_offer, offer_price, offer_ends_at",
+        )
+        .eq("store_id", store.id)
+        .order("name", { ascending: true })
+        .range(from, from + PAGE_SIZE - 1);
+      if (fetchError && from === 0) {
+        fetchFailed = true;
+        break;
+      }
+      if (!data || data.length === 0) break;
+      all.push(...data);
+      if (data.length < PAGE_SIZE) break;
+      from += PAGE_SIZE;
+    }
+    if (!fetchFailed) {
+      setProducts(all);
+      if (offlineCapable) cacheProducts(store.id, all).catch(() => {});
     } else if (offlineCapable) {
       const cached = await getCachedProducts(store.id).catch(() => []);
       setProducts(cached as Product[]);
-    } else if (fetchError) {
+    } else {
       setProducts([]);
     }
     setLoadingProducts(false);
