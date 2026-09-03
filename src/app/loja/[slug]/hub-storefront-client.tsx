@@ -406,15 +406,17 @@ export default function HubStorefrontClient({ hubStore, modules }: { hubStore: S
         .order("name", { ascending: true }),
       supabase
         .from("stores")
-        .select("min_order_for_delivery_enabled, min_order_for_delivery, free_delivery_threshold_enabled, free_delivery_threshold")
+        .select("min_order_for_delivery_enabled, min_order_for_delivery, free_delivery_threshold_enabled, free_delivery_threshold, hide_out_of_stock")
         .eq("id", storeId)
         .maybeSingle(),
     ]);
 
+    const visibleProducts = storeSettings?.hide_out_of_stock ? (products ?? []).filter((p) => p.stock > 0) : (products ?? []);
+
     setCatalogs((prev) => ({
       ...prev,
       [storeId]: {
-        products: products ?? [],
+        products: visibleProducts,
         neighborhoods: neighborhoods ?? [],
         loading: false,
         loaded: true,

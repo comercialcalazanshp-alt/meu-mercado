@@ -54,6 +54,10 @@ export default function Configuracoes() {
   const [savingHours, setSavingHours] = useState(false);
   const [hoursSaved, setHoursSaved] = useState(false);
 
+  const [hideOutOfStock, setHideOutOfStock] = useState(false);
+  const [savingHideOutOfStock, setSavingHideOutOfStock] = useState(false);
+  const [hideOutOfStockSaved, setHideOutOfStockSaved] = useState(false);
+
   const [cashbackPercent, setCashbackPercent] = useState("");
   const [referralBonus, setReferralBonus] = useState("");
   const [silverThreshold, setSilverThreshold] = useState("");
@@ -100,7 +104,7 @@ export default function Configuracoes() {
     getSupabase()
       .from("stores")
       .select(
-        "business_hours_enabled, opens_at, closes_at, open_days, manually_closed, accountant_token, brand_color, accent_color, cashback_percent, referral_bonus, loyalty_silver_threshold, loyalty_gold_threshold, credit_interest_percent, sales_goal, alert_low_stock_enabled, alert_stalled_order_enabled, alert_delivery_delay_enabled, alert_goal_reached_enabled, weekly_summary_enabled, complaint_notification_enabled, card_installment_interest_enabled, card_installment_interest_percent, fee_pix_percent, fee_card_percent, fee_boleto_fixed, bad_review_notification_enabled",
+        "business_hours_enabled, opens_at, closes_at, open_days, manually_closed, hide_out_of_stock, accountant_token, brand_color, accent_color, cashback_percent, referral_bonus, loyalty_silver_threshold, loyalty_gold_threshold, credit_interest_percent, sales_goal, alert_low_stock_enabled, alert_stalled_order_enabled, alert_delivery_delay_enabled, alert_goal_reached_enabled, weekly_summary_enabled, complaint_notification_enabled, card_installment_interest_enabled, card_installment_interest_percent, fee_pix_percent, fee_card_percent, fee_boleto_fixed, bad_review_notification_enabled",
       )
       .eq("id", store.id)
       .single()
@@ -111,6 +115,7 @@ export default function Configuracoes() {
         if (data.closes_at) setClosesAt(data.closes_at.slice(0, 5));
         if (data.open_days) setOpenDays(data.open_days);
         setManuallyClosed(data.manually_closed);
+        setHideOutOfStock(data.hide_out_of_stock);
         setAccountantToken(data.accountant_token);
         if (data.brand_color) setBrandColor(data.brand_color);
         if (data.accent_color) setAccentColor(data.accent_color);
@@ -238,6 +243,21 @@ export default function Configuracoes() {
     if (!updateError) {
       setHoursSaved(true);
       setTimeout(() => setHoursSaved(false), 2500);
+    }
+  }
+
+  async function handleSaveHideOutOfStock(e: FormEvent) {
+    e.preventDefault();
+    setSavingHideOutOfStock(true);
+    setHideOutOfStockSaved(false);
+    const { error: updateError } = await getSupabase()
+      .from("stores")
+      .update({ hide_out_of_stock: hideOutOfStock })
+      .eq("id", store.id);
+    setSavingHideOutOfStock(false);
+    if (!updateError) {
+      setHideOutOfStockSaved(true);
+      setTimeout(() => setHideOutOfStockSaved(false), 2500);
     }
   }
 
@@ -600,6 +620,31 @@ export default function Configuracoes() {
             {savingHours ? "Salvando…" : "Salvar horário"}
           </button>
           {hoursSaved && <span className="text-sm text-green-600">Salvo!</span>}
+        </div>
+      </form>
+
+      <form
+        onSubmit={handleSaveHideOutOfStock}
+        className="mt-4 rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900"
+      >
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Catálogo</h2>
+        <label className="mt-3 flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300">
+          <input
+            type="checkbox"
+            checked={hideOutOfStock}
+            onChange={(e) => setHideOutOfStock(e.target.checked)}
+          />
+          Esconder da vitrine produto sem estoque (em vez de mostrar &quot;esgotado&quot;)
+        </label>
+        <div className="mt-3 flex items-center gap-2">
+          <button
+            type="submit"
+            disabled={savingHideOutOfStock}
+            className="rounded-lg bg-blue-900 px-4 py-2 text-sm font-semibold text-amber-300 disabled:opacity-60 dark:bg-blue-800"
+          >
+            {savingHideOutOfStock ? "Salvando…" : "Salvar"}
+          </button>
+          {hideOutOfStockSaved && <span className="text-sm text-green-600">Salvo!</span>}
         </div>
       </form>
 

@@ -51,7 +51,7 @@ export default async function Loja({ params }: { params: Promise<{ slug: string 
   const { data: store } = await supabase
     .from("stores")
     .select(
-      "id, slug, name, whatsapp, cashback_percent, business_hours_enabled, opens_at, closes_at, open_days, manually_closed, scratch_enabled, brand_color, accent_color, min_order_for_delivery_enabled, min_order_for_delivery, card_installment_interest_enabled, card_installment_interest_percent, free_delivery_threshold_enabled, free_delivery_threshold",
+      "id, slug, name, whatsapp, cashback_percent, business_hours_enabled, opens_at, closes_at, open_days, manually_closed, scratch_enabled, brand_color, accent_color, min_order_for_delivery_enabled, min_order_for_delivery, card_installment_interest_enabled, card_installment_interest_percent, free_delivery_threshold_enabled, free_delivery_threshold, hide_out_of_stock",
     )
     .eq("slug", slug)
     .eq("active", true)
@@ -70,15 +70,17 @@ export default async function Loja({ params }: { params: Promise<{ slug: string 
     { data: recipeRows },
   ] = await Promise.all([
     supabase.rpc("get_hub_modules", { p_hub_store_id: store.id }),
-    supabase
-      .from("products")
-      .select(
-        "id, name, category, price, image_url, stock, promo_buy_qty, promo_pay_qty, price_wholesale, wholesale_min_qty, on_offer, offer_price, offer_ends_at, created_at, barcode",
-      )
-      .eq("store_id", store.id)
-      .eq("active", true)
-      .order("category", { ascending: true })
-      .order("name", { ascending: true }),
+    (() => {
+      let query = supabase
+        .from("products")
+        .select(
+          "id, name, category, price, image_url, stock, promo_buy_qty, promo_pay_qty, price_wholesale, wholesale_min_qty, on_offer, offer_price, offer_ends_at, created_at, barcode",
+        )
+        .eq("store_id", store.id)
+        .eq("active", true);
+      if (store.hide_out_of_stock) query = query.gt("stock", 0);
+      return query.order("category", { ascending: true }).order("name", { ascending: true });
+    })(),
     supabase
       .from("banners")
       .select("id, title, image_url, link_url, focal_x, focal_y, text_style, overlay_text")
