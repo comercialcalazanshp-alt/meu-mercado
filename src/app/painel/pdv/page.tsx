@@ -881,7 +881,6 @@ export default function Pdv() {
         Math.abs(splitDiff) < 0.005 &&
         (!splitHasFiado || customerPhone.trim().length > 0)
       : paymentMethod !== null &&
-        !(paymentMethod === "dinheiro" && cashReceivedValue < total) &&
         !(paymentMethod === "fiado" && !customerPhone.trim()));
 
   async function handleFinalize() {
