@@ -297,8 +297,30 @@ export default function Pdv() {
   const [loadingProducts, setLoadingProducts] = useState(true);
   const [kits, setKits] = useState<KitOption[]>([]);
   const [search, setSearch] = useState("");
-  const [cart, setCart] = useState<CartLine[]>([]);
+  const cartStorageKey = `pdv-cart-${store.id}`;
+  const [cart, setCart] = useState<CartLine[]>(() => {
+    if (typeof window === "undefined") return [];
+    try {
+      const raw = window.localStorage.getItem(cartStorageKey);
+      return raw ? (JSON.parse(raw) as CartLine[]) : [];
+    } catch {
+      return [];
+    }
+  });
   const searchInputRef = useRef<HTMLInputElement>(null);
+
+  // Salva o carrinho em andamento no navegador — se a página recarregar no
+  // meio de uma venda (queda de conexão, celular travou), os itens
+  // continuam lá em vez de sumir e obrigar a digitar tudo de novo.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      if (cart.length === 0) window.localStorage.removeItem(cartStorageKey);
+      else window.localStorage.setItem(cartStorageKey, JSON.stringify(cart));
+    } catch {
+      // localStorage indisponível (modo privado, etc) — carrinho só fica na memória mesmo.
+    }
+  }, [cart, cartStorageKey]);
 
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod | null>(null);
   const [cashReceived, setCashReceived] = useState("");
