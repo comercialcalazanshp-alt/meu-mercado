@@ -361,7 +361,6 @@ export default function Fiado() {
           <p className="text-sm text-slate-500">Nenhum cliente fiado registrado ainda.</p>
         )}
         {customers.map((customer) => {
-          const concentration = totalOwed > 0 ? (Math.max(0, customer.balance) / totalOwed) * 100 : 0;
           return (
             <div
               key={customer.id}
@@ -403,11 +402,6 @@ export default function Fiado() {
                       )}
                       {revealedIds.has(customer.id) ? formatCurrency(customer.balance) : "R$ ••••"}
                     </button>
-                    {revealedIds.has(customer.id) && concentration >= 30 && customer.balance > 0 && (
-                      <p className="text-xs text-amber-600">
-                        {concentration.toFixed(0)}% do fiado total
-                      </p>
-                    )}
                   </div>
                   <button
                     onClick={() => toggleTransactions(customer.id)}
