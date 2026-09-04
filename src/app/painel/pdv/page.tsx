@@ -1718,12 +1718,29 @@ export default function Pdv() {
                   placeholder="Nome do cliente"
                   className="w-full rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2 text-sm text-[#F5F3EF] placeholder:text-white/25"
                 />
-                <input
-                  value={customerPhone}
-                  onChange={(e) => setCustomerPhone(e.target.value)}
-                  placeholder="WhatsApp do cliente (obrigatório pra cliente novo)"
-                  className="w-full rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2 text-sm text-[#F5F3EF] placeholder:text-white/25"
-                />
+                <div className="flex gap-2">
+                  <input
+                    value={customerPhone}
+                    onChange={(e) => setCustomerPhone(e.target.value)}
+                    placeholder="WhatsApp do cliente (obrigatório pra cliente novo)"
+                    className="w-full rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2 text-sm text-[#F5F3EF] placeholder:text-white/25"
+                  />
+                  <button
+                    type="button"
+                    onClick={() =>
+                      // Cliente de confiança sem celular: gera um número
+                      // fictício ÚNICO (não um fixo repetido), senão todo
+                      // cliente sem telefone viraria "a mesma pessoa" no
+                      // sistema e as dívidas de fiado se misturariam.
+                      setCustomerPhone(
+                        "000" + Math.floor(10000000 + Math.random() * 90000000).toString(),
+                      )
+                    }
+                    className="shrink-0 whitespace-nowrap rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2 text-sm text-white/70 hover:bg-white/[0.08]"
+                  >
+                    Sem telefone
+                  </button>
+                </div>
               </>
             )}
           </div>
