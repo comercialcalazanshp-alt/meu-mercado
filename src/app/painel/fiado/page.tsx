@@ -54,6 +54,17 @@ export default function Fiado() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  // Fica escondido por padrão: se o dono deixa a tela do fiado aberta no
+  // balcão, um cliente vindo pagar não pode ver quanto os outros devem.
+  const [revealedIds, setRevealedIds] = useState<Set<string>>(new Set());
+  function toggleReveal(id: string) {
+    setRevealedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
   const [transactions, setTransactions] = useState<Transaction[]>([]);
 
   const [name, setName] = useState("");
@@ -379,12 +390,20 @@ export default function Fiado() {
                 </div>
                 <div className="flex items-center gap-3">
                   <div className="text-right">
-                    <p
-                      className={`font-semibold ${customer.balance > 0 ? "text-red-600" : "text-green-600"}`}
+                    <button
+                      type="button"
+                      onClick={() => toggleReveal(customer.id)}
+                      className={`inline-flex items-center gap-1.5 font-semibold ${customer.balance > 0 ? "text-red-600" : "text-green-600"}`}
+                      title={revealedIds.has(customer.id) ? "Esconder valor" : "Mostrar valor"}
                     >
-                      {formatCurrency(customer.balance)}
-                    </p>
-                    {concentration >= 30 && customer.balance > 0 && (
+                      {revealedIds.has(customer.id) ? (
+                        <IconEyeOff className="h-4 w-4 shrink-0 opacity-60" />
+                      ) : (
+                        <IconEye className="h-4 w-4 shrink-0 opacity-60" />
+                      )}
+                      {revealedIds.has(customer.id) ? formatCurrency(customer.balance) : "R$ ••••"}
+                    </button>
+                    {revealedIds.has(customer.id) && concentration >= 30 && customer.balance > 0 && (
                       <p className="text-xs text-amber-600">
                         {concentration.toFixed(0)}% do fiado total
                       </p>
@@ -512,5 +531,31 @@ export default function Fiado() {
         })}
       </div>
     </div>
+  );
+}
+
+function IconEye({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={className}>
+      <path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7Z" strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx="12" cy="12" r="3" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function IconEyeOff({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={className}>
+      <path
+        d="M9.9 4.24A10.4 10.4 0 0 1 12 4c7 0 11 7 11 7a17.9 17.9 0 0 1-3.06 3.94M6.3 6.3C3.4 8.1 1 11 1 11s4 7 11 7a10.4 10.4 0 0 0 4.24-.88M1 1l22 22"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M14.12 14.12a3 3 0 1 1-4.24-4.24"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
   );
 }
