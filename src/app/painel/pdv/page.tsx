@@ -322,7 +322,15 @@ export default function Pdv() {
     }
   }, [cart, cartStorageKey]);
 
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod | null>(null);
+  // Assim que a tela abre, o cursor já fica no campo de busca — o caixa
+  // consegue passar o leitor de código de barras direto, sem clicar antes.
+  useEffect(() => {
+    searchInputRef.current?.focus();
+  }, []);
+
+  // Dinheiro é a forma de pagamento mais usada no balcão, então já vem
+  // marcada — o caixa só troca quando for outra coisa.
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod | null>("dinheiro");
   const [cashReceived, setCashReceived] = useState("");
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
@@ -723,7 +731,7 @@ export default function Pdv() {
     if (cart.length === 0) return;
     if (!window.confirm("Cancelar essa venda e limpar o carrinho?")) return;
     setCart([]);
-    setPaymentMethod(null);
+    setPaymentMethod("dinheiro");
     setCashReceived("");
     setCustomerName("");
     setCustomerPhone("");
@@ -1013,7 +1021,7 @@ export default function Pdv() {
     });
     setLastSale(cart);
     setCart([]);
-    setPaymentMethod(null);
+    setPaymentMethod("dinheiro");
     setCashReceived("");
     setCustomerName("");
     setCustomerPhone("");
