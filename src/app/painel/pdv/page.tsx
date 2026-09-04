@@ -723,6 +723,13 @@ export default function Pdv() {
     );
   }
 
+  // Pro item por peso, o caixa digita o valor que apareceu na balança
+  // (em kg) em vez de só clicar +/- de 100 em 100g.
+  function setQuantityDirect(productId: string, value: number) {
+    if (!Number.isFinite(value) || value <= 0) return;
+    setCart((prev) => prev.map((l) => (l.productId === productId ? { ...l, quantity: round3(value) } : l)));
+  }
+
   function removeLine(productId: string) {
     setCart((prev) => prev.filter((l) => l.productId !== productId));
   }
@@ -1392,9 +1399,28 @@ export default function Pdv() {
                   >
                     −
                   </button>
-                  <span className="w-16 text-center text-sm font-semibold tabular-nums text-[#F5F3EF]">
-                    {formatQty(line)}
-                  </span>
+                  {line.soldByWeight ? (
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      defaultValue={line.quantity.toFixed(3)}
+                      key={line.quantity}
+                      onBlur={(e) => {
+                        const parsed = Number(e.target.value.replace(",", "."));
+                        if (Number.isFinite(parsed) && parsed > 0) setQuantityDirect(line.productId, parsed);
+                        else e.target.value = line.quantity.toFixed(3);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") e.currentTarget.blur();
+                      }}
+                      className="w-16 rounded-md border border-transparent bg-transparent text-center text-sm font-semibold tabular-nums text-[#F5F3EF] focus:border-white/20 focus:bg-white/[0.06] focus:outline-none"
+                      aria-label="Peso em kg"
+                    />
+                  ) : (
+                    <span className="w-16 text-center text-sm font-semibold tabular-nums text-[#F5F3EF]">
+                      {formatQty(line)}
+                    </span>
+                  )}
                   <button
                     onClick={() => changeQuantity(line.productId, line.soldByWeight ? 0.1 : 1)}
                     className="flex h-7 w-7 items-center justify-center rounded-md text-lg leading-none text-white/55 transition hover:bg-white/10"
