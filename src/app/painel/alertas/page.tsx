@@ -81,26 +81,52 @@ export default function Alertas() {
       const since30d = new Date();
       since30d.setDate(since30d.getDate() - SOLD_WITHOUT_COST_DAYS);
 
-      const [{ data: productsData }, { data: ordersData }, { data: creditData }] = await Promise.all([
-        supabase
-          .from("products")
-          .select("id, name, price, cost_price, category, stock, stock_alert_threshold, expiry_date")
-          .eq("store_id", store.id)
-          .eq("active", true),
-        supabase
-          .from("orders")
-          .select("id, customer_name, status, created_at, out_for_delivery_at, items")
-          .eq("store_id", store.id)
-          .gte("created_at", since30d.toISOString()),
-        supabase
-          .from("credit_customers")
-          .select("id, name, balance, credit_limit")
-          .eq("store_id", store.id),
+      // O Supabase corta em 1000 linhas por página — uma loja com mais de
+      // 1000 produtos ativos (é o caso aqui) perderia produto sem aviso
+      // nenhum se a busca não paginar até o fim.
+      const PAGE_SIZE = 1000;
+      async function fetchAll<T>(build: (from: number, to: number) => PromiseLike<{ data: T[] | null }>) {
+        const all: T[] = [];
+        let from = 0;
+        while (true) {
+          const { data } = await build(from, from + PAGE_SIZE - 1);
+          if (!data || data.length === 0) break;
+          all.push(...data);
+          if (data.length < PAGE_SIZE) break;
+          from += PAGE_SIZE;
+        }
+        return all;
+      }
+
+      const [productsData, ordersData, creditData] = await Promise.all([
+        fetchAll<Product>((from, to) =>
+          supabase
+            .from("products")
+            .select("id, name, price, cost_price, category, stock, stock_alert_threshold, expiry_date")
+            .eq("store_id", store.id)
+            .eq("active", true)
+            .range(from, to),
+        ),
+        fetchAll<Order>((from, to) =>
+          supabase
+            .from("orders")
+            .select("id, customer_name, status, created_at, out_for_delivery_at, items")
+            .eq("store_id", store.id)
+            .gte("created_at", since30d.toISOString())
+            .range(from, to),
+        ),
+        fetchAll<CreditCustomer>((from, to) =>
+          supabase
+            .from("credit_customers")
+            .select("id, name, balance, credit_limit")
+            .eq("store_id", store.id)
+            .range(from, to),
+        ),
       ]);
 
-      setProducts(productsData ?? []);
-      setOrders(ordersData ?? []);
-      setCreditCustomers(creditData ?? []);
+      setProducts(productsData);
+      setOrders(ordersData);
+      setCreditCustomers(creditData);
       setLoading(false);
     }
     load();
