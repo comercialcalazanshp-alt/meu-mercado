@@ -352,6 +352,7 @@ export default function Pdv() {
   const [quickAddName, setQuickAddName] = useState("");
   const [quickAddBarcode, setQuickAddBarcode] = useState("");
   const [quickAddPrice, setQuickAddPrice] = useState("");
+  const [quickAddCost, setQuickAddCost] = useState("");
   const [quickAddStock, setQuickAddStock] = useState("");
   const [quickAddSoldByWeight, setQuickAddSoldByWeight] = useState(false);
   const [quickAddSaving, setQuickAddSaving] = useState(false);
@@ -815,7 +816,9 @@ export default function Pdv() {
     e.preventDefault();
     const priceValue = Number(quickAddPrice.replace(",", "."));
     const stockValue = Number(quickAddStock) || 0;
+    const costValue = quickAddCost.trim() ? Number(quickAddCost.replace(",", ".")) : null;
     if (!quickAddName.trim() || Number.isNaN(priceValue) || priceValue < 0) return;
+    if (costValue !== null && (Number.isNaN(costValue) || costValue < 0)) return;
 
     setQuickAddSaving(true);
     const { data, error: insertError } = await getSupabase()
@@ -824,12 +827,13 @@ export default function Pdv() {
         store_id: store.id,
         name: quickAddName.trim(),
         price: priceValue,
+        cost_price: costValue,
         stock: stockValue,
         barcode: quickAddBarcode.trim() || null,
         sold_by_weight: quickAddSoldByWeight,
       })
       .select(
-        "id, name, price, stock, barcode, sold_by_weight, promo_buy_qty, promo_pay_qty, price_wholesale, wholesale_min_qty, price_fiado, on_offer, offer_price, offer_ends_at",
+        "id, name, price, cost_price, stock, barcode, sold_by_weight, promo_buy_qty, promo_pay_qty, price_wholesale, wholesale_min_qty, price_fiado, on_offer, offer_price, offer_ends_at",
       )
       .single();
     setQuickAddSaving(false);
@@ -843,6 +847,7 @@ export default function Pdv() {
     setQuickAddName("");
     setQuickAddBarcode("");
     setQuickAddPrice("");
+    setQuickAddCost("");
     setQuickAddStock("");
     setQuickAddSoldByWeight(false);
     addToCart(data, qtyPrefix?.qty);
@@ -1306,6 +1311,13 @@ export default function Pdv() {
                           value={quickAddPrice}
                           onChange={(e) => setQuickAddPrice(e.target.value)}
                           placeholder="Preço (R$)"
+                          inputMode="decimal"
+                          className="w-28 rounded-lg border border-white/10 bg-white/[0.04] px-2.5 py-1.5 text-sm text-[#F5F3EF] placeholder:text-white/25"
+                        />
+                        <input
+                          value={quickAddCost}
+                          onChange={(e) => setQuickAddCost(e.target.value)}
+                          placeholder="Custo (opcional)"
                           inputMode="decimal"
                           className="w-28 rounded-lg border border-white/10 bg-white/[0.04] px-2.5 py-1.5 text-sm text-[#F5F3EF] placeholder:text-white/25"
                         />
