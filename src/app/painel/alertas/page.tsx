@@ -314,10 +314,25 @@ export default function Alertas() {
           Tudo que merece sua atenção agora, num lugar só — recalculado toda vez que você abre essa página.
         </p>
         <p className="mt-1 text-xs text-red-500">
-          DEBUG: {products.length} produtos, {orders.length} pedidos, {creditCustomers.length} clientes fiado —{" "}
-          {orders.reduce((s, o) => s + (o.items?.length ?? 0), 0)} itens vendidos,{" "}
-          {orders.reduce((s, o) => s + (o.items ?? []).filter((i) => i.product_id).length, 0)} com product_id —
-          groups: {groups.map((g) => `${g.key}=${g.items.length}`).join(", ") || "nenhum"}
+          DEBUG: {products.length} produtos, {orders.length} pedidos —
+          groups: {groups.map((g) => `${g.key}=${g.items.length}`).join(", ") || "nenhum"} — inline:{" "}
+          {(() => {
+            const byId = new Map(products.map((p) => [p.id, p]));
+            let notFound = 0;
+            let foundNullCost = 0;
+            let foundWithCost = 0;
+            for (const o of orders) {
+              if (o.status === "cancelado") continue;
+              for (const it of o.items ?? []) {
+                if (!it.product_id) continue;
+                const p = byId.get(it.product_id);
+                if (!p) notFound++;
+                else if (p.cost_price === null) foundNullCost++;
+                else foundWithCost++;
+              }
+            }
+            return `notFound=${notFound} nullCost=${foundNullCost} withCost=${foundWithCost} mapSize=${byId.size}`;
+          })()}
         </p>
       </div>
 
