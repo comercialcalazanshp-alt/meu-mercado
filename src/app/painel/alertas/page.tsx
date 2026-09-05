@@ -85,11 +85,17 @@ export default function Alertas() {
       // 1000 produtos ativos (é o caso aqui) perderia produto sem aviso
       // nenhum se a busca não paginar até o fim.
       const PAGE_SIZE = 1000;
-      async function fetchAll<T>(build: (from: number, to: number) => PromiseLike<{ data: T[] | null }>) {
+      async function fetchAll<T>(
+        build: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>,
+      ) {
         const all: T[] = [];
         let from = 0;
         while (true) {
-          const { data } = await build(from, from + PAGE_SIZE - 1);
+          const { data, error: fetchError } = await build(from, from + PAGE_SIZE - 1);
+          if (fetchError) {
+            console.error("Alertas: falha ao buscar página", from, fetchError.message);
+            break;
+          }
           if (!data || data.length === 0) break;
           all.push(...data);
           if (data.length < PAGE_SIZE) break;
