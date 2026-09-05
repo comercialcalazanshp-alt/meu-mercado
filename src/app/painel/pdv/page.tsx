@@ -1,9 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
+import QRCode from "qrcode";
 import { getSupabase } from "@/lib/supabase";
 import { useStore } from "@/lib/store-context";
 import { buildReceiptHtml, printHtml } from "@/lib/receipt";
+import { buildPixBRCode } from "@/lib/pix-brcode";
 import {
   cacheProducts,
   getCachedProducts,
@@ -335,6 +337,9 @@ export default function Pdv() {
   const [cashReceived, setCashReceived] = useState("");
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
+  const [pixQrImage, setPixQrImage] = useState<string | null>(null);
+  const [pixQrLabel, setPixQrLabel] = useState<string | null>(null);
+  const [pixQrLoading, setPixQrLoading] = useState(false);
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -736,6 +741,15 @@ export default function Pdv() {
     setCart((prev) => prev.filter((l) => l.productId !== productId));
   }
 
+  // Se o carrinho mudar depois do QR gerado, o código impresso ficaria com
+  // o valor antigo — mais seguro derrubar o QR do que arriscar cobrar o
+  // valor errado.
+  useEffect(() => {
+    setPixQrImage(null);
+    setPixQrLabel(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [total]);
+
   function cancelSale() {
     if (cart.length === 0) return;
     if (!window.confirm("Cancelar essa venda e limpar o carrinho?")) return;
@@ -749,7 +763,28 @@ export default function Pdv() {
     setCreditCustomerId(null);
     setDiscountValue("");
     setError(null);
+    setPixQrImage(null);
+    setPixQrLabel(null);
     focusSearch();
+  }
+
+  async function generatePixQr(pixKey: string, label: string) {
+    setPixQrLoading(true);
+    setPixQrLabel(label);
+    try {
+      const brCode = buildPixBRCode({
+        pixKey,
+        merchantName: store.pix_receiver_name || store.name,
+        merchantCity: store.pix_city || "BRASIL",
+        amount: total,
+      });
+      const dataUrl = await QRCode.toDataURL(brCode, { width: 260, margin: 1 });
+      setPixQrImage(dataUrl);
+    } catch {
+      setError("Não deu pra gerar o QR Pix.");
+    } finally {
+      setPixQrLoading(false);
+    }
   }
 
   function repeatLastSale() {
@@ -872,6 +907,10 @@ export default function Pdv() {
       setCreditCustomerId(null);
       setCustomerName("");
       setCustomerPhone("");
+    }
+    if (method !== "pix") {
+      setPixQrImage(null);
+      setPixQrLabel(null);
     }
   }
 
@@ -1709,6 +1748,58 @@ export default function Pdv() {
               Troco: {formatCurrency(Math.max(0, troco))}
               {troco < 0 && " (falta " + formatCurrency(-troco) + ")"}
             </p>
+          </div>
+        )}
+
+        {paymentMethod === "pix" && !splitMode && (
+          <div className="mt-4 space-y-3 rounded-xl border border-white/10 p-3.5">
+            {!store.pix_key_1 && !store.pix_key_2 ? (
+              <p className="text-sm text-white/40">
+                Nenhuma chave Pix cadastrada ainda — configure em Configurações.
+              </p>
+            ) : (
+              <>
+                <div className="flex flex-wrap gap-2">
+                  {store.pix_key_1 && (
+                    <button
+                      onClick={() => generatePixQr(store.pix_key_1!, store.pix_key_1_label || "Conta 1")}
+                      disabled={pixQrLoading}
+                      className={`rounded-lg border px-3 py-1.5 text-sm font-medium transition disabled:opacity-60 ${
+                        pixQrLabel === (store.pix_key_1_label || "Conta 1")
+                          ? "border-[#34E88C]/50 bg-[#34E88C]/10 text-[#34E88C]"
+                          : "border-white/10 bg-white/[0.03] text-white/60 hover:border-[#34E88C]/40 hover:text-[#34E88C]"
+                      }`}
+                    >
+                      {store.pix_key_1_label || "Conta 1"}
+                    </button>
+                  )}
+                  {store.pix_key_2 && (
+                    <button
+                      onClick={() => generatePixQr(store.pix_key_2!, store.pix_key_2_label || "Conta 2")}
+                      disabled={pixQrLoading}
+                      className={`rounded-lg border px-3 py-1.5 text-sm font-medium transition disabled:opacity-60 ${
+                        pixQrLabel === (store.pix_key_2_label || "Conta 2")
+                          ? "border-[#34E88C]/50 bg-[#34E88C]/10 text-[#34E88C]"
+                          : "border-white/10 bg-white/[0.03] text-white/60 hover:border-[#34E88C]/40 hover:text-[#34E88C]"
+                      }`}
+                    >
+                      {store.pix_key_2_label || "Conta 2"}
+                    </button>
+                  )}
+                </div>
+                {pixQrLoading && <p className="text-sm text-white/40">Gerando QR…</p>}
+                {pixQrImage && !pixQrLoading && (
+                  <div className="flex flex-col items-center gap-2 rounded-xl bg-white p-3">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={pixQrImage} alt={`QR Pix — ${pixQrLabel}`} className="h-56 w-56" />
+                    <p className="text-sm font-semibold text-black">{formatCurrency(total)}</p>
+                    <p className="text-xs text-black/50">
+                      Confirme o Pix no seu banco antes de finalizar a venda
+                    </p>
+                  </div>
+                )}
+              </>
+            )}
           </div>
         )}
 

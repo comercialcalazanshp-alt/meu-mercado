@@ -11,6 +11,12 @@ export type Store = {
   receipt_paper_mm: number;
   active: boolean;
   owner_id: string;
+  pix_key_1: string | null;
+  pix_key_1_label: string | null;
+  pix_key_2: string | null;
+  pix_key_2_label: string | null;
+  pix_receiver_name: string | null;
+  pix_city: string | null;
 };
 
 export const StoreContext = createContext<Store | null>(null);

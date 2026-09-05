@@ -98,13 +98,22 @@ export default function Configuracoes() {
   const [savingAlerts, setSavingAlerts] = useState(false);
   const [alertsSaved, setAlertsSaved] = useState(false);
 
+  const [pixKey1, setPixKey1] = useState("");
+  const [pixKey1Label, setPixKey1Label] = useState("");
+  const [pixKey2, setPixKey2] = useState("");
+  const [pixKey2Label, setPixKey2Label] = useState("");
+  const [pixReceiverName, setPixReceiverName] = useState("");
+  const [pixCity, setPixCity] = useState("");
+  const [savingPix, setSavingPix] = useState(false);
+  const [pixSaved, setPixSaved] = useState(false);
+
   const canDelete = confirmText.trim() === store.slug;
 
   useEffect(() => {
     getSupabase()
       .from("stores")
       .select(
-        "business_hours_enabled, opens_at, closes_at, open_days, manually_closed, hide_out_of_stock, accountant_token, brand_color, accent_color, cashback_percent, referral_bonus, loyalty_silver_threshold, loyalty_gold_threshold, credit_interest_percent, sales_goal, alert_low_stock_enabled, alert_stalled_order_enabled, alert_delivery_delay_enabled, alert_goal_reached_enabled, weekly_summary_enabled, complaint_notification_enabled, card_installment_interest_enabled, card_installment_interest_percent, fee_pix_percent, fee_card_percent, fee_boleto_fixed, bad_review_notification_enabled",
+        "business_hours_enabled, opens_at, closes_at, open_days, manually_closed, hide_out_of_stock, accountant_token, brand_color, accent_color, cashback_percent, referral_bonus, loyalty_silver_threshold, loyalty_gold_threshold, credit_interest_percent, sales_goal, alert_low_stock_enabled, alert_stalled_order_enabled, alert_delivery_delay_enabled, alert_goal_reached_enabled, weekly_summary_enabled, complaint_notification_enabled, card_installment_interest_enabled, card_installment_interest_percent, fee_pix_percent, fee_card_percent, fee_boleto_fixed, bad_review_notification_enabled, pix_key_1, pix_key_1_label, pix_key_2, pix_key_2_label, pix_receiver_name, pix_city",
       )
       .eq("id", store.id)
       .single()
@@ -137,8 +146,33 @@ export default function Configuracoes() {
         setFeeCardPercent(data.fee_card_percent > 0 ? String(data.fee_card_percent) : "");
         setFeeBoletoFixed(data.fee_boleto_fixed > 0 ? String(data.fee_boleto_fixed) : "");
         setAlertBadReview(data.bad_review_notification_enabled);
+        setPixKey1(data.pix_key_1 ?? "");
+        setPixKey1Label(data.pix_key_1_label ?? "");
+        setPixKey2(data.pix_key_2 ?? "");
+        setPixKey2Label(data.pix_key_2_label ?? "");
+        setPixReceiverName(data.pix_receiver_name ?? "");
+        setPixCity(data.pix_city ?? "");
       });
   }, [store.id]);
+
+  async function handleSavePix(e: FormEvent) {
+    e.preventDefault();
+    setSavingPix(true);
+    await getSupabase()
+      .from("stores")
+      .update({
+        pix_key_1: pixKey1.trim() || null,
+        pix_key_1_label: pixKey1Label.trim() || null,
+        pix_key_2: pixKey2.trim() || null,
+        pix_key_2_label: pixKey2Label.trim() || null,
+        pix_receiver_name: pixReceiverName.trim() || null,
+        pix_city: pixCity.trim() || null,
+      })
+      .eq("id", store.id);
+    setSavingPix(false);
+    setPixSaved(true);
+    setTimeout(() => setPixSaved(false), 2000);
+  }
 
   const accountantUrl =
     accountantToken && typeof window !== "undefined"
@@ -541,6 +575,86 @@ export default function Configuracoes() {
           &quot;Roll paper&quot; ou o tamanho exato em mm). O navegador só consegue pedir o tamanho —
           quem decide de verdade é essa configuração do Windows.
         </p>
+      </form>
+
+      <form
+        onSubmit={handleSavePix}
+        className="mt-4 rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900"
+      >
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+          💠 QR Code Pix (PDV)
+        </h2>
+        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+          Cadastre até 2 chaves Pix suas pra gerar o QR code na hora da venda no balcão, sem pedir
+          CPF do cliente e sem passar por processador de pagamento nenhum — o caixa confirma o
+          recebimento direto no banco antes de finalizar a venda.
+        </p>
+        <div className="mt-3 grid gap-3 sm:grid-cols-2">
+          <div>
+            <label className="block text-xs text-slate-500 dark:text-slate-400">Chave Pix — Conta 1</label>
+            <input
+              value={pixKey1}
+              onChange={(e) => setPixKey1(e.target.value)}
+              placeholder="CPF, e-mail, telefone ou chave aleatória"
+              className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800"
+            />
+          </div>
+          <div>
+            <label className="block text-xs text-slate-500 dark:text-slate-400">Nome curto — Conta 1</label>
+            <input
+              value={pixKey1Label}
+              onChange={(e) => setPixKey1Label(e.target.value)}
+              placeholder="Ex: Pessoal Caixa"
+              className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800"
+            />
+          </div>
+          <div>
+            <label className="block text-xs text-slate-500 dark:text-slate-400">Chave Pix — Conta 2 (opcional)</label>
+            <input
+              value={pixKey2}
+              onChange={(e) => setPixKey2(e.target.value)}
+              placeholder="CPF, e-mail, telefone ou chave aleatória"
+              className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800"
+            />
+          </div>
+          <div>
+            <label className="block text-xs text-slate-500 dark:text-slate-400">Nome curto — Conta 2</label>
+            <input
+              value={pixKey2Label}
+              onChange={(e) => setPixKey2Label(e.target.value)}
+              placeholder="Ex: Empresa CNPJ"
+              className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800"
+            />
+          </div>
+          <div>
+            <label className="block text-xs text-slate-500 dark:text-slate-400">Nome do recebedor</label>
+            <input
+              value={pixReceiverName}
+              onChange={(e) => setPixReceiverName(e.target.value)}
+              placeholder="Aparece pro cliente no banco dele"
+              className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800"
+            />
+          </div>
+          <div>
+            <label className="block text-xs text-slate-500 dark:text-slate-400">Cidade</label>
+            <input
+              value={pixCity}
+              onChange={(e) => setPixCity(e.target.value)}
+              placeholder="Ex: Heliópolis"
+              className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-800"
+            />
+          </div>
+        </div>
+        <div className="mt-3 flex items-center gap-2">
+          <button
+            type="submit"
+            disabled={savingPix}
+            className="rounded-lg bg-blue-900 px-4 py-2 text-sm font-semibold text-amber-300 disabled:opacity-60 dark:bg-blue-800"
+          >
+            {savingPix ? "Salvando…" : "Salvar"}
+          </button>
+          {pixSaved && <span className="text-sm text-green-600">Salvo!</span>}
+        </div>
       </form>
 
       <form
