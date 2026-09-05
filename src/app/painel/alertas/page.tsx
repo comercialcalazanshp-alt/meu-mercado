@@ -177,15 +177,23 @@ export default function Alertas() {
       });
     }
 
-    // Vendidos recentemente sem custo cadastrado
+    // Vendidos recentemente sem custo cadastrado — separa quem ainda existe
+    // no catálogo (dá pra preencher o custo) de quem já foi excluído (não dá
+    // mais pra preencher nada, o cadastro não existe mais; o join do
+    // get_profit_summary com products simplesmente ignora essas linhas, ou
+    // seja o custo delas nem entra na conta — lucro fica um pouco
+    // superestimado, não subestimado, pra essas vendas específicas).
     const soldWithoutCostNames = new Map<string, string>();
-    const costById = new Map(products.map((p) => [p.id, p.cost_price]));
+    const soldDeletedProductNames = new Map<string, string>();
+    const productById = new Map(products.map((p) => [p.id, p]));
     for (const order of orders) {
       if (order.status === "cancelado") continue;
       for (const item of order.items ?? []) {
         if (!item.product_id) continue;
-        const cost = costById.get(item.product_id);
-        if (cost === undefined || cost === null) {
+        const product = productById.get(item.product_id);
+        if (!product) {
+          soldDeletedProductNames.set(item.product_id, item.name);
+        } else if (product.cost_price === null) {
           soldWithoutCostNames.set(item.product_id, item.name);
         }
       }
@@ -197,6 +205,15 @@ export default function Alertas() {
         severity: "atencao",
         explanation: `Teve venda nos últimos ${SOLD_WITHOUT_COST_DAYS} dias desses produtos, mas sem custo cadastrado — o lucro real fica subestimado enquanto isso não for preenchido.`,
         items: Array.from(soldWithoutCostNames.values()).map((label) => ({ label })),
+      });
+    }
+    if (soldDeletedProductNames.size > 0) {
+      result.push({
+        key: "vendido_produto_excluido",
+        title: "Vendas de produtos já excluídos do catálogo",
+        severity: "info",
+        explanation: `Teve venda nos últimos ${SOLD_WITHOUT_COST_DAYS} dias desses produtos, mas o cadastro foi excluído depois — não tem mais como preencher custo, e essas vendas não entram na conta de custo dos relatórios (o lucro fica um pouco superestimado só nelas).`,
+        items: Array.from(soldDeletedProductNames.values()).map((label) => ({ label })),
       });
     }
 
