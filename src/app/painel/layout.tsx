@@ -52,6 +52,7 @@ const ENTREGADOR_ALLOWED_PATHS = new Set(["/painel/entregas"]);
 // painel do Hub — cada afiliado tem o dele, próprio, gerando os dados dele.
 // O Hub só orquestra o marketplace (Início, Dashboard, Afiliados etc).
 const HUB_HIDDEN_PATHS = new Set([
+  "/painel/alertas",
   "/painel/pdv",
   "/painel/caixa",
   "/painel/produtos",
@@ -82,6 +83,7 @@ const NAV_ITEMS = [
   { href: "/painel", label: "Início" },
   { href: "/painel/assistente", label: "Assistente" },
   { href: "/painel/dashboard", label: "Dashboard" },
+  { href: "/painel/alertas", label: "Alertas" },
   { href: "/painel/pdv", label: "PDV" },
   { href: "/painel/caixa", label: "Caixa" },
   { href: "/painel/produtos", label: "Produtos" },

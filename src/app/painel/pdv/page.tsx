@@ -96,6 +96,7 @@ const SHORTCUTS: [string, string][] = [
   ["F8", "Cancelar venda / limpar carrinho"],
   ["F9", "Buscar cliente do crediário"],
   ["F10", "Dividir pagamento (ligar/desligar)"],
+  ["Insert", "Cadastrar produto rápido"],
 ];
 
 function formatCurrency(value: number) {
@@ -812,6 +813,14 @@ export default function Pdv() {
     printHtml(html);
   }
 
+  function openQuickAdd() {
+    const q = search.trim();
+    const looksLikeBarcode = /^\d{6,}$/.test(q);
+    setQuickAddName(looksLikeBarcode ? "" : q);
+    setQuickAddBarcode(looksLikeBarcode ? q : "");
+    setQuickAddOpen(true);
+  }
+
   async function handleQuickAdd(e: FormEvent) {
     e.preventDefault();
     const priceValue = Number(quickAddPrice.replace(",", "."));
@@ -1057,7 +1066,7 @@ export default function Pdv() {
 
   useEffect(() => {
     function handleKeyDown(e: globalThis.KeyboardEvent) {
-      if (!e.key.startsWith("F")) return;
+      if (!e.key.startsWith("F") && e.key !== "Insert") return;
       switch (e.key) {
         case "F1":
           e.preventDefault();
@@ -1099,6 +1108,10 @@ export default function Pdv() {
           e.preventDefault();
           toggleSplitMode();
           break;
+        case "Insert":
+          e.preventDefault();
+          openQuickAdd();
+          break;
         default:
           break;
       }
@@ -1106,7 +1119,7 @@ export default function Pdv() {
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cart, paymentMethod, cashReceivedValue, customerPhone, saving, total, creditCustomerId, splitMode, splitPayments, customerName]);
+  }, [cart, paymentMethod, cashReceivedValue, customerPhone, saving, total, creditCustomerId, splitMode, splitPayments, customerName, search]);
 
   const PAYMENT_OPTIONS: [PaymentMethod, string, (p: { className?: string }) => React.JSX.Element][] = [
     ["dinheiro", "Dinheiro", IconBanknote],
@@ -1280,16 +1293,10 @@ export default function Pdv() {
                   </p>
                   {!quickAddOpen ? (
                     <button
-                      onClick={() => {
-                        const q = search.trim();
-                        const looksLikeBarcode = /^\d{6,}$/.test(q);
-                        setQuickAddName(looksLikeBarcode ? "" : q);
-                        setQuickAddBarcode(looksLikeBarcode ? q : "");
-                        setQuickAddOpen(true);
-                      }}
+                      onClick={openQuickAdd}
                       className="mt-2 text-sm font-semibold text-[#5CACFF] hover:underline"
                     >
-                      Cadastrar rápido
+                      Cadastrar rápido <kbd className="ml-0.5 rounded bg-white/10 px-1 py-0.5 font-mono text-[10px] text-white/45">Insert</kbd>
                     </button>
                   ) : (
                     <form onSubmit={handleQuickAdd} className="mt-2 flex flex-col gap-2">
