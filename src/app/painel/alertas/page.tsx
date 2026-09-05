@@ -313,6 +313,9 @@ export default function Alertas() {
         <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
           Tudo que merece sua atenção agora, num lugar só — recalculado toda vez que você abre essa página.
         </p>
+        <p className="mt-1 text-xs text-red-500">
+          DEBUG: {products.length} produtos, {orders.length} pedidos, {creditCustomers.length} clientes fiado
+        </p>
       </div>
 
       {totalAlerts === 0 ? (
