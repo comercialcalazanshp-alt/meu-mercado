@@ -313,27 +313,6 @@ export default function Alertas() {
         <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
           Tudo que merece sua atenção agora, num lugar só — recalculado toda vez que você abre essa página.
         </p>
-        <p className="mt-1 text-xs text-red-500">
-          DEBUG: {products.length} produtos, {orders.length} pedidos —
-          groups: {groups.map((g) => `${g.key}=${g.items.length}`).join(", ") || "nenhum"} — inline:{" "}
-          {(() => {
-            const byId = new Map(products.map((p) => [p.id, p]));
-            let notFound = 0;
-            let foundNullCost = 0;
-            let foundWithCost = 0;
-            for (const o of orders) {
-              if (o.status === "cancelado") continue;
-              for (const it of o.items ?? []) {
-                if (!it.product_id) continue;
-                const p = byId.get(it.product_id);
-                if (!p) notFound++;
-                else if (p.cost_price === null) foundNullCost++;
-                else foundWithCost++;
-              }
-            }
-            return `notFound=${notFound} nullCost=${foundNullCost} withCost=${foundWithCost} mapSize=${byId.size}`;
-          })()}
-        </p>
       </div>
 
       {totalAlerts === 0 ? (
