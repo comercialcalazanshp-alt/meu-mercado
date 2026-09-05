@@ -314,7 +314,10 @@ export default function Alertas() {
           Tudo que merece sua atenção agora, num lugar só — recalculado toda vez que você abre essa página.
         </p>
         <p className="mt-1 text-xs text-red-500">
-          DEBUG: {products.length} produtos, {orders.length} pedidos, {creditCustomers.length} clientes fiado
+          DEBUG: {products.length} produtos, {orders.length} pedidos, {creditCustomers.length} clientes fiado —{" "}
+          {orders.reduce((s, o) => s + (o.items?.length ?? 0), 0)} itens vendidos,{" "}
+          {orders.reduce((s, o) => s + (o.items ?? []).filter((i) => i.product_id).length, 0)} com product_id —
+          groups: {groups.map((g) => `${g.key}=${g.items.length}`).join(", ") || "nenhum"}
         </p>
       </div>
 
