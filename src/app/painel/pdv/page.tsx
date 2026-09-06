@@ -67,6 +67,7 @@ type RecentSale = {
   payment_method: string | null;
   payment_split: { method: string; amount: number }[] | null;
   created_at: string;
+  status: string;
 };
 
 type CreditCustomer = {
@@ -368,6 +369,8 @@ export default function Pdv() {
   const [recentSales, setRecentSales] = useState<RecentSale[]>([]);
   const [caixaAberto, setCaixaAberto] = useState<boolean | null>(null);
   const [sellerEmail, setSellerEmail] = useState<string | null>(null);
+  const [canVoidSales, setCanVoidSales] = useState(false);
+  const [voidingSaleId, setVoidingSaleId] = useState<string | null>(null);
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [creditSearch, setCreditSearch] = useState("");
   const [creditMatches, setCreditMatches] = useState<CreditCustomer[]>([]);
@@ -460,12 +463,30 @@ export default function Pdv() {
     startOfDay.setHours(0, 0, 0, 0);
     const { data } = await getSupabase()
       .from("orders")
-      .select("id, total, payment_method, payment_split, created_at")
+      .select("id, total, payment_method, payment_split, created_at, status")
       .eq("store_id", store.id)
       .eq("channel", "balcao")
       .gte("created_at", startOfDay.toISOString())
       .order("created_at", { ascending: false });
     setRecentSales(data ?? []);
+  }
+
+  async function voidSale(sale: RecentSale) {
+    if (
+      !window.confirm(
+        `Estornar essa venda de ${formatCurrency(sale.total)}? Isso devolve o estoque dos produtos e, se foi fiado, tira a dívida do cliente. Não dá pra desfazer.`,
+      )
+    )
+      return;
+    setVoidingSaleId(sale.id);
+    const { error: voidError } = await getSupabase().rpc("pdv_void_sale", { p_order_id: sale.id });
+    setVoidingSaleId(null);
+    if (voidError) {
+      setError("Não deu pra estornar: " + voidError.message);
+      return;
+    }
+    loadProducts();
+    loadRecentSales();
   }
 
   const caixaStatusKey = `mm_pdv_caixa_${store.id}`;
@@ -498,6 +519,9 @@ export default function Pdv() {
     getSupabase()
       .auth.getSession()
       .then(({ data }) => setSellerEmail(data.session?.user.email ?? null));
+    getSupabase()
+      .rpc("get_my_role", { p_store_id: store.id })
+      .then(({ data }) => setCanVoidSales(data === "completo"));
     (async () => {
       // Paginado pelo mesmo motivo do loadProducts logo acima — catálogo
       // grande (1000+) perderia categoria sem aviso se buscasse tudo de uma
@@ -1547,8 +1571,8 @@ export default function Pdv() {
             </summary>
             <div className="space-y-1 border-t border-white/[0.06] px-4 py-3 text-sm">
               {recentSales.map((sale) => (
-                <div key={sale.id} className="flex justify-between text-white/40">
-                  <span>
+                <div key={sale.id} className="flex items-center justify-between gap-2 text-white/40">
+                  <span className={sale.status === "cancelado" ? "line-through opacity-50" : ""}>
                     {new Date(sale.created_at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
                     {" · "}
                     {sale.payment_method === "dividido" && sale.payment_split
@@ -1559,9 +1583,26 @@ export default function Pdv() {
                         ? PAYMENT_LABELS[sale.payment_method] ?? sale.payment_method
                         : "—"}
                   </span>
-                  <span className="font-medium tabular-nums text-[#F5F3EF]">
-                    {formatCurrency(sale.total)}
-                  </span>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <span
+                      className={`font-medium tabular-nums ${sale.status === "cancelado" ? "text-white/30 line-through" : "text-[#F5F3EF]"}`}
+                    >
+                      {formatCurrency(sale.total)}
+                    </span>
+                    {sale.status === "cancelado" ? (
+                      <span className="text-xs text-[#FF5C68]">estornada</span>
+                    ) : (
+                      canVoidSales && (
+                        <button
+                          onClick={() => voidSale(sale)}
+                          disabled={voidingSaleId === sale.id}
+                          className="text-xs font-medium text-[#FF5C68] hover:underline disabled:opacity-50"
+                        >
+                          {voidingSaleId === sale.id ? "Estornando…" : "Estornar"}
+                        </button>
+                      )
+                    )}
+                  </div>
                 </div>
               ))}
             </div>
