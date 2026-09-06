@@ -360,8 +360,10 @@ export default function Pdv() {
   const [quickAddPrice, setQuickAddPrice] = useState("");
   const [quickAddCost, setQuickAddCost] = useState("");
   const [quickAddStock, setQuickAddStock] = useState("");
+  const [quickAddCategory, setQuickAddCategory] = useState("");
   const [quickAddSoldByWeight, setQuickAddSoldByWeight] = useState(false);
   const [quickAddSaving, setQuickAddSaving] = useState(false);
+  const [categories, setCategories] = useState<string[]>([]);
   const [lastSale, setLastSale] = useState<CartLine[] | null>(null);
   const [recentSales, setRecentSales] = useState<RecentSale[]>([]);
   const [caixaAberto, setCaixaAberto] = useState<boolean | null>(null);
@@ -496,6 +498,28 @@ export default function Pdv() {
     getSupabase()
       .auth.getSession()
       .then(({ data }) => setSellerEmail(data.session?.user.email ?? null));
+    (async () => {
+      // Paginado pelo mesmo motivo do loadProducts logo acima — catálogo
+      // grande (1000+) perderia categoria sem aviso se buscasse tudo de uma
+      // página só.
+      const PAGE_SIZE = 1000;
+      const supabase = getSupabase();
+      const set = new Set<string>();
+      let from = 0;
+      while (true) {
+        const { data } = await supabase
+          .from("products")
+          .select("category")
+          .eq("store_id", store.id)
+          .not("category", "is", null)
+          .range(from, from + PAGE_SIZE - 1);
+        if (!data || data.length === 0) break;
+        for (const p of data) if (p.category) set.add(p.category as string);
+        if (data.length < PAGE_SIZE) break;
+        from += PAGE_SIZE;
+      }
+      setCategories(Array.from(set).sort((a, b) => a.localeCompare(b, "pt-BR")));
+    })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [store.id]);
 
@@ -875,6 +899,7 @@ export default function Pdv() {
         stock: stockValue,
         barcode: quickAddBarcode.trim() || null,
         sold_by_weight: quickAddSoldByWeight,
+        category: quickAddCategory || null,
       })
       .select(
         "id, name, price, cost_price, stock, barcode, sold_by_weight, promo_buy_qty, promo_pay_qty, price_wholesale, wholesale_min_qty, price_fiado, on_offer, offer_price, offer_ends_at",
@@ -893,6 +918,7 @@ export default function Pdv() {
     setQuickAddPrice("");
     setQuickAddCost("");
     setQuickAddStock("");
+    setQuickAddCategory("");
     setQuickAddSoldByWeight(false);
     addToCart(data, qtyPrefix?.qty);
   }
@@ -1374,6 +1400,18 @@ export default function Pdv() {
                           inputMode="decimal"
                           className="w-24 rounded-lg border border-white/10 bg-white/[0.04] px-2.5 py-1.5 text-sm text-[#F5F3EF] placeholder:text-white/25"
                         />
+                        <select
+                          value={quickAddCategory}
+                          onChange={(e) => setQuickAddCategory(e.target.value)}
+                          className="rounded-lg border border-white/10 bg-white/[0.04] px-2.5 py-1.5 text-sm text-[#F5F3EF]"
+                        >
+                          <option value="">Categoria (opcional)</option>
+                          {categories.map((c) => (
+                            <option key={c} value={c}>
+                              {c}
+                            </option>
+                          ))}
+                        </select>
                         <label className="flex items-center gap-1.5 text-xs text-white/45">
                           <input
                             type="checkbox"
