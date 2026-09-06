@@ -253,6 +253,14 @@ export default function PainelLayout({ children }: { children: ReactNode }) {
   }, [status, role, isHub, isAffiliate, pathname, router]);
 
   useEffect(() => {
+    if (!("serviceWorker" in navigator)) return;
+    // Registra o service worker sempre, mesmo sem notificação — sem ele
+    // ativo o Chrome/Android não oferece "Instalar app" (um dos requisitos
+    // do PWA), independente do dono nunca ter mexido em push.
+    navigator.serviceWorker.register("/sw.js").catch(() => {});
+  }, []);
+
+  useEffect(() => {
     if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
       setPushStatus("unsupported");
       return;

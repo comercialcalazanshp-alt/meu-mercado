@@ -27,6 +27,8 @@ const manrope = Manrope({
 export const metadata: Metadata = {
   title: "Meu Mercado",
   description: "A plataforma que ajuda donos de mercadinho a vender online.",
+  appleWebApp: { capable: true, statusBarStyle: "default", title: "Meu Mercado" },
+  icons: { apple: "/api/app-icon?size=180" },
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
