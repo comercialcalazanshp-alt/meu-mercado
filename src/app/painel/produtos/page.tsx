@@ -294,7 +294,9 @@ export default function Produtos() {
   const [offerEndsAtDrafts, setOfferEndsAtDrafts] = useState<Record<string, string>>({});
 
   const [search, setSearch] = useState("");
-  const [gapFilter, setGapFilter] = useState<"photo" | "cost" | "category" | null>(null);
+  const [gapFilter, setGapFilter] = useState<"photo" | "cost" | "category" | "margin" | "stock" | "expiry" | null>(
+    null,
+  );
   const productsTableRef = useRef<HTMLDivElement>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [stats, setStats] = useState<Record<string, SalesStat>>({});
@@ -423,6 +425,13 @@ export default function Produtos() {
     if (gapFilter === "photo") list = list.filter((p) => !p.image_url);
     else if (gapFilter === "cost") list = list.filter((p) => p.cost_price === null);
     else if (gapFilter === "category") list = list.filter((p) => !p.category);
+    else if (gapFilter === "margin") list = list.filter((p) => p.cost_price !== null && p.cost_price > p.price);
+    else if (gapFilter === "stock") list = list.filter((p) => p.active && p.stock <= p.stock_alert_threshold);
+    else if (gapFilter === "expiry") {
+      const cutoff = new Date();
+      cutoff.setDate(cutoff.getDate() + 7);
+      list = list.filter((p) => p.expiry_date && new Date(p.expiry_date) < cutoff);
+    }
 
     const q = search.trim().toLowerCase();
     if (!q) return list;
@@ -441,11 +450,21 @@ export default function Produtos() {
     return { withoutPhoto, withoutCost, withoutCategory };
   }, [products]);
 
-  function jumpToGap(kind: "photo" | "cost" | "category") {
+  function jumpToGap(kind: "photo" | "cost" | "category" | "margin" | "stock" | "expiry") {
     setGapFilter((prev) => (prev === kind ? null : kind));
     setSearch("");
     setTimeout(() => productsTableRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 0);
   }
+
+  // Chegando aqui por um link da Central de Alertas (?filtro=cost etc.) — já
+  // abre filtrado, sem o dono ter que clicar de novo no gap certo.
+  useEffect(() => {
+    const kind = new URLSearchParams(window.location.search).get("filtro");
+    if (kind === "photo" || kind === "cost" || kind === "category" || kind === "margin" || kind === "stock" || kind === "expiry") {
+      setGapFilter(kind);
+      setTimeout(() => productsTableRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 300);
+    }
+  }, []);
 
   useEffect(() => {
     if (gapFilter && filteredProducts.length > 0) {

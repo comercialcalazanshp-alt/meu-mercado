@@ -64,6 +64,8 @@ type AlertGroup = {
   severity: Severity;
   explanation: string;
   items: { label: string; detail?: string }[];
+  resolveHref?: string;
+  resolveLabel?: string;
 };
 
 export default function Alertas() {
@@ -157,6 +159,8 @@ export default function Alertas() {
           label: o.customer_name,
           detail: `há ${Math.round((now.getTime() - new Date(o.created_at).getTime()) / 60000)} min`,
         })),
+        resolveHref: "/painel/pedidos",
+        resolveLabel: "Ver pedidos",
       });
     }
 
@@ -175,6 +179,8 @@ export default function Alertas() {
           label: o.customer_name,
           detail: `há ${Math.round((now.getTime() - new Date(o.out_for_delivery_at!).getTime()) / 60000)} min`,
         })),
+        resolveHref: "/painel/entregas",
+        resolveLabel: "Ver entregas",
       });
     }
 
@@ -189,6 +195,8 @@ export default function Alertas() {
         severity: "atencao",
         explanation: "Estoque já chegou (ou passou) do limite de alerta que você configurou em Produtos.",
         items: lowStock.map((p) => ({ label: p.name, detail: `estoque: ${p.stock}` })),
+        resolveHref: "/painel/produtos?filtro=stock",
+        resolveLabel: "Ver produtos",
       });
     }
 
@@ -206,6 +214,8 @@ export default function Alertas() {
           label: p.name,
           detail: `custo ${formatCurrency(p.cost_price!)} > venda ${formatCurrency(p.price)}`,
         })),
+        resolveHref: "/painel/produtos?filtro=margin",
+        resolveLabel: "Ver produtos",
       });
     }
 
@@ -237,6 +247,8 @@ export default function Alertas() {
         severity: "atencao",
         explanation: `Teve venda nos últimos ${SOLD_WITHOUT_COST_DAYS} dias desses produtos, mas sem custo cadastrado — o lucro real fica subestimado enquanto isso não for preenchido.`,
         items: Array.from(soldWithoutCostNames.values()).map((label) => ({ label })),
+        resolveHref: "/painel/produtos?filtro=cost",
+        resolveLabel: "Ver produtos",
       });
     }
     if (soldDeletedProductNames.size > 0) {
@@ -258,6 +270,8 @@ export default function Alertas() {
         severity: "info",
         explanation: "Sem categoria, o produto fica mais difícil de achar na vitrine e nos relatórios por categoria.",
         items: noCategory.map((p) => ({ label: p.name })),
+        resolveHref: "/painel/produtos?filtro=category",
+        resolveLabel: "Ver produtos",
       });
     }
 
@@ -276,6 +290,8 @@ export default function Alertas() {
             label: p.name,
             detail: new Date(p.expiry_date!) < now ? `venceu em ${formatDate(p.expiry_date!)}` : `vence em ${formatDate(p.expiry_date!)}`,
           })),
+        resolveHref: "/painel/produtos?filtro=expiry",
+        resolveLabel: "Ver produtos",
       });
     }
 
@@ -293,6 +309,8 @@ export default function Alertas() {
           label: c.name,
           detail: `${formatCurrency(c.balance)} de ${formatCurrency(c.credit_limit!)}`,
         })),
+        resolveHref: "/painel/fiado",
+        resolveLabel: "Ver fiado",
       });
     }
 
@@ -356,6 +374,14 @@ export default function Alertas() {
                 {isOpen && (
                   <div className="border-t border-slate-200 px-4 py-3 dark:border-slate-800">
                     <p className="mb-2 text-xs text-slate-500 dark:text-slate-400 sm:hidden">{group.explanation}</p>
+                    {group.resolveHref && (
+                      <a
+                        href={group.resolveHref}
+                        className="mb-3 inline-flex items-center gap-1 rounded-lg bg-blue-900 px-3 py-1.5 text-xs font-semibold text-amber-300 dark:bg-blue-800"
+                      >
+                        {group.resolveLabel ?? "Resolver"} →
+                      </a>
+                    )}
                     <ul className="space-y-1.5">
                       {group.items.map((item, i) => (
                         <li
