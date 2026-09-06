@@ -3,6 +3,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { getSupabase } from "@/lib/supabase";
 import { useStore } from "@/lib/store-context";
+import { printHtml } from "@/lib/receipt";
 
 type CashSession = {
   id: string;
@@ -200,31 +201,52 @@ export default function Caixa() {
     opened_by: string | null;
     closed_by: string | null;
   }) {
-    const win = window.open("", "_blank", "width=380,height=520");
-    if (!win) return;
+    const paperMm = store.receipt_paper_mm || 55;
     const paymentHtml = session.revenue_by_payment
       ? Object.entries(session.revenue_by_payment)
-          .map(([method, total]) => `<p>${PAYMENT_LABEL[method] ?? method}: ${formatCurrency(total)}</p>`)
+          .map(
+            (
+              [method, total],
+            ) => `<p class="row"><span>${PAYMENT_LABEL[method] ?? method}</span><span>${formatCurrency(total)}</span></p>`,
+          )
           .join("")
       : "";
-    win.document.write(`
+    // Mesma regra de tamanho da bobina do cupom de venda (buildReceiptHtml em
+    // src/lib/receipt.ts) — sem o @page com altura automática, o navegador
+    // imprime isso numa folha A4/Carta inteira e desperdiça bobina enorme
+    // pra um resumo de poucas linhas.
+    const html = `
       <html><head><title>Fechamento de caixa</title>
-      <style>body{font-family:sans-serif;padding:16px;font-size:14px;} .total{font-weight:bold;margin-top:8px;}</style>
-      </head><body>
+      <style>
+        @page { size: ${paperMm}mm auto; margin: 0; }
+        * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        body{font-family:'Courier New',monospace;font-weight:700;width:${paperMm}mm;margin:0;padding:3mm 2mm;font-size:12px;color:#000;}
+        h2{margin:0 0 1mm;font-size:15px;text-align:center;letter-spacing:0.5px;}
+        p{margin:1mm 0;}
+        .center{text-align:center;}
+        .muted{font-size:10px;text-align:center;font-weight:400;}
+        .divider{border-top:1px dashed #000;margin:2mm 0;}
+        .row{display:flex;justify-content:space-between;font-size:12px;}
+        .total{font-size:15px;border-top:2px solid #000;margin-top:2mm;padding-top:2mm;display:flex;justify-content:space-between;}
+      </style></head><body>
       <h2>${store.name}</h2>
-      <p>Fechamento de caixa</p>
-      <p>Aberto: ${formatDateTime(session.opened_at)}${session.opened_by ? ` por ${session.opened_by}` : ""}</p>
-      <p>Fechado: ${session.closed_at ? formatDateTime(session.closed_at) : "—"}${session.closed_by ? ` por ${session.closed_by}` : ""}</p>
-      <p>Valor inicial: ${formatCurrency(session.opening_amount)}</p>
-      <p>Faturamento total: ${formatCurrency(session.revenue_total ?? 0)}</p>
+      <p class="muted">Fechamento de caixa</p>
+      <div class="divider"></div>
+      <p class="row"><span>Aberto</span><span>${formatDateTime(session.opened_at)}</span></p>
+      ${session.opened_by ? `<p class="muted">por ${session.opened_by}</p>` : ""}
+      <p class="row"><span>Fechado</span><span>${session.closed_at ? formatDateTime(session.closed_at) : "—"}</span></p>
+      ${session.closed_by ? `<p class="muted">por ${session.closed_by}</p>` : ""}
+      <div class="divider"></div>
+      <p class="row"><span>Valor inicial</span><span>${formatCurrency(session.opening_amount)}</span></p>
+      <p class="row"><span>Faturamento total</span><span>${formatCurrency(session.revenue_total ?? 0)}</span></p>
       ${paymentHtml}
-      <p>Esperado em dinheiro: ${formatCurrency(session.expected_cash ?? 0)}</p>
-      <p>Contado: ${formatCurrency(session.closing_amount_declared ?? 0)}</p>
-      <p class="total">Diferença: ${formatCurrency(session.cash_difference ?? 0)}</p>
-      <script>window.print();</script>
+      <div class="divider"></div>
+      <p class="row"><span>Esperado em dinheiro</span><span>${formatCurrency(session.expected_cash ?? 0)}</span></p>
+      <p class="row"><span>Contado</span><span>${formatCurrency(session.closing_amount_declared ?? 0)}</span></p>
+      <p class="total"><span>Diferença</span><span>${formatCurrency(session.cash_difference ?? 0)}</span></p>
       </body></html>
-    `);
-    win.document.close();
+    `;
+    printHtml(html);
   }
 
   async function handleClose(e: FormEvent) {
