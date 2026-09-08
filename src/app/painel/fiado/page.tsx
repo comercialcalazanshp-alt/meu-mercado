@@ -274,6 +274,9 @@ export default function Fiado() {
   return (
     <div>
       <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-50">Crediário</h1>
+      <p className="text-xs text-red-500">
+        DEBUG: search="{search}" customers={customers.length} filtered={filteredCustomers.length}
+      </p>
 
       <div className="mt-4 rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
         <p className="text-2xl font-bold text-slate-900 dark:text-slate-50">
