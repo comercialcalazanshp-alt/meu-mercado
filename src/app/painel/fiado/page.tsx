@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { getSupabase } from "@/lib/supabase";
 import { useStore } from "@/lib/store-context";
 
@@ -51,6 +51,7 @@ function calcInterest(amount: number, dueDate: string, monthlyRate: number) {
 export default function Fiado() {
   const store = useStore();
   const [customers, setCustomers] = useState<Customer[]>([]);
+  const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -262,9 +263,17 @@ export default function Fiado() {
     fetchTransactions(customerId);
   }
 
+  const filteredCustomers = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return customers;
+    return customers.filter(
+      (c) => c.name.toLowerCase().includes(q) || c.phone.replace(/\D/g, "").includes(q.replace(/\D/g, "")),
+    );
+  }, [customers, search]);
+
   return (
     <div>
-      <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-50">Fiado / crediário</h1>
+      <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-50">Crediário</h1>
 
       <div className="mt-4 rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
         <p className="text-2xl font-bold text-slate-900 dark:text-slate-50">
@@ -355,12 +364,24 @@ export default function Fiado() {
       </form>
       {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
 
-      <div className="mt-6 space-y-3">
+      <div className="mt-6">
+        <input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Buscar cliente por nome ou telefone…"
+          className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+        />
+      </div>
+
+      <div className="mt-3 space-y-3">
         {loading && <p className="text-sm text-slate-500">Carregando…</p>}
         {!loading && customers.length === 0 && (
           <p className="text-sm text-slate-500">Nenhum cliente fiado registrado ainda.</p>
         )}
-        {customers.map((customer) => {
+        {!loading && customers.length > 0 && filteredCustomers.length === 0 && (
+          <p className="text-sm text-slate-500">Nenhum cliente encontrado pra essa busca.</p>
+        )}
+        {filteredCustomers.map((customer) => {
           return (
             <div
               key={customer.id}

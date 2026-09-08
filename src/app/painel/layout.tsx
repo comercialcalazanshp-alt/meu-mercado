@@ -96,7 +96,7 @@ const NAV_ITEMS = [
   { href: "/painel/cupons", label: "Cupons" },
   { href: "/painel/bairros", label: "Frete" },
   { href: "/painel/clientes", label: "Clientes" },
-  { href: "/painel/fiado", label: "Fiado" },
+  { href: "/painel/fiado", label: "Crediário" },
   { href: "/painel/despesas", label: "Despesas" },
   { href: "/painel/cashback", label: "Cashback" },
   { href: "/painel/mensagens", label: "Mensagens" },

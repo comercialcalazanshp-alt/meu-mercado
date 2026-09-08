@@ -302,7 +302,7 @@ export default function Alertas() {
     if (nearLimit.length > 0) {
       result.push({
         key: "fiado_limite",
-        title: "Fiado perto ou acima do limite",
+        title: "Crediário perto ou acima do limite",
         severity: "atencao",
         explanation: "Saldo devedor já chegou a 90% (ou mais) do limite de crédito cadastrado pra esse cliente.",
         items: nearLimit.map((c) => ({
@@ -310,7 +310,7 @@ export default function Alertas() {
           detail: `${formatCurrency(c.balance)} de ${formatCurrency(c.credit_limit!)}`,
         })),
         resolveHref: "/painel/fiado",
-        resolveLabel: "Ver fiado",
+        resolveLabel: "Ver crediário",
       });
     }
 
