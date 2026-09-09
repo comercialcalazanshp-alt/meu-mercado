@@ -495,8 +495,11 @@ export default function Dashboard() {
   const chartSpark = mercadoSeries.map(([, v]) => v);
 
   // ---------- Mercado ----------
-  const pdvTotal = orders.filter((o) => o.channel === "pdv").reduce((s, o) => s + o.total, 0);
-  const siteTotal = orders.filter((o) => o.channel !== "pdv").reduce((s, o) => s + o.total, 0);
+  // pdv_sale() grava channel='balcao' pras vendas do PDV — comparar com
+  // "pdv" (que nunca é gravado) fazia toda venda de balcão cair como
+  // "vitrine online" aqui, mesmo sendo o oposto.
+  const pdvTotal = orders.filter((o) => o.channel === "balcao").reduce((s, o) => s + o.total, 0);
+  const siteTotal = orders.filter((o) => o.channel !== "balcao").reduce((s, o) => s + o.total, 0);
   const payWays = useMemo(() => {
     const map = new Map<string, number>();
     for (const o of orders) {
