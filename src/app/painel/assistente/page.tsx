@@ -1,8 +1,24 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import ReactMarkdown from "react-markdown";
 import { getSupabase } from "@/lib/supabase";
 import { useStore } from "@/lib/store-context";
+
+// O assistente responde em markdown (##, **negrito**, listas) — sem isso
+// renderizado, aparecia tudo como texto corrido cheio de # e * soltos, sem
+// nenhuma organização visual.
+const MARKDOWN_COMPONENTS = {
+  h1: (props: React.ComponentProps<"h2">) => <h2 className="mb-1.5 mt-2 text-base font-bold first:mt-0" {...props} />,
+  h2: (props: React.ComponentProps<"h2">) => <h2 className="mb-1.5 mt-2.5 text-base font-bold first:mt-0" {...props} />,
+  h3: (props: React.ComponentProps<"h3">) => <h3 className="mb-1 mt-2 text-sm font-bold first:mt-0" {...props} />,
+  p: (props: React.ComponentProps<"p">) => <p className="mb-1.5 leading-relaxed last:mb-0" {...props} />,
+  ul: (props: React.ComponentProps<"ul">) => <ul className="mb-1.5 ml-4 list-disc space-y-0.5" {...props} />,
+  ol: (props: React.ComponentProps<"ol">) => <ol className="mb-1.5 ml-4 list-decimal space-y-0.5" {...props} />,
+  li: (props: React.ComponentProps<"li">) => <li className="leading-relaxed" {...props} />,
+  strong: (props: React.ComponentProps<"strong">) => <strong className="font-bold" {...props} />,
+  hr: () => <hr className="my-2 border-slate-300 dark:border-slate-600" />,
+};
 
 type Message = { role: "user" | "assistant"; content: string };
 
@@ -235,7 +251,11 @@ export default function Assistente() {
                     : "border border-slate-200 bg-slate-50 text-slate-800 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
                 }`}
               >
-                {m.content}
+                {m.role === "assistant" ? (
+                  <ReactMarkdown components={MARKDOWN_COMPONENTS}>{m.content}</ReactMarkdown>
+                ) : (
+                  m.content
+                )}
               </div>
             </div>
           ))
