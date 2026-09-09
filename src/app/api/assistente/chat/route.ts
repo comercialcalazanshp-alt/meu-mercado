@@ -204,6 +204,184 @@ ATENDIMENTO
 - Reclamações em aberto: ${openComplaints}`;
 }
 
+// Ferramentas que o assistente pode chamar durante a conversa, pra buscar
+// dado específico sob demanda em vez de depender só do resumo fixo — sem
+// isso ele não tinha como responder sobre um produto que não apareceu no
+// resumo (ex: um item que não vendeu no período, ou um cliente fiado
+// específico), mesmo o dado existindo no banco.
+const TOOLS = [
+  {
+    type: "function" as const,
+    function: {
+      name: "buscar_produtos",
+      description:
+        "Busca produtos do catálogo pelo nome (mesmo que não tenham vendido no período). Devolve preço de venda, custo, categoria, estoque e margem de cada um encontrado.",
+      parameters: {
+        type: "object",
+        properties: {
+          termo: { type: "string", description: "Parte do nome do produto a buscar, ex: 'água mineral'" },
+        },
+        required: ["termo"],
+      },
+    },
+  },
+  {
+    type: "function" as const,
+    function: {
+      name: "consultar_cliente_fiado",
+      description: "Busca um cliente do fiado/crediário pelo nome. Devolve saldo devedor, limite e as últimas movimentações dele.",
+      parameters: {
+        type: "object",
+        properties: {
+          nome: { type: "string", description: "Parte do nome do cliente a buscar" },
+        },
+        required: ["nome"],
+      },
+    },
+  },
+  {
+    type: "function" as const,
+    function: {
+      name: "consultar_vendas_periodo",
+      description:
+        "Recalcula faturamento, número de vendas, ticket médio, forma de pagamento e produtos mais vendidos (com margem) pra qualquer janela de dias — use quando a pergunta for sobre um período diferente do resumo (que é só o mês atual), ex: 'últimos 7 dias', 'hoje', 'últimos 90 dias'.",
+      parameters: {
+        type: "object",
+        properties: {
+          dias: { type: "number", description: "Quantos dias atrás começar a contar, a partir de agora. Ex: 7 pros últimos 7 dias." },
+        },
+        required: ["dias"],
+      },
+    },
+  },
+];
+
+async function runTool(storeId: string, name: string, args: Record<string, unknown>): Promise<string> {
+  const admin = getSupabaseAdmin();
+
+  if (name === "buscar_produtos") {
+    const termo = String(args.termo ?? "").trim();
+    if (!termo) return JSON.stringify({ erro: "termo de busca vazio" });
+    const { data } = await admin
+      .from("products")
+      .select("name, price, cost_price, category, stock, active")
+      .eq("store_id", storeId)
+      .ilike("name", `%${termo}%`)
+      .limit(20);
+    const results = (data ?? []).map((p) => ({
+      nome: p.name,
+      ativo: p.active,
+      preco_venda: p.price,
+      preco_custo: p.cost_price,
+      categoria: p.category ?? "sem categoria",
+      estoque: p.stock,
+      margem_reais: p.cost_price != null ? Number((p.price - p.cost_price).toFixed(2)) : null,
+      margem_percentual: p.cost_price != null && p.price > 0 ? Number((((p.price - p.cost_price) / p.price) * 100).toFixed(1)) : null,
+    }));
+    return JSON.stringify({ encontrados: results.length, produtos: results });
+  }
+
+  if (name === "consultar_cliente_fiado") {
+    const nome = String(args.nome ?? "").trim();
+    if (!nome) return JSON.stringify({ erro: "nome de busca vazio" });
+    const { data: customers } = await admin
+      .from("credit_customers")
+      .select("id, name, phone, balance, credit_limit")
+      .eq("store_id", storeId)
+      .ilike("name", `%${nome}%`)
+      .limit(10);
+    if (!customers || customers.length === 0) return JSON.stringify({ encontrados: 0 });
+    const results = await Promise.all(
+      customers.map(async (c) => {
+        const { data: tx } = await admin
+          .from("credit_transactions")
+          .select("type, amount, note, created_at")
+          .eq("customer_id", c.id)
+          .order("created_at", { ascending: false })
+          .limit(10);
+        return {
+          nome: c.name,
+          telefone: c.phone,
+          saldo_devedor: c.balance,
+          limite_credito: c.credit_limit,
+          ultimas_movimentacoes: tx ?? [],
+        };
+      }),
+    );
+    return JSON.stringify({ encontrados: results.length, clientes: results });
+  }
+
+  if (name === "consultar_vendas_periodo") {
+    const dias = Number(args.dias) || 30;
+    const since = new Date(Date.now() - dias * 24 * 60 * 60 * 1000).toISOString();
+    const orders = await fetchAllRows<OrderRow>((from, to) =>
+      admin
+        .from("orders")
+        .select("total, discount_amount, items, status, payment_method, payment_split, created_at")
+        .eq("store_id", storeId)
+        .gte("created_at", since)
+        .range(from, to),
+    );
+    const products = await fetchAllRows<ProductRow>((from, to) =>
+      admin
+        .from("products")
+        .select("id, name, price, cost_price, category, stock, stock_alert_threshold, active")
+        .eq("store_id", storeId)
+        .range(from, to),
+    );
+    const productById = new Map(products.map((p) => [p.id, p]));
+    const valid = orders.filter((o) => o.status !== "cancelado");
+    const revenue = valid.reduce((s, o) => s + Number(o.total), 0);
+
+    const payMix = new Map<string, number>();
+    for (const o of valid) {
+      if (o.payment_method === "dividido" && o.payment_split) {
+        for (const p of o.payment_split) payMix.set(p.method, (payMix.get(p.method) ?? 0) + Number(p.amount));
+      } else {
+        const m = o.payment_method || "desconhecido";
+        payMix.set(m, (payMix.get(m) ?? 0) + Number(o.total));
+      }
+    }
+
+    const productAgg = new Map<string, { revenue: number; cost: number; qty: number; hasCost: boolean }>();
+    for (const o of valid) {
+      for (const item of o.items ?? []) {
+        const lineTotal = item.line_total ?? item.price * item.quantity;
+        const cur = productAgg.get(item.name) ?? { revenue: 0, cost: 0, qty: 0, hasCost: false };
+        cur.revenue += lineTotal;
+        cur.qty += item.quantity;
+        const prod = item.product_id ? productById.get(item.product_id) : undefined;
+        if (prod?.cost_price != null) {
+          cur.cost += Number(prod.cost_price) * item.quantity;
+          cur.hasCost = true;
+        }
+        productAgg.set(item.name, cur);
+      }
+    }
+
+    return JSON.stringify({
+      periodo_dias: dias,
+      faturamento: Number(revenue.toFixed(2)),
+      numero_vendas: valid.length,
+      vendas_canceladas: orders.length - valid.length,
+      ticket_medio: valid.length > 0 ? Number((revenue / valid.length).toFixed(2)) : 0,
+      formas_pagamento: Object.fromEntries([...payMix.entries()].map(([k, v]) => [k, Number(v.toFixed(2))])),
+      produtos_mais_vendidos: [...productAgg.entries()]
+        .sort((a, b) => b[1].revenue - a[1].revenue)
+        .slice(0, 15)
+        .map(([nome, d]) => ({
+          nome,
+          quantidade: d.qty,
+          faturamento: Number(d.revenue.toFixed(2)),
+          margem_reais: d.hasCost ? Number((d.revenue - d.cost).toFixed(2)) : null,
+          margem_percentual: d.hasCost ? Number((((d.revenue - d.cost) / d.revenue) * 100).toFixed(1)) : null,
+        })),
+    });
+  }
+
+  return JSON.stringify({ erro: `ferramenta desconhecida: ${name}` });
+}
+
 export async function POST(request: Request) {
   const authHeader = request.headers.get("authorization");
   if (!authHeader) {
@@ -261,30 +439,60 @@ export async function POST(request: Request) {
   const client = new OpenAI({ apiKey });
 
   try {
-    const completion = await client.chat.completions.create({
-      model: "gpt-5.5",
-      messages: [
-        {
-          role: "developer",
-          content: `Você é o sócio de negócios do dono desse mercado/loja de delivery brasileiro — não um chatbot de suporte, um sócio de verdade que olha os números com ele. Fala em português do Brasil, direto e prático. Debate ideias, questiona quando faz sentido, discorda quando os dados apontam outra coisa, mas nunca enrola.
+    const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
+      {
+        role: "developer",
+        content: `Você é o sócio de negócios do dono desse mercado/loja de delivery brasileiro — não um chatbot de suporte, um sócio de verdade que olha os números com ele. Fala em português do Brasil, direto e prático. Debate ideias, questiona quando faz sentido, discorda quando os dados apontam outra coisa, mas nunca enrola.
 
-Regras de como usar os dados abaixo:
-- Nunca invente número — todo valor que você disser tem que vir literalmente do resumo abaixo.
+Regras de como usar os dados:
+- Nunca invente número — todo valor que você disser tem que vir literalmente do resumo abaixo ou de uma ferramenta que você chamou.
+- Você tem ferramentas pra buscar dado que não está no resumo: produto específico (mesmo que não tenha vendido no período), cliente do fiado por nome, ou vendas de um período diferente do mês atual. USE ESSAS FERRAMENTAS sempre que a pergunta pedir algo que não está no resumo, em vez de dizer "não tenho esse dado" — só diga isso se a ferramenta também não achar nada.
 - Antes de dar um diagnóstico de margem/lucro, sempre olhe a seção "QUALIDADE DO CATÁLOGO" primeiro — se tiver produto sem custo cadastrado, isso limita a precisão de QUALQUER conta de lucro, avise isso explicitamente, com o número exato de produtos afetados.
-- Se um produto aparece com "margem" no resumo, use esse número real — não diga "não tenho dado suficiente" se o dado está ali.
+- Se um produto aparece com "margem" no resumo (ou numa ferramenta que você chamou), use esse número real — não diga "não tenho dado suficiente" se o dado está ali.
 - Se um produto aparece "sem custo cadastrado", aí sim não dá pra saber a margem dele — diga isso especificamente pra aquele produto, não generalize pra todos.
 - Trate o fiado/crediário como dinheiro que ainda não entrou no caixa, não como faturamento normal — se for relevante pra pergunta, aponte isso.
-- Se algo no resumo parece um erro real do sistema (ex: produto vendendo no prejuízo), avise isso como prioridade alta, não enterre no meio do texto.
-- Se não tiver dado suficiente pra responder algo específico, diga isso claramente e diga exatamente o que falta pra você conseguir responder.
+- Se algo parece um erro real do sistema (ex: produto vendendo no prejuízo), avise isso como prioridade alta, não enterre no meio do texto.
+- Se não tiver dado suficiente pra responder algo específico mesmo depois de tentar as ferramentas, diga isso claramente e diga exatamente o que falta.
 
 ${summary}`,
-        },
-        ...orderedHistory.map((m) => ({ role: m.role as "user" | "assistant", content: m.content })),
-        { role: "user" as const, content: message.trim() },
-      ],
-    });
+      },
+      ...orderedHistory.map((m) => ({ role: m.role as "user" | "assistant", content: m.content })),
+      { role: "user" as const, content: message.trim() },
+    ];
 
-    const reply = completion.choices[0]?.message?.content?.trim() || "Não consegui pensar numa resposta agora — tenta de novo.";
+    let reply = "Não consegui pensar numa resposta agora — tenta de novo.";
+    const MAX_TOOL_ROUNDS = 5;
+
+    for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
+      const completion = await client.chat.completions.create({
+        model: "gpt-5.5",
+        messages,
+        tools: TOOLS,
+      });
+
+      const choice = completion.choices[0]?.message;
+      if (!choice) break;
+
+      if (!choice.tool_calls || choice.tool_calls.length === 0) {
+        reply = choice.content?.trim() || reply;
+        break;
+      }
+
+      messages.push(choice);
+      for (const call of choice.tool_calls) {
+        if (call.type !== "function") continue;
+        let args: Record<string, unknown> = {};
+        try {
+          args = JSON.parse(call.function.arguments);
+        } catch {
+          // argumento mal formado — segue com objeto vazio, a ferramenta trata
+        }
+        const result = await runTool(store_id, call.function.name, args).catch((err) =>
+          JSON.stringify({ erro: err instanceof Error ? err.message : "falha ao executar ferramenta" }),
+        );
+        messages.push({ role: "tool", tool_call_id: call.id, content: result });
+      }
+    }
 
     const { error: insertError } = await admin.from("assistant_messages").insert([
       { store_id, role: "user", content: message.trim() },
