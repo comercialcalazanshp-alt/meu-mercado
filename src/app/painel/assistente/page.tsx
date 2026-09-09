@@ -46,6 +46,7 @@ export default function Assistente() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
+  const [statusText, setStatusText] = useState("Pensando…");
   const [input, setInput] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [listening, setListening] = useState(false);
@@ -185,19 +186,63 @@ export default function Assistente() {
       return;
     }
 
+    setStatusText("Pensando…");
     try {
       const res = await fetch("/api/assistente/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
         body: JSON.stringify({ store_id: store.id, message: trimmed }),
       });
-      const data = await res.json();
+
+      // Erro antes de começar a pensar (não logado, plano sem acesso etc.)
+      // ainda vem como JSON normal, não como stream.
       if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
         setError(data.error ?? "Não deu pra falar com o assistente agora.");
         return;
       }
-      setMessages((prev) => [...prev, { role: "assistant", content: data.reply }]);
-      speak(data.reply);
+      if (!res.body) {
+        setError("Não deu pra falar com o assistente agora.");
+        return;
+      }
+
+      // Vai lendo o stream de progresso (uma linha JSON por evento) em vez
+      // de esperar tudo pronto — sem isso, o dono ficava olhando "Pensando…"
+      // parado por 15-20s enquanto o assistente ia e voltava buscando dado,
+      // parecendo que tinha travado.
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let finalReply: string | null = null;
+      let streamError: string | null = null;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          try {
+            const event = JSON.parse(line);
+            if (event.type === "status") setStatusText(event.text);
+            else if (event.type === "done") finalReply = event.reply;
+            else if (event.type === "error") streamError = event.error;
+          } catch {
+            // linha incompleta/corrompida — ignora, o resto do stream segue
+          }
+        }
+      }
+
+      if (streamError) {
+        setError(streamError);
+        return;
+      }
+      if (finalReply) {
+        setMessages((prev) => [...prev, { role: "assistant", content: finalReply as string }]);
+        speak(finalReply);
+      }
     } catch {
       setError("Não deu pra falar com o assistente agora — confere sua internet.");
     } finally {
@@ -266,7 +311,12 @@ export default function Assistente() {
             </div>
           ))
         )}
-        {sending && <p className="text-xs text-slate-400">Pensando…</p>}
+        {sending && (
+          <p className="flex items-center gap-1.5 text-xs text-slate-400">
+            <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-slate-400" />
+            {statusText}
+          </p>
+        )}
       </div>
 
       {error && <p className="mt-2 text-sm text-red-600 dark:text-red-400">{error}</p>}

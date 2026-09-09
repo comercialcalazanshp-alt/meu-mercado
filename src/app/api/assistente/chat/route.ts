@@ -382,6 +382,12 @@ async function runTool(storeId: string, name: string, args: Record<string, unkno
   return JSON.stringify({ erro: `ferramenta desconhecida: ${name}` });
 }
 
+const TOOL_STATUS_LABELS: Record<string, string> = {
+  buscar_produtos: "Buscando produto no catálogo…",
+  consultar_cliente_fiado: "Consultando cliente do fiado…",
+  consultar_vendas_periodo: "Recalculando vendas do período…",
+};
+
 export async function POST(request: Request) {
   const authHeader = request.headers.get("authorization");
   if (!authHeader) {
@@ -438,11 +444,22 @@ export async function POST(request: Request) {
 
   const client = new OpenAI({ apiKey });
 
-  try {
-    const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
-      {
-        role: "developer",
-        content: `Você é o sócio de negócios do dono desse mercado/loja de delivery brasileiro — não um chatbot de suporte, um sócio de verdade que olha os números com ele. Fala em português do Brasil, direto e prático. Debate ideias, questiona quando faz sentido, discorda quando os dados apontam outra coisa, mas nunca enrola.
+  // Manda o progresso em NDJSON (uma linha JSON por evento) conforme cada
+  // rodada de ferramenta roda, em vez de fazer o dono esperar 15-20s
+  // olhando um "Pensando…" parado — o assistente agora pode ir e voltar até
+  // 5 vezes buscando dado, e sem isso parecia que tinha travado.
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream({
+    async start(controller) {
+      function send(event: Record<string, unknown>) {
+        controller.enqueue(encoder.encode(JSON.stringify(event) + "\n"));
+      }
+
+      try {
+        const messages: OpenAI.Chat.Completions.ChatCompletionMessageParam[] = [
+          {
+            role: "developer",
+            content: `Você é o sócio de negócios do dono desse mercado/loja de delivery brasileiro — não um chatbot de suporte, um sócio de verdade que olha os números com ele. Fala em português do Brasil, direto e prático. Debate ideias, questiona quando faz sentido, discorda quando os dados apontam outra coisa, mas nunca enrola.
 
 Regras de como usar os dados:
 - Nunca invente número — todo valor que você disser tem que vir literalmente do resumo abaixo ou de uma ferramenta que você chamou.
@@ -455,56 +472,68 @@ Regras de como usar os dados:
 - Se não tiver dado suficiente pra responder algo específico mesmo depois de tentar as ferramentas, diga isso claramente e diga exatamente o que falta.
 
 ${summary}`,
-      },
-      ...orderedHistory.map((m) => ({ role: m.role as "user" | "assistant", content: m.content })),
-      { role: "user" as const, content: message.trim() },
-    ];
+          },
+          ...orderedHistory.map((m) => ({ role: m.role as "user" | "assistant", content: m.content })),
+          { role: "user" as const, content: message.trim() },
+        ];
 
-    let reply = "Não consegui pensar numa resposta agora — tenta de novo.";
-    const MAX_TOOL_ROUNDS = 5;
+        let reply = "Não consegui pensar numa resposta agora — tenta de novo.";
+        const MAX_TOOL_ROUNDS = 5;
 
-    for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
-      const completion = await client.chat.completions.create({
-        model: "gpt-5.5",
-        messages,
-        tools: TOOLS,
-      });
+        send({ type: "status", text: "Pensando…" });
 
-      const choice = completion.choices[0]?.message;
-      if (!choice) break;
+        for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
+          const completion = await client.chat.completions.create({
+            model: "gpt-5.5",
+            messages,
+            tools: TOOLS,
+          });
 
-      if (!choice.tool_calls || choice.tool_calls.length === 0) {
-        reply = choice.content?.trim() || reply;
-        break;
-      }
+          const choice = completion.choices[0]?.message;
+          if (!choice) break;
 
-      messages.push(choice);
-      for (const call of choice.tool_calls) {
-        if (call.type !== "function") continue;
-        let args: Record<string, unknown> = {};
-        try {
-          args = JSON.parse(call.function.arguments);
-        } catch {
-          // argumento mal formado — segue com objeto vazio, a ferramenta trata
+          if (!choice.tool_calls || choice.tool_calls.length === 0) {
+            reply = choice.content?.trim() || reply;
+            break;
+          }
+
+          messages.push(choice);
+          for (const call of choice.tool_calls) {
+            if (call.type !== "function") continue;
+            send({ type: "status", text: TOOL_STATUS_LABELS[call.function.name] ?? "Consultando dado da loja…" });
+            let args: Record<string, unknown> = {};
+            try {
+              args = JSON.parse(call.function.arguments);
+            } catch {
+              // argumento mal formado — segue com objeto vazio, a ferramenta trata
+            }
+            const result = await runTool(store_id, call.function.name, args).catch((err) =>
+              JSON.stringify({ erro: err instanceof Error ? err.message : "falha ao executar ferramenta" }),
+            );
+            messages.push({ role: "tool", tool_call_id: call.id, content: result });
+          }
+          send({ type: "status", text: "Organizando a resposta…" });
         }
-        const result = await runTool(store_id, call.function.name, args).catch((err) =>
-          JSON.stringify({ erro: err instanceof Error ? err.message : "falha ao executar ferramenta" }),
-        );
-        messages.push({ role: "tool", tool_call_id: call.id, content: result });
+
+        const { error: insertError } = await admin.from("assistant_messages").insert([
+          { store_id, role: "user", content: message.trim() },
+          { store_id, role: "assistant", content: reply },
+        ]);
+        if (insertError) {
+          console.error("Não salvou a conversa do assistente:", insertError.message);
+        }
+
+        send({ type: "done", reply });
+      } catch (err) {
+        console.error("Assistente falhou:", err instanceof Error ? err.message : err);
+        send({ type: "error", error: "Não deu pra falar com o assistente agora. Tenta de novo em instantes." });
+      } finally {
+        controller.close();
       }
-    }
+    },
+  });
 
-    const { error: insertError } = await admin.from("assistant_messages").insert([
-      { store_id, role: "user", content: message.trim() },
-      { store_id, role: "assistant", content: reply },
-    ]);
-    if (insertError) {
-      console.error("Não salvou a conversa do assistente:", insertError.message);
-    }
-
-    return Response.json({ reply });
-  } catch (err) {
-    console.error("Assistente falhou:", err instanceof Error ? err.message : err);
-    return Response.json({ error: "Não deu pra falar com o assistente agora. Tenta de novo em instantes." }, { status: 502 });
-  }
+  return new Response(stream, {
+    headers: { "Content-Type": "application/x-ndjson; charset=utf-8" },
+  });
 }
