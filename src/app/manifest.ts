@@ -9,7 +9,12 @@ export default function manifest(): MetadataRoute.Manifest {
     name: "Meu Mercado — Painel",
     short_name: "Meu Mercado",
     description: "Painel do dono: PDV, produtos, pedidos, alertas e relatórios.",
-    start_url: "/painel",
+    // Vai direto pro PDV — "/painel" sozinho só redireciona pra outra
+    // página via JS depois de carregar (client-side), e se essa página
+    // nunca tiver sido cacheada, o app não abre nada offline. Como o PDV é
+    // a ferramenta que realmente precisa abrir sem internet, é ela quem
+    // entra como porta de entrada do app instalado.
+    start_url: "/painel/pdv",
     scope: "/",
     display: "standalone",
     background_color: "#000000",

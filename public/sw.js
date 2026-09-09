@@ -1,6 +1,34 @@
 const CACHE_NAME = "mm-shell-v1";
 
-self.addEventListener("install", () => self.skipWaiting());
+// Garante que PDV e painel principal já ficam salvos assim que o service
+// worker instala — sem depender do dono ter clicado em cada página antes de
+// perder internet. Numa falha (ex: instalando já sem rede), só ignora; o
+// cache no fetch abaixo continua funcionando pra qualquer página visitada
+// depois normalmente.
+const PRECACHE_URLS = ["/painel/pdv", "/painel", "/painel/dashboard", "/painel/alertas"];
+
+self.addEventListener("install", (event) => {
+  event.waitUntil(
+    (async () => {
+      try {
+        const cache = await caches.open(CACHE_NAME);
+        await Promise.all(
+          PRECACHE_URLS.map(async (url) => {
+            try {
+              const response = await fetch(url);
+              if (response.ok) await cache.put(url, response);
+            } catch {
+              // sem rede na instalação — segue sem essa página pré-salva
+            }
+          }),
+        );
+      } catch {
+        // ignora falha de cache aqui — não deve travar a instalação do SW
+      }
+      self.skipWaiting();
+    })(),
+  );
+});
 
 self.addEventListener("activate", (event) => {
   event.waitUntil(
