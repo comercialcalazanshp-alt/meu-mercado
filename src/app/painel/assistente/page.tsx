@@ -7,16 +7,22 @@ import { useStore } from "@/lib/store-context";
 
 // O assistente responde em markdown (##, **negrito**, listas) — sem isso
 // renderizado, aparecia tudo como texto corrido cheio de # e * soltos, sem
-// nenhuma organização visual.
+// nenhuma organização visual. react-markdown manda um "node" (info da AST)
+// junto das props de cada componente — precisa tirar antes de espalhar no
+// elemento HTML, senão vaza como atributo node="[object Object]" à toa.
+type MdProps<T> = T & { node?: unknown };
+function stripNode<T extends object>({ node: _node, ...rest }: MdProps<T>): T {
+  return rest as T;
+}
 const MARKDOWN_COMPONENTS = {
-  h1: (props: React.ComponentProps<"h2">) => <h2 className="mb-1.5 mt-2 text-base font-bold first:mt-0" {...props} />,
-  h2: (props: React.ComponentProps<"h2">) => <h2 className="mb-1.5 mt-2.5 text-base font-bold first:mt-0" {...props} />,
-  h3: (props: React.ComponentProps<"h3">) => <h3 className="mb-1 mt-2 text-sm font-bold first:mt-0" {...props} />,
-  p: (props: React.ComponentProps<"p">) => <p className="mb-1.5 leading-relaxed last:mb-0" {...props} />,
-  ul: (props: React.ComponentProps<"ul">) => <ul className="mb-1.5 ml-4 list-disc space-y-0.5" {...props} />,
-  ol: (props: React.ComponentProps<"ol">) => <ol className="mb-1.5 ml-4 list-decimal space-y-0.5" {...props} />,
-  li: (props: React.ComponentProps<"li">) => <li className="leading-relaxed" {...props} />,
-  strong: (props: React.ComponentProps<"strong">) => <strong className="font-bold" {...props} />,
+  h1: (props: MdProps<React.ComponentProps<"h2">>) => <h2 className="mb-1.5 mt-2 text-base font-bold first:mt-0" {...stripNode(props)} />,
+  h2: (props: MdProps<React.ComponentProps<"h2">>) => <h2 className="mb-1.5 mt-2.5 text-base font-bold first:mt-0" {...stripNode(props)} />,
+  h3: (props: MdProps<React.ComponentProps<"h3">>) => <h3 className="mb-1 mt-2 text-sm font-bold first:mt-0" {...stripNode(props)} />,
+  p: (props: MdProps<React.ComponentProps<"p">>) => <p className="mb-1.5 leading-relaxed last:mb-0" {...stripNode(props)} />,
+  ul: (props: MdProps<React.ComponentProps<"ul">>) => <ul className="mb-1.5 ml-4 list-disc space-y-0.5" {...stripNode(props)} />,
+  ol: (props: MdProps<React.ComponentProps<"ol">>) => <ol className="mb-1.5 ml-4 list-decimal space-y-0.5" {...stripNode(props)} />,
+  li: (props: MdProps<React.ComponentProps<"li">>) => <li className="leading-relaxed" {...stripNode(props)} />,
+  strong: (props: MdProps<React.ComponentProps<"strong">>) => <strong className="font-bold" {...stripNode(props)} />,
   hr: () => <hr className="my-2 border-slate-300 dark:border-slate-600" />,
 };
 
