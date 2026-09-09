@@ -8,6 +8,7 @@ type Order = {
   id: string;
   items: { name: string; price: number; quantity: number }[];
   total: number;
+  discount_amount: number;
   status: string;
   channel: string | null;
   payment_method: string | null;
@@ -358,7 +359,7 @@ export default function Dashboard() {
       const [ordersRes, partnershipsRes, clubRes, entregadoresRes, expensesRes, profitRes, prevProfitRes] = await Promise.all([
         supabase
           .from("orders")
-          .select("id, items, total, status, channel, payment_method, created_at, delivered_at, delivered_by, delivery_payout_settled")
+          .select("id, items, total, discount_amount, status, channel, payment_method, created_at, delivered_at, delivered_by, delivery_payout_settled")
           .eq("store_id", store.id)
           .gte("created_at", prevSince.toISOString())
           .lt("created_at", until.toISOString())
@@ -442,6 +443,12 @@ export default function Dashboard() {
   // ---------- KPIs ----------
   const revenue = useMemo(() => orders.reduce((s, o) => s + o.total, 0), [orders]);
   const prevRevenue = useMemo(() => prevOrders.reduce((s, o) => s + o.total, 0), [prevOrders]);
+  // orders.total já sai gravado COM o desconto aplicado (pdv_sale/checkout
+  // subtraem antes de salvar) — então o desconto já reduz o faturamento
+  // sozinho, não precisa subtrair de novo aqui. Isso só existe pra MOSTRAR
+  // quanto foi dado, sem esconder o número em lugar nenhum.
+  const totalDiscount = useMemo(() => orders.reduce((s, o) => s + (o.discount_amount || 0), 0), [orders]);
+  const subtotalBeforeDiscount = revenue + totalDiscount;
   const ticketMedio = orders.length ? revenue / orders.length : 0;
   const prevTicketMedio = prevOrders.length ? prevRevenue / prevOrders.length : 0;
 
@@ -734,6 +741,20 @@ export default function Dashboard() {
                   <h3 className="mb-2 text-[11px] font-bold uppercase tracking-wide" style={{ color: COLOR_HEX.positive }}>
                     Receita
                   </h3>
+                  {totalDiscount > 0 && (
+                    <>
+                      <div className="flex items-center justify-between border-b border-white/[0.06] py-2 text-sm">
+                        <span className="text-white/55">Subtotal (antes do desconto)</span>
+                        <span className="font-bold tabular-nums">{formatCurrency(subtotalBeforeDiscount)}</span>
+                      </div>
+                      <div className="flex items-center justify-between border-b border-white/[0.06] py-2 text-sm">
+                        <span className="text-white/55">Desconto dado</span>
+                        <span className="font-bold tabular-nums" style={{ color: COLOR_HEX.negative }}>
+                          −{formatCurrency(totalDiscount)}
+                        </span>
+                      </div>
+                    </>
+                  )}
                   <div className="flex items-center justify-between border-b border-white/[0.06] py-2 text-sm">
                     <span className="text-white/55">Vendas do Mercado (PDV + vitrine)</span>
                     <span className="font-bold tabular-nums">{formatCurrency(revenue)}</span>
