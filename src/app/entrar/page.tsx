@@ -17,17 +17,35 @@ export default function Entrar() {
     setError(null);
     setLoading(true);
 
-    const { error: authError } = await getSupabase().auth.signInWithPassword({
-      email,
-      password,
-    });
+    if (typeof navigator !== "undefined" && !navigator.onLine) {
+      setError("Sem internet agora — não dá pra verificar login sem conexão. Conecte e tente de novo.");
+      setLoading(false);
+      return;
+    }
 
-    if (authError) {
-      setError(
-        authError.message === "Email not confirmed"
-          ? "Você ainda não confirmou seu e-mail. Cheque sua caixa de entrada."
-          : "E-mail ou senha incorretos.",
-      );
+    try {
+      const { error: authError } = await getSupabase().auth.signInWithPassword({
+        email,
+        password,
+      });
+
+      if (authError) {
+        // "Failed to fetch"/"NetworkError" etc. — a falha foi de conexão, não
+        // de senha errada; sem diferenciar, o dono achava que digitou errado
+        // quando na verdade só estava sem internet.
+        const looksLikeNetworkError = /fetch|network|conex/i.test(authError.message);
+        setError(
+          authError.message === "Email not confirmed"
+            ? "Você ainda não confirmou seu e-mail. Cheque sua caixa de entrada."
+            : looksLikeNetworkError
+              ? "Sem internet agora — não dá pra verificar login sem conexão. Conecte e tente de novo."
+              : "E-mail ou senha incorretos.",
+        );
+        setLoading(false);
+        return;
+      }
+    } catch {
+      setError("Sem internet agora — não dá pra verificar login sem conexão. Conecte e tente de novo.");
       setLoading(false);
       return;
     }
