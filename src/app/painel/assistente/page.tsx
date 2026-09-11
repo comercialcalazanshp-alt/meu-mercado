@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import ReactMarkdown from "react-markdown";
 import { getSupabase } from "@/lib/supabase";
 import { useStore } from "@/lib/store-context";
@@ -41,8 +42,11 @@ type SpeechRecognitionLike = {
   stop: () => void;
 };
 
-export default function Assistente() {
+function AssistenteInner() {
   const store = useStore();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const autoSentRef = useRef(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
@@ -85,6 +89,21 @@ export default function Assistente() {
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages, sending]);
+
+  // Vem de um link tipo "Pedir orientação financeira" no fechamento do
+  // caixa, já com a pergunta pronta — manda sozinho assim que o histórico
+  // termina de carregar (esperar o loading evita a resposta otimista daqui
+  // ser sobrescrita pelo setMessages(data) do load() ainda em andamento) e
+  // tira o parâmetro da URL pra não reenviar de novo se a página recarregar.
+  useEffect(() => {
+    if (loading || autoSentRef.current) return;
+    const pergunta = searchParams.get("pergunta");
+    if (!pergunta) return;
+    autoSentRef.current = true;
+    router.replace("/painel/assistente");
+    sendMessage(pergunta);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, searchParams]);
 
   useEffect(() => {
     const w = window as unknown as { SpeechRecognition?: new () => SpeechRecognitionLike; webkitSpeechRecognition?: new () => SpeechRecognitionLike };
@@ -368,5 +387,13 @@ export default function Assistente() {
         </button>
       </form>
     </div>
+  );
+}
+
+export default function Assistente() {
+  return (
+    <Suspense fallback={null}>
+      <AssistenteInner />
+    </Suspense>
   );
 }

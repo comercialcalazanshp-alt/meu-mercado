@@ -17,6 +17,10 @@ export type Store = {
   pix_key_2_label: string | null;
   pix_receiver_name: string | null;
   pix_city: string | null;
+  finance_split_enabled: boolean;
+  finance_split_giro_percent: number;
+  finance_split_prolabore_percent: number;
+  finance_split_investimento_percent: number;
 };
 
 export const StoreContext = createContext<Store | null>(null);

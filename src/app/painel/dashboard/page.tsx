@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { getSupabase } from "@/lib/supabase";
-import { useStore } from "@/lib/store-context";
+import { useStore, type Store } from "@/lib/store-context";
 
 type Order = {
   id: string;
@@ -47,6 +47,8 @@ type EntregadorMember = { id: string; full_name: string | null; value_per_delive
 type Profit = { revenue: number; cogs: number; missing_cost: boolean; expenses: number; profit: number };
 
 type Expense = { id: string; description: string; category: string; amount: number; expense_date: string };
+
+type CreditPayment = { amount: number; created_at: string };
 
 const CYCLE_MONTHS: Record<Partnership["billing_cycle"], number> = {
   mensal: 1,
@@ -313,6 +315,178 @@ function Card({ children, className = "", delay = 0 }: { children: React.ReactNo
   );
 }
 
+// Painel "quanto eu posso tirar": o dono define 3 % (capital de giro,
+// pró-labore, investimento) que precisam somar 100, e o sistema aplica em
+// cima do lucroLiquido já filtrado pra só contar dinheiro de verdade
+// recebido no período (ver cashProfit acima) — nunca sobre faturamento bruto
+// nem sobre lucro contábil que ainda inclui fiado em aberto.
+function FinanceSplitCard({
+  store,
+  cashProfit,
+  periodLabel,
+  fiadoRevenueInPeriod,
+}: {
+  store: Store;
+  cashProfit: number;
+  periodLabel: string;
+  fiadoRevenueInPeriod: number;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [enabled, setEnabled] = useState(store.finance_split_enabled);
+  const [giro, setGiro] = useState(String(store.finance_split_giro_percent));
+  const [prolabore, setProlabore] = useState(String(store.finance_split_prolabore_percent));
+  const [investimento, setInvestimento] = useState(String(store.finance_split_investimento_percent));
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  const giroNum = Number(giro.replace(",", ".")) || 0;
+  const prolaboreNum = Number(prolabore.replace(",", ".")) || 0;
+  const investimentoNum = Number(investimento.replace(",", ".")) || 0;
+  const total = giroNum + prolaboreNum + investimentoNum;
+
+  async function handleSave() {
+    if (Math.round(total) !== 100) {
+      setSaveError("As 3 porcentagens precisam somar 100%.");
+      return;
+    }
+    setSaveError(null);
+    setSaving(true);
+    await getSupabase()
+      .from("stores")
+      .update({
+        finance_split_enabled: enabled,
+        finance_split_giro_percent: giroNum,
+        finance_split_prolabore_percent: prolaboreNum,
+        finance_split_investimento_percent: investimentoNum,
+      })
+      .eq("id", store.id);
+    setSaving(false);
+    setEditing(false);
+  }
+
+  if (!enabled && !editing) {
+    return (
+      <Card className="mt-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="text-[13px] font-bold">Quanto eu posso tirar?</h2>
+            <p className="text-[11.5px] text-white/30">
+              Configure uma divisão entre capital de giro, pró-labore e investimento — calculado com o dinheiro que já
+              entrou de verdade no período, sem contar fiado em aberto.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setEditing(true)}
+            className="shrink-0 rounded-lg border border-white/[0.12] px-3 py-1.5 text-xs font-semibold text-white/70 hover:border-white/25"
+          >
+            Configurar
+          </button>
+        </div>
+      </Card>
+    );
+  }
+
+  return (
+    <Card className="mt-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 className="text-[13px] font-bold">Quanto eu posso tirar?</h2>
+          <p className="text-[11.5px] text-white/30">
+            Calculado em cima do lucro líquido de {periodLabel.toLowerCase()} já recebido em dinheiro — fiado em aberto
+            não entra, pagamento de fiado antigo recebido agora entra.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => setEditing((v) => !v)}
+          className="shrink-0 text-xs font-semibold text-white/45 underline hover:text-white/70"
+        >
+          {editing ? "Fechar" : "Editar %"}
+        </button>
+      </div>
+
+      {editing && (
+        <div className="mt-4 space-y-3 border-t border-white/[0.06] pt-4">
+          <label className="flex items-center gap-2 text-sm text-white/70">
+            <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} className="h-4 w-4" />
+            Mostrar esse painel no Dashboard
+          </label>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <div>
+              <label className="text-[11px] text-white/40">Capital de giro (%)</label>
+              <input
+                value={giro}
+                onChange={(e) => setGiro(e.target.value)}
+                inputMode="decimal"
+                className="mt-1 w-full rounded-lg border border-white/[0.12] bg-white/[0.03] px-3 py-2 text-sm text-white"
+              />
+            </div>
+            <div>
+              <label className="text-[11px] text-white/40">Pró-labore (%)</label>
+              <input
+                value={prolabore}
+                onChange={(e) => setProlabore(e.target.value)}
+                inputMode="decimal"
+                className="mt-1 w-full rounded-lg border border-white/[0.12] bg-white/[0.03] px-3 py-2 text-sm text-white"
+              />
+            </div>
+            <div>
+              <label className="text-[11px] text-white/40">Investimento (%)</label>
+              <input
+                value={investimento}
+                onChange={(e) => setInvestimento(e.target.value)}
+                inputMode="decimal"
+                className="mt-1 w-full rounded-lg border border-white/[0.12] bg-white/[0.03] px-3 py-2 text-sm text-white"
+              />
+            </div>
+          </div>
+          <p className={`text-xs font-semibold ${Math.round(total) === 100 ? "text-[#34E88C]" : "text-[#FF5C68]"}`}>
+            Soma: {total.toFixed(0)}% {Math.round(total) === 100 ? "✓" : "— precisa somar 100%"}
+          </p>
+          {saveError && <p className="text-xs text-[#FF5C68]">{saveError}</p>}
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={saving}
+            className="rounded-lg bg-[#5CACFF] px-4 py-2 text-sm font-bold text-[#0A1A2E] disabled:opacity-60"
+          >
+            {saving ? "Salvando…" : "Salvar"}
+          </button>
+        </div>
+      )}
+
+      {enabled &&
+        !editing &&
+        (cashProfit <= 0 ? (
+          <p className="mt-3 text-sm text-white/50">
+            {periodLabel} fechou sem sobra em dinheiro de verdade pra dividir (lucro já descontando o que ainda tá em
+            fiado: {formatCurrency(cashProfit)}).
+            {fiadoRevenueInPeriod > 0 &&
+              ` Tem ${formatCurrency(fiadoRevenueInPeriod)} parado em fiado nesse período — quando entrar, essa conta muda.`}
+          </p>
+        ) : (
+          <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+            {[
+              { label: "Capital de giro", pct: giroNum, hex: COLOR_HEX.accent },
+              { label: "Pró-labore", pct: prolaboreNum, hex: COLOR_HEX.positive },
+              { label: "Investimento", pct: investimentoNum, hex: COLOR_HEX.warning },
+            ].map((b) => (
+              <div key={b.label} className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-3">
+                <div className="text-[11px] font-bold uppercase tracking-wide text-white/35">
+                  {b.label} · {b.pct}%
+                </div>
+                <div className="mt-1 text-lg font-extrabold tabular-nums" style={{ color: b.hex }}>
+                  {formatCurrency((cashProfit * b.pct) / 100)}
+                </div>
+              </div>
+            ))}
+          </div>
+        ))}
+    </Card>
+  );
+}
+
 export default function Dashboard() {
   const store = useStore();
   const [period, setPeriod] = useState<PeriodKey>("30d");
@@ -336,6 +510,7 @@ export default function Dashboard() {
   const [prevExpenses, setPrevExpenses] = useState<Expense[]>([]);
   const [profit, setProfit] = useState<Profit | null>(null);
   const [prevProfit, setPrevProfit] = useState<Profit | null>(null);
+  const [creditPayments, setCreditPayments] = useState<CreditPayment[]>([]);
 
   const range = useMemo(() => {
     if (period === "custom" && customSince && customUntil) {
@@ -356,7 +531,7 @@ export default function Dashboard() {
       const supabase = getSupabase();
       const { since, until, prevSince, prevUntil } = range;
 
-      const [ordersRes, partnershipsRes, clubRes, entregadoresRes, expensesRes, profitRes, prevProfitRes] = await Promise.all([
+      const [ordersRes, partnershipsRes, clubRes, entregadoresRes, expensesRes, profitRes, prevProfitRes, creditPaymentsRes] = await Promise.all([
         supabase
           .from("orders")
           .select("id, items, total, discount_amount, status, channel, payment_method, created_at, delivered_at, delivered_by, delivery_payout_settled")
@@ -381,6 +556,17 @@ export default function Dashboard() {
           .lt("expense_date", until.toISOString().slice(0, 10)),
         supabase.rpc("get_profit_summary", { p_store_id: store.id, p_since: since.toISOString(), p_until: until.toISOString() }),
         supabase.rpc("get_profit_summary", { p_store_id: store.id, p_since: prevSince.toISOString(), p_until: prevUntil.toISOString() }),
+        // pagamento de fiado antigo é dinheiro de verdade entrando nesse
+        // período, mas não aparece em "orders" (é um credit_transactions,
+        // não uma venda nova) — sem isso, "quanto eu posso tirar" ficaria
+        // sempre menor que a realidade pra quem tá recebendo fiado atrasado.
+        supabase
+          .from("credit_transactions")
+          .select("amount, created_at, credit_customers!inner(store_id)")
+          .eq("credit_customers.store_id", store.id)
+          .eq("type", "pagamento")
+          .gte("created_at", since.toISOString())
+          .lt("created_at", until.toISOString()),
       ]);
       if (cancelled) return;
 
@@ -423,6 +609,7 @@ export default function Dashboard() {
       }
       if (!profitRes.error && profitRes.data?.length) setProfit(profitRes.data[0]);
       if (!prevProfitRes.error && prevProfitRes.data?.length) setPrevProfit(prevProfitRes.data[0]);
+      setCreditPayments((creditPaymentsRes.data ?? []) as CreditPayment[]);
 
       const { data: hubRow } = await supabase
         .from("affiliate_settings")
@@ -617,6 +804,17 @@ export default function Dashboard() {
   // duas fontes faria o período atual e o anterior usarem regras de data
   // diferentes pro mesmo tipo de número, distorcendo o "vs. período anterior".
   const prevLucroLiquido = prevFaturamentoTotal - prevCustoProdutos - prevTotalDespesas - prevCustoEntregadoresTotal;
+
+  // ---------- Lucro que já é dinheiro de verdade (base pra "quanto posso tirar") ----------
+  // lucroLiquido conta venda fiado como faturamento normal, mesmo o dinheiro
+  // ainda não tendo entrado — pra decidir quanto tirar/investir isso engana.
+  // Tira do lucro a venda fiado nova do período (custo já foi descontado
+  // acima, então só falta tirar a receita) e soma pagamento de fiado antigo
+  // recebido agora (dinheiro real entrando, mesmo de venda de outro período).
+  const fiadoRevenueInPeriod = orders.filter((o) => o.payment_method === "fiado").reduce((s, o) => s + o.total, 0);
+  const creditPaymentsInPeriod = creditPayments.reduce((s, c) => s + Number(c.amount), 0);
+  const cashProfit = lucroLiquido - fiadoRevenueInPeriod + creditPaymentsInPeriod;
+  const periodLabel = PERIODS.find((p) => p.key === period)?.label ?? "o período selecionado";
 
   const maxRank = (arr: { value: number }[]) => Math.max(1, ...arr.map((a) => a.value));
 
@@ -1092,6 +1290,20 @@ export default function Dashboard() {
             )}
           </>
         )}
+
+        {/* Fica fora do if/else de loading de propósito — troca de período
+            reativa o loading e desmontaria esse card a cada clique, e como o
+            estado de edição (liga/desliga, as 3 %) vive só localmente aqui,
+            remontar jogava fora o que acabou de ser salvo até a página
+            inteira recarregar. Os números usam o que já está calculado
+            (fica um instante desatualizado durante a troca de período, sem
+            problema nenhum). */}
+        <FinanceSplitCard
+          store={store}
+          cashProfit={cashProfit}
+          periodLabel={periodLabel}
+          fiadoRevenueInPeriod={fiadoRevenueInPeriod}
+        />
       </div>
     </div>
   );

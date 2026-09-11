@@ -1,9 +1,13 @@
 "use client";
 
 import { useEffect, useState, type FormEvent } from "react";
+import Link from "next/link";
 import { getSupabase } from "@/lib/supabase";
 import { useStore } from "@/lib/store-context";
 import { printHtml } from "@/lib/receipt";
+
+const ORIENTACAO_FINANCEIRA_PERGUNTA =
+  "Acabei de fechar o caixa. Com base nesse fechamento e no acumulado do período, quanto eu já posso tirar pra mim (pró-labore), quanto preciso deixar de capital de giro, e quanto sobra pra pensar em investir?";
 
 type CashSession = {
   id: string;
@@ -483,13 +487,21 @@ export default function Caixa() {
               <div className="mt-2">
                 <p className="text-sm text-slate-700 dark:text-slate-300">{closeResult}</p>
                 {lastClosedSession && (
-                  <button
-                    type="button"
-                    onClick={() => printClosingReport(lastClosedSession)}
-                    className="mt-1 text-sm font-medium text-blue-900 underline dark:text-blue-400"
-                  >
-                    🖨️ Imprimir resumo do fechamento
-                  </button>
+                  <div className="mt-1 flex flex-wrap items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={() => printClosingReport(lastClosedSession)}
+                      className="text-sm font-medium text-blue-900 underline dark:text-blue-400"
+                    >
+                      🖨️ Imprimir resumo do fechamento
+                    </button>
+                    <Link
+                      href={`/painel/assistente?pergunta=${encodeURIComponent(ORIENTACAO_FINANCEIRA_PERGUNTA)}`}
+                      className="text-sm font-medium text-green-700 underline dark:text-green-400"
+                    >
+                      💬 Pedir orientação financeira
+                    </Link>
+                  </div>
                 )}
               </div>
             )}

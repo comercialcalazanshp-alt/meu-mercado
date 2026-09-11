@@ -254,6 +254,21 @@ const TOOLS = [
       },
     },
   },
+  {
+    type: "function" as const,
+    function: {
+      name: "consultar_fechamentos_caixa",
+      description:
+        "Busca o histórico de fechamentos de caixa reais dos últimos N dias — o dinheiro que o dono contou de verdade na gaveta ao fechar, não só o total teórico do sistema. Inclui valor de abertura, faturamento por forma de pagamento daquela sessão, dinheiro contado ao fechar, valor esperado e a diferença (sobra/falta). Use SEMPRE que a pergunta for sobre quanto dinheiro de verdade tem disponível, pró-labore, capital de giro, quanto tirar pra investir, ou análise de um fechamento de caixa específico.",
+      parameters: {
+        type: "object",
+        properties: {
+          dias: { type: "number", description: "Quantos dias atrás buscar fechamentos, a partir de agora. Ex: 30 pro mês, 7 pra semana, 1 pra só hoje." },
+        },
+        required: ["dias"],
+      },
+    },
+  },
 ];
 
 async function runTool(storeId: string, name: string, args: Record<string, unknown>): Promise<string> {
@@ -379,6 +394,34 @@ async function runTool(storeId: string, name: string, args: Record<string, unkno
     });
   }
 
+  if (name === "consultar_fechamentos_caixa") {
+    const dias = Number(args.dias) || 30;
+    const since = new Date(Date.now() - dias * 24 * 60 * 60 * 1000).toISOString();
+    const { data: sessions } = await admin
+      .from("cash_sessions")
+      .select(
+        "opened_at, closed_at, opening_amount, closing_amount_declared, expected_cash, cash_difference, revenue_total, revenue_by_payment",
+      )
+      .eq("store_id", storeId)
+      .eq("status", "fechado")
+      .gte("closed_at", since)
+      .order("closed_at", { ascending: false });
+
+    return JSON.stringify({
+      periodo_dias: dias,
+      fechamentos_encontrados: sessions?.length ?? 0,
+      fechamentos: (sessions ?? []).map((r) => ({
+        fechado_em: r.closed_at,
+        valor_abertura: r.opening_amount,
+        faturamento_da_sessao: r.revenue_total,
+        formas_pagamento_da_sessao: r.revenue_by_payment,
+        dinheiro_contado_ao_fechar: r.closing_amount_declared,
+        dinheiro_esperado: r.expected_cash,
+        diferenca_sobra_falta: r.cash_difference,
+      })),
+    });
+  }
+
   return JSON.stringify({ erro: `ferramenta desconhecida: ${name}` });
 }
 
@@ -386,6 +429,7 @@ const TOOL_STATUS_LABELS: Record<string, string> = {
   buscar_produtos: "Buscando produto no catálogo…",
   consultar_cliente_fiado: "Consultando cliente do fiado…",
   consultar_vendas_periodo: "Recalculando vendas do período…",
+  consultar_fechamentos_caixa: "Conferindo os fechamentos de caixa…",
 };
 
 export async function POST(request: Request) {
@@ -469,6 +513,7 @@ Regras de como usar os dados:
 - Se um produto aparece "sem custo cadastrado", aí sim não dá pra saber a margem dele — diga isso especificamente pra aquele produto, não generalize pra todos.
 - Trate o fiado/crediário como dinheiro que ainda não entrou no caixa, não como faturamento normal — se for relevante pra pergunta, aponte isso.
 - Se algo parece um erro real do sistema (ex: produto vendendo no prejuízo), avise isso como prioridade alta, não enterre no meio do texto.
+- Quando o dono perguntar quanto pode tirar pra ele (pró-labore), quanto deixar de capital de giro, ou quanto dá pra investir: NUNCA responda com uma porcentagem solta tipo "tire 20%". Use a ferramenta consultar_fechamentos_caixa (dinheiro contado de verdade na gaveta, não só o pedido no sistema) e raciocine em 3 passos, nessa ordem: (1) dinheiro genuinamente disponível = dinheiro + pix + cartão já recebidos — fiado NUNCA conta como disponível, mesmo que apareça como "faturamento"; (2) reserva mínima de capital de giro = o que cobre as despesas fixas do mês (olhe a seção de despesas) mais uma folga pra repor estoque — só depois de garantir isso é que sobra algo; (3) pró-labore e investimento só saem do que sobrar depois de (1) e (2), nunca do faturamento bruto. Sempre mostre os dois períodos juntos na resposta: o fechamento mais recente (o de hoje/daquela sessão) E o acumulado (semana ou mês, o que fizer mais sentido pra pergunta) — o dono quer ver o dia isolado e a tendência acumulada ao mesmo tempo, não só um dos dois. Seja honesto quando o capital de giro ainda não está garantido: nesse caso, o pró-labore deveria ser pequeno ou zero naquele momento, mesmo que pareça um lucro bom no papel.
 - Se não tiver dado suficiente pra responder algo específico mesmo depois de tentar as ferramentas, diga isso claramente e diga exatamente o que falta.
 
 ${summary}`,
