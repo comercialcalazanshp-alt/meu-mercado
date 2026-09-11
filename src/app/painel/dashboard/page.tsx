@@ -335,18 +335,20 @@ function FinanceSplitCard({
   const [enabled, setEnabled] = useState(store.finance_split_enabled);
   const [giro, setGiro] = useState(String(store.finance_split_giro_percent));
   const [prolabore, setProlabore] = useState(String(store.finance_split_prolabore_percent));
+  const [impostos, setImpostos] = useState(String(store.finance_split_impostos_percent));
   const [investimento, setInvestimento] = useState(String(store.finance_split_investimento_percent));
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
   const giroNum = Number(giro.replace(",", ".")) || 0;
   const prolaboreNum = Number(prolabore.replace(",", ".")) || 0;
+  const impostosNum = Number(impostos.replace(",", ".")) || 0;
   const investimentoNum = Number(investimento.replace(",", ".")) || 0;
-  const total = giroNum + prolaboreNum + investimentoNum;
+  const total = giroNum + prolaboreNum + impostosNum + investimentoNum;
 
   async function handleSave() {
     if (Math.round(total) !== 100) {
-      setSaveError("As 3 porcentagens precisam somar 100%.");
+      setSaveError("As 4 porcentagens precisam somar 100%.");
       return;
     }
     setSaveError(null);
@@ -357,6 +359,7 @@ function FinanceSplitCard({
         finance_split_enabled: enabled,
         finance_split_giro_percent: giroNum,
         finance_split_prolabore_percent: prolaboreNum,
+        finance_split_impostos_percent: impostosNum,
         finance_split_investimento_percent: investimentoNum,
       })
       .eq("id", store.id);
@@ -371,8 +374,8 @@ function FinanceSplitCard({
           <div>
             <h2 className="text-[13px] font-bold">Quanto eu posso tirar?</h2>
             <p className="text-[11.5px] text-white/30">
-              Configure uma divisão entre capital de giro, pró-labore e investimento — calculado com o dinheiro que já
-              entrou de verdade no período, sem contar fiado em aberto.
+              Configure uma divisão entre capital de giro, pró-labore, impostos e investimento — calculado com o
+              dinheiro que já entrou de verdade no período, sem contar fiado em aberto.
             </p>
           </div>
           <button
@@ -412,7 +415,7 @@ function FinanceSplitCard({
             <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} className="h-4 w-4" />
             Mostrar esse painel no Dashboard
           </label>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             <div>
               <label className="text-[11px] text-white/40">Capital de giro (%)</label>
               <input
@@ -427,6 +430,15 @@ function FinanceSplitCard({
               <input
                 value={prolabore}
                 onChange={(e) => setProlabore(e.target.value)}
+                inputMode="decimal"
+                className="mt-1 w-full rounded-lg border border-white/[0.12] bg-white/[0.03] px-3 py-2 text-sm text-white"
+              />
+            </div>
+            <div>
+              <label className="text-[11px] text-white/40">Impostos (%)</label>
+              <input
+                value={impostos}
+                onChange={(e) => setImpostos(e.target.value)}
                 inputMode="decimal"
                 className="mt-1 w-full rounded-lg border border-white/[0.12] bg-white/[0.03] px-3 py-2 text-sm text-white"
               />
@@ -466,10 +478,11 @@ function FinanceSplitCard({
               ` Tem ${formatCurrency(fiadoRevenueInPeriod)} parado em fiado nesse período — quando entrar, essa conta muda.`}
           </p>
         ) : (
-          <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
             {[
               { label: "Capital de giro", pct: giroNum, hex: COLOR_HEX.accent },
               { label: "Pró-labore", pct: prolaboreNum, hex: COLOR_HEX.positive },
+              { label: "Impostos", pct: impostosNum, hex: COLOR_HEX.afil },
               { label: "Investimento", pct: investimentoNum, hex: COLOR_HEX.warning },
             ].map((b) => (
               <div key={b.label} className="rounded-xl border border-white/[0.08] bg-white/[0.02] p-3">
