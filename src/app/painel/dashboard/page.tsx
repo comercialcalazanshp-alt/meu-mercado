@@ -1048,15 +1048,6 @@ export default function Dashboard() {
           </div>
         ) : (
           <>
-            <FinancialHealthCard
-              faturamentoTotal={faturamentoTotal}
-              cashProfit={cashProfit}
-              cashRatio={cashRatio}
-              fiadoRevenueInPeriod={fiadoRevenueInPeriod}
-              fiadoRatio={fiadoRatio}
-              lucroLiquido={lucroLiquido}
-              marginRatio={marginRatio}
-            />
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <KpiCard
                 label="Faturamento"
@@ -1465,13 +1456,20 @@ export default function Dashboard() {
           </>
         )}
 
-        {/* Fica fora do if/else de loading de propósito — troca de período
-            reativa o loading e desmontaria esse card a cada clique, e como o
-            estado de edição (liga/desliga, as 3 %) vive só localmente aqui,
-            remontar jogava fora o que acabou de ser salvo até a página
-            inteira recarregar. Os números usam o que já está calculado
-            (fica um instante desatualizado durante a troca de período, sem
-            problema nenhum). */}
+        {/* Saúde financeira e "quanto eu posso tirar" ficam no final da
+            tela, de propósito — o dono já vê faturamento/lucro/detalhamento
+            em cima, esses dois painéis são a "conclusão" depois de ver tudo
+            o resto. Fora do if/else de loading pra não piscar/desmontar a
+            cada troca de período. */}
+        <FinancialHealthCard
+          faturamentoTotal={faturamentoTotal}
+          cashProfit={cashProfit}
+          cashRatio={cashRatio}
+          fiadoRevenueInPeriod={fiadoRevenueInPeriod}
+          fiadoRatio={fiadoRatio}
+          lucroLiquido={lucroLiquido}
+          marginRatio={marginRatio}
+        />
         <FinanceSplitCard
           store={store}
           cashProfit={cashProfit}
