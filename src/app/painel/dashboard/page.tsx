@@ -315,6 +315,150 @@ function Card({ children, className = "", delay = 0 }: { children: React.ReactNo
   );
 }
 
+type HealthStatus = "bom" | "atencao" | "ruim";
+
+const HEALTH_COLOR: Record<HealthStatus, string> = {
+  bom: COLOR_HEX.positive,
+  atencao: COLOR_HEX.warning,
+  ruim: COLOR_HEX.negative,
+};
+const HEALTH_LABEL: Record<HealthStatus, string> = { bom: "Bom", atencao: "Atenção", ruim: "Ruim" };
+
+// Barra de 3 zonas fixas (a cor de cada zona muda de posição dependendo do
+// critério — em fiado, "bom" é zona baixa; em margem, "bom" é zona alta) com
+// um marcador na posição real do valor atual dentro do intervalo mostrado.
+function HealthGaugeRow({
+  label,
+  status,
+  valueText,
+  detail,
+  markerPct,
+  zoneStops,
+  zoneColors,
+}: {
+  label: string;
+  status: HealthStatus;
+  valueText: string;
+  detail: string;
+  markerPct: number;
+  zoneStops: [number, number];
+  zoneColors: [string, string, string];
+}) {
+  return (
+    <div className="border-b border-white/[0.06] py-3 last:border-0">
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-sm">
+        <span className="flex items-center gap-2 font-semibold text-white/85">
+          <span
+            className="h-2.5 w-2.5 rounded-full"
+            style={{ background: HEALTH_COLOR[status], boxShadow: `0 0 6px ${HEALTH_COLOR[status]}99` }}
+          />
+          {label}
+        </span>
+        <span className="font-bold tabular-nums" style={{ color: HEALTH_COLOR[status] }}>
+          {HEALTH_LABEL[status]} · {valueText}
+        </span>
+      </div>
+      <div className="relative mt-2 h-2 overflow-hidden rounded-full">
+        <div className="absolute inset-0 flex">
+          <div style={{ width: `${zoneStops[0]}%`, background: zoneColors[0], opacity: 0.35 }} />
+          <div style={{ width: `${zoneStops[1] - zoneStops[0]}%`, background: zoneColors[1], opacity: 0.35 }} />
+          <div style={{ width: `${100 - zoneStops[1]}%`, background: zoneColors[2], opacity: 0.35 }} />
+        </div>
+        <div
+          className="absolute top-1/2 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-black bg-white"
+          style={{ left: `${Math.max(1, Math.min(99, markerPct))}%` }}
+        />
+      </div>
+      <p className="mt-1.5 text-[11.5px] text-white/35">{detail}</p>
+    </div>
+  );
+}
+
+function FinancialHealthCard({
+  faturamentoTotal,
+  cashProfit,
+  cashRatio,
+  fiadoRevenueInPeriod,
+  fiadoRatio,
+  lucroLiquido,
+  marginRatio,
+}: {
+  faturamentoTotal: number;
+  cashProfit: number;
+  cashRatio: number;
+  fiadoRevenueInPeriod: number;
+  fiadoRatio: number;
+  lucroLiquido: number;
+  marginRatio: number;
+}) {
+  if (faturamentoTotal <= 0) {
+    return (
+      <Card className="mb-4">
+        <h2 className="text-[13px] font-bold">Saúde financeira</h2>
+        <p className="mt-1 text-sm text-white/40">Sem vendas no período pra avaliar ainda.</p>
+      </Card>
+    );
+  }
+
+  const cashStatus: HealthStatus = cashRatio >= 0.1 ? "bom" : cashRatio >= 0 ? "atencao" : "ruim";
+  const cashRange: [number, number] = [-0.3, 0.3];
+  const cashMarkerPct = ((Math.max(cashRange[0], Math.min(cashRange[1], cashRatio)) - cashRange[0]) / (cashRange[1] - cashRange[0])) * 100;
+
+  const fiadoStatus: HealthStatus = fiadoRatio < 0.2 ? "bom" : fiadoRatio <= 0.4 ? "atencao" : "ruim";
+  const fiadoRange: [number, number] = [0, 0.6];
+  const fiadoMarkerPct = (Math.min(fiadoRange[1], fiadoRatio) / fiadoRange[1]) * 100;
+
+  const marginStatus: HealthStatus = marginRatio >= 0.15 ? "bom" : marginRatio >= 0.05 ? "atencao" : "ruim";
+  const marginRange: [number, number] = [-0.1, 0.3];
+  const marginMarkerPct = ((Math.max(marginRange[0], Math.min(marginRange[1], marginRatio)) - marginRange[0]) / (marginRange[1] - marginRange[0])) * 100;
+
+  const statuses = [cashStatus, fiadoStatus, marginStatus];
+  const overall: HealthStatus = statuses.includes("ruim") ? "ruim" : statuses.includes("atencao") ? "atencao" : "bom";
+
+  return (
+    <Card className="mb-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 className="text-[13px] font-bold">Saúde financeira</h2>
+        <span
+          className="rounded-full px-3 py-1 text-xs font-bold"
+          style={{ background: `${HEALTH_COLOR[overall]}22`, color: HEALTH_COLOR[overall] }}
+        >
+          ● {HEALTH_LABEL[overall]}
+        </span>
+      </div>
+      <div className="mt-2">
+        <HealthGaugeRow
+          label="Dinheiro de verdade no período"
+          status={cashStatus}
+          valueText={formatCurrency(cashProfit)}
+          detail={`Lucro já convertido em dinheiro (sem contar fiado em aberto): ${formatCurrency(cashProfit)}, ${(cashRatio * 100).toFixed(0)}% do faturamento.`}
+          markerPct={cashMarkerPct}
+          zoneStops={[50, 66.7]}
+          zoneColors={[COLOR_HEX.negative, COLOR_HEX.warning, COLOR_HEX.positive]}
+        />
+        <HealthGaugeRow
+          label="Concentração de fiado"
+          status={fiadoStatus}
+          valueText={`${(fiadoRatio * 100).toFixed(0)}%`}
+          detail={`${formatCurrency(fiadoRevenueInPeriod)} do faturamento (${(fiadoRatio * 100).toFixed(0)}%) ainda está em fiado, não é dinheiro na mão.`}
+          markerPct={fiadoMarkerPct}
+          zoneStops={[33.3, 66.7]}
+          zoneColors={[COLOR_HEX.positive, COLOR_HEX.warning, COLOR_HEX.negative]}
+        />
+        <HealthGaugeRow
+          label="Margem de lucro líquido"
+          status={marginStatus}
+          valueText={`${(marginRatio * 100).toFixed(0)}%`}
+          detail={`Lucro líquido de ${formatCurrency(lucroLiquido)} é ${(marginRatio * 100).toFixed(0)}% do faturamento do período.`}
+          markerPct={marginMarkerPct}
+          zoneStops={[37.5, 62.5]}
+          zoneColors={[COLOR_HEX.negative, COLOR_HEX.warning, COLOR_HEX.positive]}
+        />
+      </div>
+    </Card>
+  );
+}
+
 // Painel "quanto eu posso tirar": o dono define 3 % (capital de giro,
 // pró-labore, investimento) que precisam somar 100, e o sistema aplica em
 // cima do lucroLiquido já filtrado pra só contar dinheiro de verdade
@@ -829,6 +973,14 @@ export default function Dashboard() {
   const cashProfit = lucroLiquido - fiadoRevenueInPeriod + creditPaymentsInPeriod;
   const periodLabel = PERIODS.find((p) => p.key === period)?.label ?? "o período selecionado";
 
+  // ---------- Saúde financeira (farol verde/amarelo/vermelho) ----------
+  // 3 critérios calculados só com número que já existe nessa página — nada
+  // de fonte nova, só uma leitura de "tá bom ou não" em cima do que o resto
+  // do Dashboard já mostra em detalhe.
+  const cashRatio = faturamentoTotal > 0 ? cashProfit / faturamentoTotal : 0;
+  const fiadoRatio = faturamentoTotal > 0 ? fiadoRevenueInPeriod / faturamentoTotal : 0;
+  const marginRatio = faturamentoTotal > 0 ? lucroLiquido / faturamentoTotal : 0;
+
   const maxRank = (arr: { value: number }[]) => Math.max(1, ...arr.map((a) => a.value));
 
   return (
@@ -896,6 +1048,15 @@ export default function Dashboard() {
           </div>
         ) : (
           <>
+            <FinancialHealthCard
+              faturamentoTotal={faturamentoTotal}
+              cashProfit={cashProfit}
+              cashRatio={cashRatio}
+              fiadoRevenueInPeriod={fiadoRevenueInPeriod}
+              fiadoRatio={fiadoRatio}
+              lucroLiquido={lucroLiquido}
+              marginRatio={marginRatio}
+            />
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <KpiCard
                 label="Faturamento"
