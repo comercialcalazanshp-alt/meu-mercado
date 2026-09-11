@@ -3,6 +3,15 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { getSupabase } from "@/lib/supabase";
 import { useStore } from "@/lib/store-context";
+import { buildCreditPaymentReceiptHtml, printHtml } from "@/lib/receipt";
+
+type PaymentMethod = "dinheiro" | "pix" | "cartao";
+
+const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
+  dinheiro: "Dinheiro",
+  pix: "Pix",
+  cartao: "Cartão",
+};
 
 type Transaction = {
   id: string;
@@ -11,6 +20,7 @@ type Transaction = {
   note: string | null;
   created_at: string;
   due_date: string | null;
+  payment_method: string | null;
 };
 
 type Customer = {
@@ -76,7 +86,16 @@ export default function Fiado() {
   const [saving, setSaving] = useState(false);
 
   const [paymentAmount, setPaymentAmount] = useState("");
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("dinheiro");
   const [payingId, setPayingId] = useState<string | null>(null);
+  const [paymentSuccess, setPaymentSuccess] = useState<{
+    customerId: string;
+    customerName: string;
+    amount: number;
+    methodLabel: string;
+    balanceBefore: number;
+    balanceAfter: number;
+  } | null>(null);
   const [applyingInterestId, setApplyingInterestId] = useState<string | null>(null);
 
   const [interestPercent, setInterestPercent] = useState("");
@@ -177,7 +196,7 @@ export default function Fiado() {
   async function fetchTransactions(customerId: string) {
     const { data } = await getSupabase()
       .from("credit_transactions")
-      .select("id, type, amount, note, created_at, due_date")
+      .select("id, type, amount, note, created_at, due_date, payment_method")
       .eq("customer_id", customerId)
       .order("created_at", { ascending: false });
     setTransactions(data ?? []);
@@ -194,20 +213,47 @@ export default function Fiado() {
     await fetchTransactions(customerId);
   }
 
-  async function handlePayment(customerId: string) {
+  async function handlePayment(customer: Customer) {
     const value = Number(paymentAmount.replace(",", "."));
     if (Number.isNaN(value) || value <= 0) return;
 
-    await getSupabase().from("credit_transactions").insert({
-      customer_id: customerId,
+    const { error: txError } = await getSupabase().from("credit_transactions").insert({
+      customer_id: customer.id,
       type: "pagamento",
       amount: value,
+      payment_method: paymentMethod,
     });
+    if (txError) return;
 
+    setPaymentSuccess({
+      customerId: customer.id,
+      customerName: customer.name,
+      amount: value,
+      methodLabel: PAYMENT_METHOD_LABELS[paymentMethod],
+      balanceBefore: customer.balance,
+      balanceAfter: customer.balance - value,
+    });
     setPaymentAmount("");
     setPayingId(null);
     loadCustomers();
-    if (expandedId === customerId) fetchTransactions(customerId);
+    if (expandedId === customer.id) fetchTransactions(customer.id);
+  }
+
+  function printPaymentReceipt() {
+    if (!paymentSuccess) return;
+    printHtml(
+      buildCreditPaymentReceiptHtml({
+        storeName: store.name,
+        whatsapp: store.whatsapp,
+        cnpj: store.cnpj,
+        paperMm: store.receipt_paper_mm || 55,
+        customerName: paymentSuccess.customerName,
+        amount: paymentSuccess.amount,
+        paymentMethodLabel: paymentSuccess.methodLabel,
+        balanceBefore: paymentSuccess.balanceBefore,
+        balanceAfter: paymentSuccess.balanceAfter,
+      }),
+    );
   }
 
   async function handleUpdateCreditLimit(customer: Customer) {
@@ -460,7 +506,11 @@ export default function Fiado() {
                                   : tx.type === "baixa"
                                     ? "Baixa"
                                     : "Pagamento"}
-                              {tx.note ? ` — ${tx.note}` : ""} · {formatDate(tx.created_at)}
+                              {tx.note ? ` — ${tx.note}` : ""}
+                              {tx.type === "pagamento" && tx.payment_method
+                                ? ` (${PAYMENT_METHOD_LABELS[tx.payment_method as PaymentMethod] ?? tx.payment_method})`
+                                : ""}{" "}
+                              · {formatDate(tx.created_at)}
                               {tx.due_date && (
                                 <>
                                   {" "}
@@ -500,7 +550,7 @@ export default function Fiado() {
                     })}
                   </ul>
 
-                  <div className="mt-3 flex items-center gap-2">
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
                     {payingId === customer.id ? (
                       <>
                         <input
@@ -511,8 +561,24 @@ export default function Fiado() {
                           autoFocus
                           className="w-32 rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
                         />
+                        <div className="flex overflow-hidden rounded-lg border border-slate-300 dark:border-slate-700">
+                          {(["dinheiro", "pix", "cartao"] as PaymentMethod[]).map((method) => (
+                            <button
+                              key={method}
+                              type="button"
+                              onClick={() => setPaymentMethod(method)}
+                              className={`px-2.5 py-1 text-sm font-medium ${
+                                paymentMethod === method
+                                  ? "bg-blue-900 text-amber-300 dark:bg-blue-800"
+                                  : "text-slate-600 dark:text-slate-400"
+                              }`}
+                            >
+                              {PAYMENT_METHOD_LABELS[method]}
+                            </button>
+                          ))}
+                        </div>
                         <button
-                          onClick={() => handlePayment(customer.id)}
+                          onClick={() => handlePayment(customer)}
                           className="rounded-lg bg-green-600 px-3 py-1 text-sm font-medium text-white"
                         >
                           Confirmar
@@ -527,7 +593,11 @@ export default function Fiado() {
                     ) : (
                       <>
                         <button
-                          onClick={() => setPayingId(customer.id)}
+                          onClick={() => {
+                            setPaymentSuccess(null);
+                            setPaymentMethod("dinheiro");
+                            setPayingId(customer.id);
+                          }}
                           className="rounded-lg border border-slate-300 px-3 py-1 text-sm font-medium text-slate-700 dark:border-slate-700 dark:text-slate-300"
                         >
                           Registrar pagamento
@@ -543,6 +613,21 @@ export default function Fiado() {
                       </>
                     )}
                   </div>
+
+                  {paymentSuccess && paymentSuccess.customerId === customer.id && (
+                    <div className="mt-3 rounded-lg border border-green-200 bg-green-50 p-3 text-sm dark:border-green-900 dark:bg-green-950">
+                      <p className="font-medium text-green-700 dark:text-green-400">
+                        Pagamento de {formatCurrency(paymentSuccess.amount)} registrado ({paymentSuccess.methodLabel}).
+                      </p>
+                      <button
+                        type="button"
+                        onClick={printPaymentReceipt}
+                        className="mt-1 text-sm font-medium text-green-700 underline underline-offset-2 dark:text-green-400"
+                      >
+                        Imprimir comprovante
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
