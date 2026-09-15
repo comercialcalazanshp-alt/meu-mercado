@@ -102,6 +102,13 @@ export default function Fiado() {
   const [savingInterest, setSavingInterest] = useState(false);
   const [interestSaved, setInterestSaved] = useState(false);
 
+  const [collectionStats, setCollectionStats] = useState<{
+    avgDays: number | null;
+    paymentsCount: number;
+    dailyFiadoRate: number;
+    recommendedReserve: number | null;
+  } | null>(null);
+
   async function loadCustomers() {
     setLoading(true);
     const { data } = await getSupabase()
@@ -111,6 +118,83 @@ export default function Fiado() {
       .order("balance", { ascending: false });
     setCustomers(data ?? []);
     setLoading(false);
+    loadCollectionStats(data ?? []);
+  }
+
+  // Prazo médio de recebimento do fiado — não vem de estimativa, é medido de
+  // verdade: casa cada pagamento com a(s) venda(s) fiado mais antiga(s)
+  // daquele cliente que ainda estavam em aberto (FIFO, tipo fila), calcula
+  // quantos dias se passaram entre a venda e o pagamento, e faz a média
+  // ponderada pelo valor. Com isso dá pra recomendar quanto guardar de
+  // reserva pra girar o fiado sem aperto: ritmo diário de venda fiado ×
+  // prazo médio de recebimento.
+  async function loadCollectionStats(customerList: Customer[]) {
+    if (customerList.length === 0) {
+      setCollectionStats(null);
+      return;
+    }
+    const { data } = await getSupabase()
+      .from("credit_transactions")
+      .select("customer_id, type, amount, created_at")
+      .in(
+        "customer_id",
+        customerList.map((c) => c.id),
+      )
+      .order("created_at", { ascending: true });
+    const txs = data ?? [];
+
+    const byCustomer = new Map<string, typeof txs>();
+    for (const t of txs) {
+      if (!byCustomer.has(t.customer_id)) byCustomer.set(t.customer_id, []);
+      byCustomer.get(t.customer_id)!.push(t);
+    }
+
+    let weightedDaysSum = 0;
+    let collectedAmountSum = 0;
+    let paymentsCount = 0;
+
+    for (const custTxs of byCustomer.values()) {
+      const queue: { date: string; remaining: number }[] = [];
+      for (const t of custTxs) {
+        if (t.type === "venda" || t.type === "juros") {
+          queue.push({ date: t.created_at, remaining: Number(t.amount) });
+        } else if (t.type === "pagamento" || t.type === "baixa") {
+          let toConsume = Number(t.amount);
+          if (t.type === "pagamento") paymentsCount += 1;
+          while (toConsume > 0.001 && queue.length > 0) {
+            const oldest = queue[0];
+            const consumed = Math.min(oldest.remaining, toConsume);
+            if (t.type === "pagamento") {
+              const days = (new Date(t.created_at).getTime() - new Date(oldest.date).getTime()) / (1000 * 60 * 60 * 24);
+              weightedDaysSum += days * consumed;
+              collectedAmountSum += consumed;
+            }
+            oldest.remaining -= consumed;
+            toConsume -= consumed;
+            if (oldest.remaining <= 0.001) queue.shift();
+          }
+        }
+      }
+    }
+
+    const avgDays = collectedAmountSum > 0 ? weightedDaysSum / collectedAmountSum : null;
+
+    // ritmo diário de fiado: soma das vendas fiado nos últimos até 30 dias
+    // (ou desde a primeira venda, se a loja tiver menos tempo de uso que isso).
+    const vendaTxs = txs.filter((t) => t.type === "venda");
+    let dailyFiadoRate = 0;
+    if (vendaTxs.length > 0) {
+      const firstDate = new Date(vendaTxs[0].created_at).getTime();
+      const daysSpan = Math.max(1, (Date.now() - firstDate) / (1000 * 60 * 60 * 24));
+      const window = Math.min(daysSpan, 30);
+      const cutoff = Date.now() - window * 24 * 60 * 60 * 1000;
+      const recentTotal = vendaTxs.filter((t) => new Date(t.created_at).getTime() >= cutoff).reduce((s, t) => s + Number(t.amount), 0);
+      dailyFiadoRate = recentTotal / window;
+    }
+
+    const recommendedReserve = avgDays !== null ? dailyFiadoRate * avgDays : null;
+
+    setCollectionStats({ avgDays, paymentsCount, dailyFiadoRate, recommendedReserve });
   }
 
   useEffect(() => {
@@ -331,6 +415,35 @@ export default function Fiado() {
         </p>
         <p className="text-sm text-slate-600 dark:text-slate-400">total a receber</p>
       </div>
+
+      {collectionStats && collectionStats.dailyFiadoRate > 0 && (
+        <div className="mt-4 rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+            Capital de giro pro fiado
+          </h2>
+          <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
+            Ritmo atual: {formatCurrency(collectionStats.dailyFiadoRate)}/dia vendido fiado.
+          </p>
+          {collectionStats.avgDays === null ? (
+            <p className="mt-2 text-sm text-slate-700 dark:text-slate-300">
+              Ainda não tem pagamento suficiente pra medir o prazo real de recebimento. Pelo ritmo atual, uma reserva
+              entre{" "}
+              <strong className="font-semibold">{formatCurrency(collectionStats.dailyFiadoRate * 7)}</strong> (se
+              voltar em 7 dias) e{" "}
+              <strong className="font-semibold">{formatCurrency(collectionStats.dailyFiadoRate * 30)}</strong> (se
+              voltar em 30 dias) evita ficar sem dinheiro pra repor estoque.
+            </p>
+          ) : (
+            <p className="mt-2 text-sm text-slate-700 dark:text-slate-300">
+              Prazo médio real de recebimento: <strong className="font-semibold">~{Math.round(collectionStats.avgDays)} dias</strong>{" "}
+              (medido em {collectionStats.paymentsCount} pagamento{collectionStats.paymentsCount === 1 ? "" : "s"}
+              {collectionStats.paymentsCount < 5 ? " — ainda poucos, esse número fica mais preciso com o tempo" : ""}).
+              Reserva de capital de giro recomendada:{" "}
+              <strong className="font-semibold">{formatCurrency(collectionStats.recommendedReserve ?? 0)}</strong>.
+            </p>
+          )}
+        </div>
+      )}
 
       <form
         onSubmit={handleSaveInterest}
