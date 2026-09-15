@@ -43,6 +43,12 @@ function formatDateOnly(iso: string) {
   return new Date(iso + "T00:00:00").toLocaleDateString("pt-BR");
 }
 
+function defaultDueDate(days: number) {
+  const d = new Date();
+  d.setDate(d.getDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
 function isOverdue(dueDate: string) {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -82,7 +88,7 @@ export default function Fiado() {
   const [phone, setPhone] = useState("");
   const [amount, setAmount] = useState("");
   const [note, setNote] = useState("");
-  const [dueDate, setDueDate] = useState("");
+  const [dueDate, setDueDate] = useState(() => defaultDueDate(30));
   const [saving, setSaving] = useState(false);
 
   const [paymentAmount, setPaymentAmount] = useState("");
@@ -99,6 +105,7 @@ export default function Fiado() {
   const [applyingInterestId, setApplyingInterestId] = useState<string | null>(null);
 
   const [interestPercent, setInterestPercent] = useState("");
+  const [creditTermDays, setCreditTermDays] = useState(30);
   const [savingInterest, setSavingInterest] = useState(false);
   const [interestSaved, setInterestSaved] = useState(false);
 
@@ -106,7 +113,7 @@ export default function Fiado() {
     avgDays: number | null;
     paymentsCount: number;
     dailyFiadoRate: number;
-    recommendedReserve: number | null;
+    recommendedReserve: number;
   } | null>(null);
 
   async function loadCustomers() {
@@ -192,7 +199,13 @@ export default function Fiado() {
       dailyFiadoRate = recentTotal / window;
     }
 
-    const recommendedReserve = avgDays !== null ? dailyFiadoRate * avgDays : null;
+    // A reserva usa o prazo COMBINADO com os clientes (ex: 30 dias) como
+    // base, não a média medida — com pouquíssimo pagamento registrado ainda,
+    // a média real fica instável demais (um cliente que pagou rápido em 4
+    // dias não quer dizer que todo mundo paga em 4 dias). A média medida
+    // aparece à parte, como comparação, e só deve pesar mais quando tiver
+    // pagamento suficiente acumulado.
+    const recommendedReserve = dailyFiadoRate * creditTermDays;
 
     setCollectionStats({ avgDays, paymentsCount, dailyFiadoRate, recommendedReserve });
   }
@@ -201,11 +214,15 @@ export default function Fiado() {
     loadCustomers();
     getSupabase()
       .from("stores")
-      .select("credit_interest_percent")
+      .select("credit_interest_percent, credit_term_days")
       .eq("id", store.id)
       .single()
       .then(({ data }) => {
-        if (data) setInterestPercent(data.credit_interest_percent > 0 ? String(data.credit_interest_percent) : "");
+        if (!data) return;
+        setInterestPercent(data.credit_interest_percent > 0 ? String(data.credit_interest_percent) : "");
+        const days = data.credit_term_days ?? 30;
+        setCreditTermDays(days);
+        setDueDate(defaultDueDate(days));
       });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [store.id]);
@@ -214,8 +231,12 @@ export default function Fiado() {
     e.preventDefault();
     const value = Number(interestPercent.replace(",", ".")) || 0;
     if (value < 0) return;
+    if (!Number.isInteger(creditTermDays) || creditTermDays < 1) return;
     setSavingInterest(true);
-    await getSupabase().from("stores").update({ credit_interest_percent: value }).eq("id", store.id);
+    await getSupabase()
+      .from("stores")
+      .update({ credit_interest_percent: value, credit_term_days: creditTermDays })
+      .eq("id", store.id);
     setSavingInterest(false);
     setInterestSaved(true);
     setTimeout(() => setInterestSaved(false), 2500);
@@ -273,7 +294,7 @@ export default function Fiado() {
     setPhone("");
     setAmount("");
     setNote("");
-    setDueDate("");
+    setDueDate(defaultDueDate(creditTermDays));
     loadCustomers();
   }
 
@@ -422,24 +443,23 @@ export default function Fiado() {
             Capital de giro pro fiado
           </h2>
           <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
-            Ritmo atual: {formatCurrency(collectionStats.dailyFiadoRate)}/dia vendido fiado.
+            Ritmo atual: {formatCurrency(collectionStats.dailyFiadoRate)}/dia vendido fiado. Prazo combinado com os
+            clientes: {creditTermDays} dias.
+          </p>
+          <p className="mt-2 text-sm text-slate-700 dark:text-slate-300">
+            Reserva de capital de giro recomendada:{" "}
+            <strong className="font-semibold">{formatCurrency(collectionStats.recommendedReserve)}</strong> (ritmo ×
+            prazo combinado).
           </p>
           {collectionStats.avgDays === null ? (
-            <p className="mt-2 text-sm text-slate-700 dark:text-slate-300">
-              Ainda não tem pagamento suficiente pra medir o prazo real de recebimento. Pelo ritmo atual, uma reserva
-              entre{" "}
-              <strong className="font-semibold">{formatCurrency(collectionStats.dailyFiadoRate * 7)}</strong> (se
-              voltar em 7 dias) e{" "}
-              <strong className="font-semibold">{formatCurrency(collectionStats.dailyFiadoRate * 30)}</strong> (se
-              voltar em 30 dias) evita ficar sem dinheiro pra repor estoque.
+            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+              Ainda sem pagamento registrado pra comparar com o prazo combinado.
             </p>
           ) : (
-            <p className="mt-2 text-sm text-slate-700 dark:text-slate-300">
-              Prazo médio real de recebimento: <strong className="font-semibold">~{Math.round(collectionStats.avgDays)} dias</strong>{" "}
-              (medido em {collectionStats.paymentsCount} pagamento{collectionStats.paymentsCount === 1 ? "" : "s"}
-              {collectionStats.paymentsCount < 5 ? " — ainda poucos, esse número fica mais preciso com o tempo" : ""}).
-              Reserva de capital de giro recomendada:{" "}
-              <strong className="font-semibold">{formatCurrency(collectionStats.recommendedReserve ?? 0)}</strong>.
+            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+              Prazo real medido até agora: ~{Math.round(collectionStats.avgDays)} dias (
+              {collectionStats.paymentsCount} pagamento{collectionStats.paymentsCount === 1 ? "" : "s"}
+              {collectionStats.paymentsCount < 5 ? " — ainda poucos pra confiar" : ""}).
             </p>
           )}
         </div>
@@ -450,14 +470,21 @@ export default function Fiado() {
         className="mt-4 rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900"
       >
         <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-          Crediário: juros por atraso
+          Crediário: prazo e juros por atraso
         </h2>
         <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-          Se você marcar um vencimento na venda, e o cliente atrasar, o juro abaixo é calculado
-          por mês de atraso. Ele só vira saldo de verdade quando você clicar em &quot;Aplicar ao
-          saldo&quot; no extrato do cliente — até lá é só uma estimativa.
+          O prazo abaixo preenche sozinho o vencimento de toda venda fiado nova (dá pra mudar em cada venda, se
+          precisar). Se o cliente passar do vencimento, o juro é calculado por mês de atraso — só vira saldo de
+          verdade quando você clicar em &quot;Aplicar ao saldo&quot; no extrato do cliente.
         </p>
-        <div className="mt-3 flex items-center gap-2">
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <input
+            value={creditTermDays}
+            onChange={(e) => setCreditTermDays(Number(e.target.value) || 0)}
+            inputMode="numeric"
+            className="w-20 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+          />
+          <span className="text-sm text-slate-500 dark:text-slate-400">dias de prazo</span>
           <input
             value={interestPercent}
             onChange={(e) => setInterestPercent(e.target.value)}
@@ -465,7 +492,7 @@ export default function Fiado() {
             inputMode="decimal"
             className="w-32 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
           />
-          <span className="text-sm text-slate-500 dark:text-slate-400">% ao mês</span>
+          <span className="text-sm text-slate-500 dark:text-slate-400">% ao mês de juros</span>
           <button
             type="submit"
             disabled={savingInterest}

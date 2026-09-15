@@ -22,6 +22,7 @@ export type Store = {
   finance_split_prolabore_percent: number;
   finance_split_investimento_percent: number;
   finance_split_impostos_percent: number;
+  credit_term_days: number;
 };
 
 export const StoreContext = createContext<Store | null>(null);
