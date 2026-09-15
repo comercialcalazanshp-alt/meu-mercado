@@ -522,28 +522,13 @@ export default function Pdv() {
     getSupabase()
       .rpc("get_my_role", { p_store_id: store.id })
       .then(({ data }) => setCanVoidSales(data === "completo"));
-    (async () => {
-      // Paginado pelo mesmo motivo do loadProducts logo acima — catálogo
-      // grande (1000+) perderia categoria sem aviso se buscasse tudo de uma
-      // página só.
-      const PAGE_SIZE = 1000;
-      const supabase = getSupabase();
-      const set = new Set<string>();
-      let from = 0;
-      while (true) {
-        const { data } = await supabase
-          .from("products")
-          .select("category")
-          .eq("store_id", store.id)
-          .not("category", "is", null)
-          .range(from, from + PAGE_SIZE - 1);
-        if (!data || data.length === 0) break;
-        for (const p of data) if (p.category) set.add(p.category as string);
-        if (data.length < PAGE_SIZE) break;
-        from += PAGE_SIZE;
-      }
-      setCategories(Array.from(set).sort((a, b) => a.localeCompare(b, "pt-BR")));
-    })();
+    // Antes buscava a categoria de TODO produto (paginado, 2+ consultas
+    // numa loja com catálogo grande) só pra montar essa listinha — bem mais
+    // lento do que precisava (medido em 2,45s numa loja com 1600+
+    // produtos). A RPC já devolve só os nomes únicos, direto do banco.
+    getSupabase()
+      .rpc("get_product_categories", { p_store_id: store.id })
+      .then(({ data }) => setCategories((data ?? []).map((r: { category: string }) => r.category)));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [store.id]);
 
