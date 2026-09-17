@@ -94,6 +94,7 @@ export default function Fiado() {
   const [paymentAmount, setPaymentAmount] = useState("");
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("dinheiro");
   const [payingId, setPayingId] = useState<string | null>(null);
+  const [confirmingPayment, setConfirmingPayment] = useState(false);
   const [paymentSuccess, setPaymentSuccess] = useState<{
     customerId: string;
     customerName: string;
@@ -319,15 +320,18 @@ export default function Fiado() {
   }
 
   async function handlePayment(customer: Customer) {
+    if (confirmingPayment) return;
     const value = Number(paymentAmount.replace(",", "."));
     if (Number.isNaN(value) || value <= 0) return;
 
+    setConfirmingPayment(true);
     const { error: txError } = await getSupabase().from("credit_transactions").insert({
       customer_id: customer.id,
       type: "pagamento",
       amount: value,
       payment_method: paymentMethod,
     });
+    setConfirmingPayment(false);
     if (txError) return;
 
     setPaymentSuccess({
@@ -379,8 +383,14 @@ export default function Fiado() {
 
   async function handleWriteOff(customerId: string, currentBalance: number) {
     if (currentBalance <= 0) return;
+    if (
+      !window.confirm(
+        "Atenção: isso é pra PERDOAR uma dívida que você não vai cobrar (cliente sumiu, deu calote etc). Se o cliente pagou de verdade, cancele aqui e use o botão \"Registrar pagamento\" em vez desse.\n\nContinuar mesmo assim?",
+      )
+    )
+      return;
     const raw = window.prompt(
-      `Dar baixa em quanto da dívida de ${formatCurrency(currentBalance)}? (não é um pagamento recebido — fica registrado como perdão de dívida)`,
+      `Perdoar quanto da dívida de ${formatCurrency(currentBalance)}? (fica registrado como perdão, não como pagamento recebido)`,
       String(currentBalance),
     );
     if (raw === null) return;
@@ -389,7 +399,7 @@ export default function Fiado() {
       window.alert("Digite um valor válido, até o saldo devedor atual.");
       return;
     }
-    if (!window.confirm(`Confirma dar baixa em ${formatCurrency(value)}? Essa dívida sai do saldo do cliente sem ter sido paga.`)) return;
+    if (!window.confirm(`Confirma perdoar ${formatCurrency(value)}? Essa dívida sai do saldo do cliente sem ter sido paga.`)) return;
     await getSupabase().from("credit_transactions").insert({
       customer_id: customerId,
       type: "baixa",
@@ -719,13 +729,15 @@ export default function Fiado() {
                         </div>
                         <button
                           onClick={() => handlePayment(customer)}
-                          className="rounded-lg bg-green-600 px-3 py-1 text-sm font-medium text-white"
+                          disabled={confirmingPayment}
+                          className="rounded-lg bg-green-600 px-3 py-1 text-sm font-medium text-white disabled:opacity-60"
                         >
-                          Confirmar
+                          {confirmingPayment ? "Salvando…" : "Confirmar"}
                         </button>
                         <button
                           onClick={() => setPayingId(null)}
-                          className="text-sm text-slate-500 hover:underline dark:text-slate-400"
+                          disabled={confirmingPayment}
+                          className="text-sm text-slate-500 hover:underline disabled:opacity-60 dark:text-slate-400"
                         >
                           Cancelar
                         </button>
@@ -746,8 +758,9 @@ export default function Fiado() {
                           <button
                             onClick={() => handleWriteOff(customer.id, customer.balance)}
                             className="rounded-lg border border-red-200 px-3 py-1 text-sm font-medium text-red-600 hover:bg-red-50 dark:border-red-900 dark:text-red-400 dark:hover:bg-red-950"
+                            title="Pra receber um pagamento de verdade, use o botão 'Registrar pagamento' — esse aqui é só pra perdoar dívida que não vai ser cobrada"
                           >
-                            Dar baixa
+                            Perdoar dívida
                           </button>
                         )}
                       </>
