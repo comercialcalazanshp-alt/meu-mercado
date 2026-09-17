@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { Suspense, useEffect, useMemo, useState, type FormEvent } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { getSupabase } from "@/lib/supabase";
 import { useStore } from "@/lib/store-context";
 import { buildCreditPaymentReceiptHtml, printHtml } from "@/lib/receipt";
@@ -64,8 +65,10 @@ function calcInterest(amount: number, dueDate: string, monthlyRate: number) {
   return amount * (monthlyRate / 100) * (daysLate / 30);
 }
 
-export default function Fiado() {
+function FiadoInner() {
   const store = useStore();
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
@@ -227,6 +230,21 @@ export default function Fiado() {
       });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [store.id]);
+
+  // Vem de um link "Ver no Crediário" (ex: da tela Clientes) já apontando
+  // pro cliente certo — abre o extrato dele sozinho em vez do dono precisar
+  // procurar de novo na lista.
+  useEffect(() => {
+    if (customers.length === 0) return;
+    const clienteId = searchParams.get("cliente");
+    if (!clienteId) return;
+    const match = customers.find((c) => c.id === clienteId);
+    if (!match) return;
+    setExpandedId(clienteId);
+    fetchTransactions(clienteId);
+    router.replace("/painel/fiado");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [customers, searchParams]);
 
   async function handleSaveInterest(e: FormEvent) {
     e.preventDefault();
@@ -788,6 +806,14 @@ export default function Fiado() {
         })}
       </div>
     </div>
+  );
+}
+
+export default function Fiado() {
+  return (
+    <Suspense fallback={null}>
+      <FiadoInner />
+    </Suspense>
   );
 }
 

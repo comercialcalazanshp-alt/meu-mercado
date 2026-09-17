@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { getSupabase } from "@/lib/supabase";
 import { useStore } from "@/lib/store-context";
 import { buildReceiptHtml, printHtml } from "@/lib/receipt";
@@ -89,8 +90,6 @@ export default function Clientes() {
   const [resetMessage, setResetMessage] = useState<{ ok: boolean; text: string } | null>(null);
 
   const [transactions, setTransactions] = useState<CreditTransaction[]>([]);
-  const [paymentAmount, setPaymentAmount] = useState("");
-  const [payingOpen, setPayingOpen] = useState(false);
 
   const [orders, setOrders] = useState<OrderRow[]>([]);
   const [loadingOrders, setLoadingOrders] = useState(false);
@@ -98,7 +97,6 @@ export default function Clientes() {
   const [noteDraft, setNoteDraft] = useState("");
   const [blockedDraft, setBlockedDraft] = useState(false);
   const [savingNote, setSavingNote] = useState(false);
-  const [savingPayment, setSavingPayment] = useState(false);
   const [noteSaved, setNoteSaved] = useState(false);
 
   async function loadCustomers() {
@@ -167,7 +165,6 @@ export default function Clientes() {
     }
     setExpandedPhone(customer.phone);
     setResetMessage(null);
-    setPayingOpen(false);
     setAccountStatus(null);
 
     setLoadingAccount(true);
@@ -248,30 +245,6 @@ export default function Clientes() {
       p_phone: customer.phone,
     });
     setAccountStatus(data?.[0] ?? null);
-  }
-
-  async function handleRegisterPayment(customer: MergedCustomer) {
-    if (savingPayment) return;
-    const value = Number(paymentAmount.replace(",", "."));
-    if (Number.isNaN(value) || value <= 0 || !customer.creditCustomerId) return;
-
-    setSavingPayment(true);
-    await getSupabase().from("credit_transactions").insert({
-      customer_id: customer.creditCustomerId,
-      type: "pagamento",
-      amount: value,
-    });
-
-    setPaymentAmount("");
-    setPayingOpen(false);
-    await loadCustomers();
-    const { data } = await getSupabase()
-      .from("credit_transactions")
-      .select("id, type, amount, note, created_at, due_date")
-      .eq("customer_id", customer.creditCustomerId)
-      .order("created_at", { ascending: false });
-    setTransactions(data ?? []);
-    setSavingPayment(false);
   }
 
   function reprintOrder(order: OrderRow) {
@@ -455,39 +428,13 @@ export default function Clientes() {
                         </li>
                       ))}
                     </ul>
-                    <div className="mt-2 flex items-center gap-2">
-                      {payingOpen ? (
-                        <>
-                          <input
-                            value={paymentAmount}
-                            onChange={(e) => setPaymentAmount(e.target.value)}
-                            placeholder="Valor pago (R$)"
-                            inputMode="decimal"
-                            autoFocus
-                            className="w-32 rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
-                          />
-                          <button
-                            onClick={() => handleRegisterPayment(customer)}
-                            disabled={savingPayment}
-                            className="rounded-lg bg-green-600 px-3 py-1 text-sm font-medium text-white disabled:opacity-50"
-                          >
-                            {savingPayment ? "Salvando…" : "Confirmar"}
-                          </button>
-                          <button
-                            onClick={() => setPayingOpen(false)}
-                            className="text-sm text-slate-500 hover:underline dark:text-slate-400"
-                          >
-                            Cancelar
-                          </button>
-                        </>
-                      ) : (
-                        <button
-                          onClick={() => setPayingOpen(true)}
-                          className="rounded-lg border border-slate-300 px-3 py-1 text-sm font-medium text-slate-700 dark:border-slate-700 dark:text-slate-300"
-                        >
-                          Registrar pagamento (baixar fiado)
-                        </button>
-                      )}
+                    <div className="mt-2">
+                      <Link
+                        href={`/painel/fiado?cliente=${customer.creditCustomerId}`}
+                        className="inline-block rounded-lg border border-slate-300 px-3 py-1 text-sm font-medium text-slate-700 dark:border-slate-700 dark:text-slate-300"
+                      >
+                        Registrar pagamento no Crediário →
+                      </Link>
                     </div>
                   </div>
                 )}
