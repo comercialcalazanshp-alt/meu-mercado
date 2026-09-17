@@ -2,6 +2,7 @@ import "server-only";
 import { getSupabaseAdmin } from "@/lib/supabase-admin";
 import { isValidCPF } from "@/lib/cpf";
 import { syncHubOrderPayment } from "@/lib/hub-order-payment-sync";
+import { checkPaymentRateLimit, callerIp } from "@/lib/payment-rate-limit";
 
 // Recebe o cartão já criptografado no navegador (nunca em texto puro) e
 // manda pro PagBank cobrar o valor exato do pedido. Aceita parcelamento
@@ -12,6 +13,11 @@ export async function POST(request: Request) {
   const token = process.env.PAGBANK_TOKEN;
   if (!token) {
     return Response.json({ error: "Pagamento não configurado" }, { status: 500 });
+  }
+
+  const allowed = await checkPaymentRateLimit(callerIp(request));
+  if (!allowed) {
+    return Response.json({ error: "Muitas tentativas de pagamento. Aguarda alguns minutos e tenta de novo." }, { status: 429 });
   }
 
   const { order_id, hub_order_id, encrypted_card, holder_name, holder_cpf, installments } = (await request.json()) as {

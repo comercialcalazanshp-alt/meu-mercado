@@ -2,12 +2,18 @@ import "server-only";
 import { getSupabaseAdmin } from "@/lib/supabase-admin";
 import { isValidCPF } from "@/lib/cpf";
 import { createEfiPixCharge, makeTxid } from "@/lib/efi-pix";
+import { checkPaymentRateLimit, callerIp } from "@/lib/payment-rate-limit";
 
 // Mesma função do antigo /api/pagbank/create-pix, só que gerando o Pix via
 // Efí em vez de PagBank — chamada pelo site logo depois que o pedido é
 // criado. Guarda o txid no mesmo campo pagbank_order_id que já existia
 // (evita renomear coluna em 4 tabelas só por causa da troca de provedor).
 export async function POST(request: Request) {
+  const allowed = await checkPaymentRateLimit(callerIp(request));
+  if (!allowed) {
+    return Response.json({ error: "Muitas tentativas de pagamento. Aguarda alguns minutos e tenta de novo." }, { status: 429 });
+  }
+
   const { order_id, hub_order_id, customer_tax_id } = (await request.json()) as {
     order_id?: string;
     hub_order_id?: string;

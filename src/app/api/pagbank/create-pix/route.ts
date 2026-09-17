@@ -1,6 +1,7 @@
 import "server-only";
 import { getSupabaseAdmin } from "@/lib/supabase-admin";
 import { isValidCPF } from "@/lib/cpf";
+import { checkPaymentRateLimit, callerIp } from "@/lib/payment-rate-limit";
 
 // Chamada pelo site logo depois que o pedido é criado (checkout já validou
 // preço/estoque e gravou o pedido) — aqui só pedimos ao PagBank pra gerar
@@ -9,6 +10,11 @@ export async function POST(request: Request) {
   const token = process.env.PAGBANK_TOKEN;
   if (!token) {
     return Response.json({ error: "Pagamento Pix não configurado" }, { status: 500 });
+  }
+
+  const allowed = await checkPaymentRateLimit(callerIp(request));
+  if (!allowed) {
+    return Response.json({ error: "Muitas tentativas de pagamento. Aguarda alguns minutos e tenta de novo." }, { status: 429 });
   }
 
   const { order_id, hub_order_id, customer_tax_id } = (await request.json()) as {
