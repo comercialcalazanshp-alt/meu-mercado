@@ -6,6 +6,7 @@ import { getSupabase } from "@/lib/supabase";
 import { useStore } from "@/lib/store-context";
 import { buildReceiptHtml, printHtml } from "@/lib/receipt";
 import { deleteMyAccount } from "./actions";
+import PhotoField from "@/components/PhotoField";
 
 const WEEKDAYS = [
   { value: 0, label: "Dom" },
@@ -39,6 +40,7 @@ export default function Configuracoes() {
   const [cnpj, setCnpj] = useState(store.cnpj ?? "");
   const [brandColor, setBrandColor] = useState("#1e3a8a");
   const [accentColor, setAccentColor] = useState("#f59e0b");
+  const [logoUrl, setLogoUrl] = useState(store.logo_url ?? "");
   const [savingStore, setSavingStore] = useState(false);
   const [storeSaved, setStoreSaved] = useState(false);
 
@@ -212,6 +214,7 @@ export default function Configuracoes() {
         cnpj: cnpj.trim() || null,
         brand_color: brandColor,
         accent_color: accentColor,
+        logo_url: logoUrl.trim() || null,
       })
       .eq("id", store.id);
     setSavingStore(false);
@@ -488,11 +491,13 @@ export default function Configuracoes() {
           </div>
           <div>
             <label className="block text-sm text-slate-600 dark:text-slate-400">
-              Cor de destaque (botões)
+              Cor de destaque
             </label>
             <p className="mt-0.5 text-xs text-slate-400 dark:text-slate-500">
-              Usada nos botões de ação da vitrine (adicionar ao carrinho, finalizar pedido) — vale a
-              pena escolher uma cor que contraste com a de cima.
+              Usada nos botões de ação da vitrine (adicionar ao carrinho, finalizar pedido) e também
+              no seu painel de trabalho (Dashboard, Clientes e o resto conforme forem sendo
+              atualizados) — uma cor só pra tudo. Vale a pena escolher uma cor que contraste com a
+              de cima.
             </p>
             <div className="mt-1 flex items-center gap-3">
               <input
@@ -507,6 +512,32 @@ export default function Configuracoes() {
               >
                 Adicionar
               </span>
+            </div>
+          </div>
+          <div>
+            <label className="block text-sm text-slate-600 dark:text-slate-400">Logo da loja</label>
+            <p className="mt-0.5 text-xs text-slate-400 dark:text-slate-500">
+              Aparece no menu do painel e no topo do PDV. Fundo transparente (PNG) é mantido — não
+              vira uma caixa preta.
+            </p>
+            <div className="mt-1.5 flex items-center gap-3">
+              {logoUrl ? (
+                <img src={logoUrl} alt="Logo da loja" className="h-14 w-14 rounded-lg border border-slate-300 object-contain p-1 dark:border-slate-700" />
+              ) : (
+                <div className="flex h-14 w-14 items-center justify-center rounded-lg border border-dashed border-slate-300 text-[10px] text-slate-400 dark:border-slate-700">
+                  sem logo
+                </div>
+              )}
+              <div className="flex-1">
+                <PhotoField
+                  storeId={store.id}
+                  value={logoUrl}
+                  onChange={setLogoUrl}
+                  uploadPrefix="logo"
+                  promptSeed={`Logo simples e limpa da loja ${name || "mercado"}`}
+                  format="png"
+                />
+              </div>
             </div>
           </div>
         </div>

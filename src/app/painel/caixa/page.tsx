@@ -5,6 +5,8 @@ import Link from "next/link";
 import { getSupabase } from "@/lib/supabase";
 import { useStore } from "@/lib/store-context";
 import { printHtml } from "@/lib/receipt";
+import { Card, Section, PrimaryButton, SecondaryButton, SelectField } from "@/components/ui";
+import { useThemeColors } from "@/components/ui/theme";
 
 const ORIENTACAO_FINANCEIRA_PERGUNTA =
   "Acabei de fechar o caixa. Com base nesse fechamento e no acumulado do período, quanto eu já posso tirar pra mim (pró-labore), quanto preciso deixar de capital de giro, e quanto sobra pra pensar em investir?";
@@ -57,6 +59,7 @@ function formatDateTime(iso: string) {
 
 export default function Caixa() {
   const store = useStore();
+  const COLOR_HEX = useThemeColors();
   const [loading, setLoading] = useState(true);
   const [openSession, setOpenSession] = useState<CashSession | null>(null);
   const [movements, setMovements] = useState<CashMovement[]>([]);
@@ -296,281 +299,263 @@ export default function Caixa() {
   }
 
   if (loading) {
-    return <p className="text-sm text-slate-500">Carregando…</p>;
+    return (
+      <div className="mx-auto max-w-2xl space-y-3">
+        {[0, 1, 2].map((i) => (
+          <div key={i} className="h-24 animate-pulse rounded-2xl border border-white/[0.06] bg-white/[0.03]" />
+        ))}
+      </div>
+    );
   }
 
   return (
-    <div className="max-w-2xl space-y-6">
-      <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-50">Caixa</h1>
-      {error && <p className="text-sm text-red-600">{error}</p>}
+    <div className="relative overflow-hidden rounded-[22px] bg-black">
+      <div
+        aria-hidden
+        className="pointer-events-none absolute -top-36 left-1/3 h-[420px] w-[420px] rounded-full opacity-25 blur-[100px]"
+        style={{ background: `radial-gradient(circle, ${COLOR_HEX.accent}30, transparent 65%)` }}
+      />
+      <div
+        aria-hidden
+        className="pointer-events-none absolute -bottom-28 -right-16 h-[360px] w-[360px] rounded-full opacity-20 blur-[100px]"
+        style={{ background: `radial-gradient(circle, ${COLOR_HEX.positive}22, transparent 65%)` }}
+      />
 
-      {!openSession ? (
-        <form
-          onSubmit={handleOpen}
-          className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900"
-        >
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-            Abrir caixa
-          </h2>
-          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-            Quanto tem de dinheiro no caixa agora?
+      <div className="relative mx-auto max-w-2xl space-y-4 px-4 py-6 text-[#F5F3EF] sm:px-6">
+        <h1 className="text-xl font-extrabold">Caixa</h1>
+        {error && (
+          <p className="text-sm font-medium" style={{ color: COLOR_HEX.negative }}>
+            {error}
           </p>
-          <div className="mt-3 flex items-center gap-2">
-            <input
-              value={openingAmount}
-              onChange={(e) => setOpeningAmount(e.target.value)}
-              placeholder="R$ 0,00"
-              inputMode="decimal"
-              className="w-40 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
-            />
-            <button
-              type="submit"
-              disabled={saving}
-              className="rounded-lg bg-blue-900 px-4 py-2 text-sm font-semibold text-amber-300 disabled:opacity-60 dark:bg-blue-800"
-            >
-              {saving ? "Abrindo…" : "Abrir caixa"}
-            </button>
-          </div>
-        </form>
-      ) : (
-        <>
-          <div className="rounded-xl border border-green-200 bg-green-50 p-4 dark:border-green-900/50 dark:bg-green-950/30">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-green-700 dark:text-green-400">
-              Caixa aberto
-            </h2>
-            <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
-              Aberto em {formatDateTime(openSession.opened_at)} com{" "}
-              {formatCurrency(openSession.opening_amount)}
-              {openSession.opened_by ? ` por ${openSession.opened_by}` : ""}
-            </p>
-            {summary && (
-              <div className="mt-3 grid grid-cols-3 gap-2 border-t border-green-200 pt-3 dark:border-green-900/50">
-                <div>
-                  <p className="text-xs text-slate-500 dark:text-slate-400">Vendas hoje</p>
-                  <p className="text-lg font-bold text-slate-900 dark:text-slate-50">{summary.orders_count}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-slate-500 dark:text-slate-400">Faturamento</p>
-                  <p className="text-lg font-bold text-slate-900 dark:text-slate-50">
-                    {formatCurrency(summary.revenue_total)}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-xs text-slate-500 dark:text-slate-400">Dinheiro esperado agora</p>
-                  <p className="text-lg font-bold text-slate-900 dark:text-slate-50">
-                    {formatCurrency(summary.expected_cash)}
-                  </p>
-                </div>
-              </div>
-            )}
-          </div>
+        )}
 
-          <form
-            onSubmit={handleMovement}
-            className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900"
-          >
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-              Sangria / reforço
-            </h2>
-            <div className="mt-3 flex flex-wrap items-end gap-2">
-              <select
-                value={movementType}
-                onChange={(e) => setMovementType(e.target.value as "sangria" | "reforco")}
-                className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
-              >
-                <option value="sangria">Sangria (retirar)</option>
-                <option value="reforco">Reforço (colocar a mais)</option>
-              </select>
-              <input
-                value={movementAmount}
-                onChange={(e) => setMovementAmount(e.target.value)}
-                placeholder="R$ 0,00"
-                inputMode="decimal"
-                className="w-32 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
-              />
-              <input
-                value={movementDescription}
-                onChange={(e) => setMovementDescription(e.target.value)}
-                placeholder="Motivo (opcional)"
-                className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50 sm:min-w-0 sm:flex-1"
-              />
-              <button
-                type="submit"
-                disabled={savingMovement}
-                className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 disabled:opacity-60 dark:border-slate-700 dark:text-slate-300"
-              >
-                {savingMovement ? "Registrando…" : "Registrar"}
-              </button>
-            </div>
-            {movements.length > 0 && (
-              <ul className="mt-3 space-y-1 border-t border-slate-100 pt-3 text-sm dark:border-slate-800">
-                {movements.map((m) => (
-                  <li key={m.id} className="flex items-center justify-between gap-2 text-slate-600 dark:text-slate-400">
-                    <span>
-                      {m.type === "sangria" ? "Sangria" : "Reforço"}
-                      {m.description ? ` — ${m.description}` : ""} ·{" "}
-                      {formatDateTime(m.created_at)}
-                    </span>
-                    <span className="flex items-center gap-2">
-                      <span className={m.type === "sangria" ? "text-red-600" : "text-green-600"}>
-                        {m.type === "sangria" ? "−" : "+"}
-                        {formatCurrency(m.amount)}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => deleteMovement(m.id)}
-                        className="text-xs text-red-600 hover:underline dark:text-red-400"
-                      >
-                        Apagar
-                      </button>
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </form>
-
-          <form
-            onSubmit={handleClose}
-            className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900"
-          >
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-              Fechar caixa
-            </h2>
-            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-              Conte o dinheiro de verdade no caixa e informe abaixo — o sistema compara com o
-              esperado (valor inicial + vendas em dinheiro do PDV + reforços − sangrias).
-            </p>
-            {summary && (
-              <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
-                Valor esperado agora: <strong>{formatCurrency(summary.expected_cash)}</strong>
-              </p>
-            )}
-            <div className="mt-3 flex items-center gap-2">
-              <input
-                value={declaredAmount}
-                onChange={(e) => setDeclaredAmount(e.target.value)}
-                placeholder="R$ 0,00"
-                inputMode="decimal"
-                className="w-40 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
-              />
-              <button
-                type="submit"
-                disabled={closing}
-                className="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
-              >
-                {closing ? "Fechando…" : "🔒 Fechar caixa"}
-              </button>
-            </div>
-            {summary && declaredAmount.trim() !== "" && (() => {
-              const declared = Number(declaredAmount.replace(",", ".")) || 0;
-              const liveDiff = declared - summary.expected_cash;
-              return (
-                <p
-                  className={`mt-1 text-sm font-medium ${
-                    Math.abs(liveDiff) < 0.5
-                      ? "text-green-600"
-                      : liveDiff > 0
-                        ? "text-blue-600"
-                        : "text-red-600"
-                  }`}
-                >
-                  {Math.abs(liveDiff) < 0.5
-                    ? "✓ Bate certinho com o esperado"
-                    : liveDiff > 0
-                      ? `Vai sobrar ${formatCurrency(liveDiff)}`
-                      : `Vai faltar ${formatCurrency(Math.abs(liveDiff))}`}
+        {!openSession ? (
+          <Card>
+            <Section dot={COLOR_HEX.accent} label="Abrir caixa">
+              <p className="text-sm text-white/50">Quanto tem de dinheiro no caixa agora?</p>
+              <form onSubmit={handleOpen} className="mt-3 flex items-center gap-2">
+                <input
+                  value={openingAmount}
+                  onChange={(e) => setOpeningAmount(e.target.value)}
+                  placeholder="R$ 0,00"
+                  inputMode="decimal"
+                  className="w-40 rounded-lg border border-white/[0.09] bg-white/[0.03] px-3 py-2 text-sm text-white placeholder:text-white/25 focus:border-[var(--mm-accent)]/50 focus:outline-none"
+                />
+                <PrimaryButton hex={COLOR_HEX.accent} type="submit" disabled={saving}>
+                  {saving ? "Abrindo…" : "Abrir caixa"}
+                </PrimaryButton>
+              </form>
+            </Section>
+          </Card>
+        ) : (
+          <>
+            <Card style={{ borderColor: `${COLOR_HEX.positive}40` }}>
+              <Section dot={COLOR_HEX.positive} label="Caixa aberto">
+                <p className="text-sm text-white/50">
+                  Aberto em {formatDateTime(openSession.opened_at)} com{" "}
+                  <span className="font-semibold text-white/80">{formatCurrency(openSession.opening_amount)}</span>
+                  {openSession.opened_by ? ` por ${openSession.opened_by}` : ""}
                 </p>
-              );
-            })()}
-            {closeResult && (
-              <div className="mt-2">
-                <p className="text-sm text-slate-700 dark:text-slate-300">{closeResult}</p>
-                {lastClosedSession && (
-                  <div className="mt-1 flex flex-wrap items-center gap-3">
-                    <button
-                      type="button"
-                      onClick={() => printClosingReport(lastClosedSession)}
-                      className="text-sm font-medium text-blue-900 underline dark:text-blue-400"
-                    >
-                      🖨️ Imprimir resumo do fechamento
-                    </button>
-                    <Link
-                      href={`/painel/assistente?pergunta=${encodeURIComponent(ORIENTACAO_FINANCEIRA_PERGUNTA)}`}
-                      className="text-sm font-medium text-green-700 underline dark:text-green-400"
-                    >
-                      💬 Pedir orientação financeira
-                    </Link>
+                {summary && (
+                  <div className="mt-3 grid grid-cols-3 gap-3 border-t border-white/[0.06] pt-3">
+                    <div>
+                      <p className="text-[11px] text-white/35">Vendas hoje</p>
+                      <p className="text-lg font-bold tabular-nums text-white">{summary.orders_count}</p>
+                    </div>
+                    <div>
+                      <p className="text-[11px] text-white/35">Faturamento</p>
+                      <p className="text-lg font-bold tabular-nums text-white">{formatCurrency(summary.revenue_total)}</p>
+                    </div>
+                    <div>
+                      <p className="text-[11px] text-white/35">Dinheiro esperado</p>
+                      <p className="text-lg font-bold tabular-nums text-white">{formatCurrency(summary.expected_cash)}</p>
+                    </div>
                   </div>
                 )}
-              </div>
-            )}
-          </form>
-        </>
-      )}
+              </Section>
+            </Card>
 
-      <div>
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-          Histórico de fechamentos
-        </h2>
-        {history.length === 0 && (
-          <p className="mt-2 text-sm text-slate-500">Nenhum caixa fechado ainda.</p>
+            <Card>
+              <Section dot={COLOR_HEX.warning} label="Sangria / reforço">
+                <form onSubmit={handleMovement} className="flex flex-wrap items-end gap-2">
+                  <SelectField value={movementType} onChange={(e) => setMovementType(e.target.value as "sangria" | "reforco")}>
+                    <option value="sangria">Sangria (retirar)</option>
+                    <option value="reforco">Reforço (colocar a mais)</option>
+                  </SelectField>
+                  <input
+                    value={movementAmount}
+                    onChange={(e) => setMovementAmount(e.target.value)}
+                    placeholder="R$ 0,00"
+                    inputMode="decimal"
+                    className="w-32 rounded-lg border border-white/[0.09] bg-white/[0.03] px-3 py-2 text-sm text-white placeholder:text-white/25 focus:border-[var(--mm-accent)]/50 focus:outline-none"
+                  />
+                  <input
+                    value={movementDescription}
+                    onChange={(e) => setMovementDescription(e.target.value)}
+                    placeholder="Motivo (opcional)"
+                    className="w-full rounded-lg border border-white/[0.09] bg-white/[0.03] px-3 py-2 text-sm text-white placeholder:text-white/25 focus:border-[var(--mm-accent)]/50 focus:outline-none sm:min-w-0 sm:flex-1"
+                  />
+                  <SecondaryButton type="submit" disabled={savingMovement}>
+                    {savingMovement ? "Registrando…" : "Registrar"}
+                  </SecondaryButton>
+                </form>
+                {movements.length > 0 && (
+                  <ul className="mt-3 space-y-1.5 border-t border-white/[0.06] pt-3 text-sm">
+                    {movements.map((m) => (
+                      <li key={m.id} className="flex items-center justify-between gap-2 text-white/50">
+                        <span className="truncate">
+                          {m.type === "sangria" ? "Sangria" : "Reforço"}
+                          {m.description ? ` — ${m.description}` : ""} · {formatDateTime(m.created_at)}
+                        </span>
+                        <span className="flex shrink-0 items-center gap-2">
+                          <span
+                            className="font-medium tabular-nums"
+                            style={{ color: m.type === "sangria" ? COLOR_HEX.negative : COLOR_HEX.positive }}
+                          >
+                            {m.type === "sangria" ? "−" : "+"}
+                            {formatCurrency(m.amount)}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => deleteMovement(m.id)}
+                            className="text-xs hover:underline"
+                            style={{ color: COLOR_HEX.negative }}
+                          >
+                            Apagar
+                          </button>
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </Section>
+            </Card>
+
+            <Card>
+              <Section dot={COLOR_HEX.negative} label="Fechar caixa">
+                <p className="text-sm text-white/50">
+                  Conte o dinheiro de verdade no caixa e informe abaixo — o sistema compara com o esperado (valor
+                  inicial + vendas em dinheiro do PDV + reforços − sangrias).
+                </p>
+                {summary && (
+                  <p className="mt-1 text-sm text-white/60">
+                    Valor esperado agora: <strong className="text-white">{formatCurrency(summary.expected_cash)}</strong>
+                  </p>
+                )}
+                <form onSubmit={handleClose} className="mt-3 flex items-center gap-2">
+                  <input
+                    value={declaredAmount}
+                    onChange={(e) => setDeclaredAmount(e.target.value)}
+                    placeholder="R$ 0,00"
+                    inputMode="decimal"
+                    className="w-40 rounded-lg border border-white/[0.09] bg-white/[0.03] px-3 py-2 text-sm text-white placeholder:text-white/25 focus:border-[var(--mm-accent)]/50 focus:outline-none"
+                  />
+                  <PrimaryButton hex={COLOR_HEX.negative} type="submit" disabled={closing}>
+                    {closing ? "Fechando…" : "🔒 Fechar caixa"}
+                  </PrimaryButton>
+                </form>
+                {summary &&
+                  declaredAmount.trim() !== "" &&
+                  (() => {
+                    const declared = Number(declaredAmount.replace(",", ".")) || 0;
+                    const liveDiff = declared - summary.expected_cash;
+                    const hex = Math.abs(liveDiff) < 0.5 ? COLOR_HEX.positive : liveDiff > 0 ? COLOR_HEX.accent : COLOR_HEX.negative;
+                    return (
+                      <p className="mt-1.5 text-sm font-medium" style={{ color: hex }}>
+                        {Math.abs(liveDiff) < 0.5
+                          ? "✓ Bate certinho com o esperado"
+                          : liveDiff > 0
+                            ? `Vai sobrar ${formatCurrency(liveDiff)}`
+                            : `Vai faltar ${formatCurrency(Math.abs(liveDiff))}`}
+                      </p>
+                    );
+                  })()}
+                {closeResult && (
+                  <div className="mt-3 rounded-lg border border-white/[0.06] bg-white/[0.02] p-3">
+                    <p className="text-sm text-white/70">{closeResult}</p>
+                    {lastClosedSession && (
+                      <div className="mt-2 flex flex-wrap items-center gap-4">
+                        <button
+                          type="button"
+                          onClick={() => printClosingReport(lastClosedSession)}
+                          className="text-sm font-medium underline underline-offset-2"
+                          style={{ color: COLOR_HEX.accent }}
+                        >
+                          🖨️ Imprimir resumo do fechamento
+                        </button>
+                        <Link
+                          href={`/painel/assistente?pergunta=${encodeURIComponent(ORIENTACAO_FINANCEIRA_PERGUNTA)}`}
+                          className="text-sm font-medium underline underline-offset-2"
+                          style={{ color: COLOR_HEX.positive }}
+                        >
+                          💬 Pedir orientação financeira
+                        </Link>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </Section>
+            </Card>
+          </>
         )}
-        <div className="mt-2 space-y-2">
-          {history.map((s) => (
-            <div
-              key={s.id}
-              className="rounded-xl border border-slate-200 bg-white p-4 text-sm dark:border-slate-800 dark:bg-slate-900"
-            >
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <span className="text-slate-600 dark:text-slate-400">
-                  {formatDateTime(s.opened_at)} até {s.closed_at ? formatDateTime(s.closed_at) : "—"}
-                </span>
-                <span
-                  className={`font-medium ${
-                    Math.abs(s.cash_difference ?? 0) < 0.5
-                      ? "text-green-600"
-                      : (s.cash_difference ?? 0) > 0
-                        ? "text-blue-600"
-                        : "text-red-600"
-                  }`}
-                >
-                  {Math.abs(s.cash_difference ?? 0) < 0.5
-                    ? "Bateu certinho"
+
+        <Card>
+          <Section dot={COLOR_HEX.afil} label="Histórico de fechamentos">
+            {history.length === 0 && <p className="text-sm text-white/35">Nenhum caixa fechado ainda.</p>}
+            <div className="space-y-2">
+              {history.map((s) => {
+                const diffHex =
+                  Math.abs(s.cash_difference ?? 0) < 0.5
+                    ? COLOR_HEX.positive
                     : (s.cash_difference ?? 0) > 0
-                      ? `Sobrou ${formatCurrency(s.cash_difference ?? 0)}`
-                      : `Faltou ${formatCurrency(Math.abs(s.cash_difference ?? 0))}`}
-                </span>
-              </div>
-              <p className="mt-1 text-slate-500 dark:text-slate-400">
-                Esperado {formatCurrency(s.expected_cash ?? 0)} · Contado{" "}
-                {formatCurrency(s.closing_amount_declared ?? 0)} · Faturamento total{" "}
-                {formatCurrency(s.revenue_total ?? 0)}
-              </p>
-              {s.revenue_by_payment && Object.keys(s.revenue_by_payment).length > 0 && (
-                <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
-                  {Object.entries(s.revenue_by_payment)
-                    .map(([method, total]) => `${PAYMENT_LABEL[method] ?? method}: ${formatCurrency(total)}`)
-                    .join(" · ")}
-                </p>
-              )}
-              {(s.opened_by || s.closed_by) && (
-                <p className="mt-1 text-xs text-slate-400 dark:text-slate-500">
-                  {s.opened_by && `Aberto por ${s.opened_by}`}
-                  {s.opened_by && s.closed_by && " · "}
-                  {s.closed_by && `Fechado por ${s.closed_by}`}
-                </p>
-              )}
-              <button
-                type="button"
-                onClick={() => printClosingReport(s)}
-                className="mt-2 text-xs font-medium text-blue-900 underline dark:text-blue-400"
-              >
-                🖨️ Imprimir resumo
-              </button>
+                      ? COLOR_HEX.accent
+                      : COLOR_HEX.negative;
+                return (
+                  <div key={s.id} className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-3.5 text-sm">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <span className="text-white/50">
+                        {formatDateTime(s.opened_at)} até {s.closed_at ? formatDateTime(s.closed_at) : "—"}
+                      </span>
+                      <span className="font-medium" style={{ color: diffHex }}>
+                        {Math.abs(s.cash_difference ?? 0) < 0.5
+                          ? "Bateu certinho"
+                          : (s.cash_difference ?? 0) > 0
+                            ? `Sobrou ${formatCurrency(s.cash_difference ?? 0)}`
+                            : `Faltou ${formatCurrency(Math.abs(s.cash_difference ?? 0))}`}
+                      </span>
+                    </div>
+                    <p className="mt-1 text-white/40">
+                      Esperado {formatCurrency(s.expected_cash ?? 0)} · Contado {formatCurrency(s.closing_amount_declared ?? 0)} ·
+                      Faturamento total {formatCurrency(s.revenue_total ?? 0)}
+                    </p>
+                    {s.revenue_by_payment && Object.keys(s.revenue_by_payment).length > 0 && (
+                      <p className="mt-1 text-xs text-white/30">
+                        {Object.entries(s.revenue_by_payment)
+                          .map(([method, total]) => `${PAYMENT_LABEL[method] ?? method}: ${formatCurrency(total)}`)
+                          .join(" · ")}
+                      </p>
+                    )}
+                    {(s.opened_by || s.closed_by) && (
+                      <p className="mt-1 text-xs text-white/30">
+                        {s.opened_by && `Aberto por ${s.opened_by}`}
+                        {s.opened_by && s.closed_by && " · "}
+                        {s.closed_by && `Fechado por ${s.closed_by}`}
+                      </p>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => printClosingReport(s)}
+                      className="mt-2 text-xs font-medium underline underline-offset-2"
+                      style={{ color: COLOR_HEX.accent }}
+                    >
+                      🖨️ Imprimir resumo
+                    </button>
+                  </div>
+                );
+              })}
             </div>
-          ))}
-        </div>
+          </Section>
+        </Card>
       </div>
     </div>
   );

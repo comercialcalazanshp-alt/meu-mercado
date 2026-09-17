@@ -1285,7 +1285,7 @@ export default function Pdv() {
         )}
 
         {isOnline && pendingSaleCount > 0 && (
-          <p className="mt-3 flex items-center gap-2 rounded-xl border border-[#5CACFF]/25 bg-[#5CACFF]/10 px-3 py-2.5 text-sm text-[#5CACFF]">
+          <p className="mt-3 flex items-center gap-2 rounded-xl border border-[var(--mm-accent)]/25 bg-[var(--mm-accent)]/10 px-3 py-2.5 text-sm text-[var(--mm-accent)]">
             <IconWarning className="h-4 w-4 shrink-0" />
             {syncing
               ? "Sincronizando vendas feitas sem internet…"
@@ -1302,7 +1302,7 @@ export default function Pdv() {
             onKeyDown={handleSearchKeyDown}
             placeholder="Buscar por nome ou passar código de barras…"
             autoComplete="off"
-            className="w-full rounded-xl border border-white/[0.09] bg-white/[0.035] py-3.5 pl-11 pr-4 text-base text-[#F5F3EF] backdrop-blur-xl transition placeholder:text-white/25 focus:border-[#5CACFF]/50 focus:outline-none focus:ring-2 focus:ring-[#5CACFF]/15"
+            className="w-full rounded-xl border border-white/[0.09] bg-white/[0.035] py-3.5 pl-11 pr-4 text-base text-[#F5F3EF] backdrop-blur-xl transition placeholder:text-white/25 focus:border-[var(--mm-accent)]/50 focus:outline-none focus:ring-2 focus:ring-[var(--mm-accent)]/15"
           />
 
           {search.trim() && (
@@ -1368,7 +1368,7 @@ export default function Pdv() {
                   {!quickAddOpen ? (
                     <button
                       onClick={openQuickAdd}
-                      className="mt-2 text-sm font-semibold text-[#5CACFF] hover:underline"
+                      className="mt-2 text-sm font-semibold text-[var(--mm-accent)] hover:underline"
                     >
                       Cadastrar rápido <kbd className="ml-0.5 rounded bg-white/10 px-1 py-0.5 font-mono text-[10px] text-white/45">Insert</kbd>
                     </button>
@@ -1682,7 +1682,7 @@ export default function Pdv() {
             <button
               onClick={toggleSplitMode}
               className={`inline-flex items-center gap-1 text-xs font-medium underline underline-offset-2 ${
-                splitMode ? "text-[#5CACFF]" : "text-white/40"
+                splitMode ? "text-[var(--mm-accent)]" : "text-white/40"
               }`}
             >
               {splitMode ? (
@@ -1707,11 +1707,11 @@ export default function Pdv() {
                     onClick={() => selectPayment(value)}
                     className={`flex items-center gap-2 rounded-xl border px-3 py-2.5 text-sm font-medium transition ${
                       selected
-                        ? "border-[#5CACFF]/35 bg-[#5CACFF]/12 text-[#5CACFF]"
+                        ? "border-[var(--mm-accent)]/35 bg-[var(--mm-accent)]/12 text-[var(--mm-accent)]"
                         : "border-white/10 bg-white/[0.02] text-white/55 hover:border-white/20 hover:bg-white/[0.05]"
                     }`}
                   >
-                    <Icon className={`h-4 w-4 shrink-0 ${selected ? "text-[#5CACFF]" : "text-white/30"}`} />
+                    <Icon className={`h-4 w-4 shrink-0 ${selected ? "text-[var(--mm-accent)]" : "text-white/30"}`} />
                     {label}
                   </button>
                 );
@@ -1752,7 +1752,7 @@ export default function Pdv() {
               {splitPayments.length < 4 && (
                 <button
                   onClick={addSplitRow}
-                  className="text-xs font-medium text-[#5CACFF] underline underline-offset-2"
+                  className="text-xs font-medium text-[var(--mm-accent)] underline underline-offset-2"
                 >
                   + Adicionar forma
                 </button>
@@ -1789,14 +1789,14 @@ export default function Pdv() {
                   onClick={() =>
                     setCashReceived((prev) => String((Number(prev.replace(",", ".")) || 0) + value))
                   }
-                  className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-1 text-sm font-medium text-white/60 transition hover:border-[#5CACFF]/40 hover:text-[#5CACFF]"
+                  className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-1 text-sm font-medium text-white/60 transition hover:border-[var(--mm-accent)]/40 hover:text-[var(--mm-accent)]"
                 >
                   +{formatCurrency(value)}
                 </button>
               ))}
               <button
                 onClick={() => setCashReceived(String(total))}
-                className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-1 text-sm font-medium text-white/60 transition hover:border-[#5CACFF]/40 hover:text-[#5CACFF]"
+                className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-1 text-sm font-medium text-white/60 transition hover:border-[var(--mm-accent)]/40 hover:text-[var(--mm-accent)]"
               >
                 Valor exato
               </button>

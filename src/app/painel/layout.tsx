@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { getSupabase } from "@/lib/supabase";
 import { StoreContext, type Store } from "@/lib/store-context";
@@ -118,6 +118,16 @@ const NAV_ITEMS = [
   { href: "/painel/equipe", label: "Equipe" },
   { href: "/painel/configuracoes", label: "⚙️ Configurações" },
 ];
+
+// Deixa a cor de destaque (Configurações → Aparência) disponível como
+// variável CSS pra qualquer classe Tailwind arbitrária tipo
+// `text-[var(--mm-accent)]` — usado no PDV, que já usa muita classe
+// arbitrária com a cor fixa antiga (#5CACFF) em vez de computar a cor em
+// JS como o Dashboard/Clientes fazem.
+function accentStyle(store: Store | null): CSSProperties {
+  const accent = store?.accent_color && /^#[0-9a-fA-F]{6}$/.test(store.accent_color) ? store.accent_color : "#5CACFF";
+  return { "--mm-accent": accent } as CSSProperties;
+}
 
 export default function PainelLayout({ children }: { children: ReactNode }) {
   const router = useRouter();
@@ -400,7 +410,7 @@ export default function PainelLayout({ children }: { children: ReactNode }) {
 
   if (isPdv) {
     return (
-      <div className="flex flex-1 flex-col bg-black">
+      <div className="flex flex-1 flex-col bg-black" style={accentStyle(store)}>
         <div className="flex items-center justify-between border-b border-white/[0.08] bg-black px-4 py-2">
           <a
             href={role === "caixa" ? "/painel/caixa" : "/painel"}
@@ -408,7 +418,13 @@ export default function PainelLayout({ children }: { children: ReactNode }) {
           >
             {role === "caixa" ? "Abrir/fechar caixa" : "← Voltar ao painel"}
           </a>
-          <p className="truncate text-sm font-semibold text-white">{store!.name}</p>
+          <div className="flex items-center gap-2">
+            {store!.logo_url && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={store!.logo_url} alt="" className="h-6 w-6 rounded object-contain" />
+            )}
+            <p className="truncate text-sm font-semibold text-white">{store!.name}</p>
+          </div>
         </div>
         <main className="flex-1 px-4 py-4 md:px-6 md:py-6">
           <StoreContext.Provider value={store}>{children}</StoreContext.Provider>
@@ -448,7 +464,7 @@ export default function PainelLayout({ children }: { children: ReactNode }) {
 
   if (isEntregas) {
     return (
-      <div className="flex flex-1 flex-col bg-black">
+      <div className="flex flex-1 flex-col bg-black" style={accentStyle(store)}>
         <div className="flex items-center justify-between border-b border-white/[0.08] bg-black px-4 py-2">
           <p className="truncate text-sm font-semibold text-white">{store!.name}</p>
           <div className="flex items-center gap-1">
@@ -483,14 +499,20 @@ export default function PainelLayout({ children }: { children: ReactNode }) {
   }
 
   return (
-    <div className="flex flex-1 flex-col bg-black md:flex-row">
+    <div className="flex flex-1 flex-col bg-black md:flex-row" style={accentStyle(store)}>
       <aside className="flex shrink-0 flex-col border-b border-white/[0.08] bg-black px-4 py-4 md:w-56 md:border-b-0 md:border-r md:px-3 md:py-6">
         <div className="mb-4 flex items-start justify-between gap-2 px-2">
-          <div className="min-w-0">
-            <p className="truncate text-sm font-semibold text-white">
-              {store!.name}
-            </p>
-            <p className="truncate text-xs text-white/40">/{store!.slug}</p>
+          <div className="flex min-w-0 items-center gap-2">
+            {store!.logo_url && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={store!.logo_url} alt="" className="h-8 w-8 shrink-0 rounded-lg object-contain" />
+            )}
+            <div className="min-w-0">
+              <p className="truncate text-sm font-semibold text-white">
+                {store!.name}
+              </p>
+              <p className="truncate text-xs text-white/40">/{store!.slug}</p>
+            </div>
           </div>
           <div className="flex shrink-0 items-center gap-1">
             {pushStatus === "off" && (

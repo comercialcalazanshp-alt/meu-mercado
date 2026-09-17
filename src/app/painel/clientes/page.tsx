@@ -6,6 +6,8 @@ import { getSupabase } from "@/lib/supabase";
 import { useStore } from "@/lib/store-context";
 import { buildReceiptHtml, printHtml } from "@/lib/receipt";
 import { resetCustomerAccess } from "./actions";
+import { Section, PrimaryButton, SecondaryButton, IconSearch, IconChevron } from "@/components/ui";
+import { useThemeColors } from "@/components/ui/theme";
 
 type CashbackCustomer = {
   id: string;
@@ -78,6 +80,7 @@ const PAYMENT_LABELS: Record<string, string> = {
 
 export default function Clientes() {
   const store = useStore();
+  const COLOR_HEX = useThemeColors();
   const [cashbackCustomers, setCashbackCustomers] = useState<CashbackCustomer[]>([]);
   const [creditCustomers, setCreditCustomers] = useState<CreditCustomer[]>([]);
   const [loading, setLoading] = useState(true);
@@ -495,96 +498,5 @@ export default function Clientes() {
         </div>
       </div>
     </div>
-  );
-}
-
-const COLOR_HEX = {
-  accent: "#5CACFF",
-  positive: "#34E88C",
-  warning: "#F0BB5E",
-  afil: "#B37FE8",
-  negative: "#FF5C68",
-};
-
-function Section({ dot, label, children }: { dot: string; label: string; children: React.ReactNode }) {
-  return (
-    <div>
-      <h3 className="mb-2 flex items-center gap-2 text-[11px] font-bold uppercase tracking-wide text-white/35">
-        <span className="h-2 w-2 rounded-full" style={{ background: dot, boxShadow: `0 0 6px ${dot}99` }} />
-        {label}
-      </h3>
-      {children}
-    </div>
-  );
-}
-
-function PrimaryButton({
-  hex,
-  children,
-  onClick,
-  disabled,
-  as,
-}: {
-  hex: string;
-  children: React.ReactNode;
-  onClick?: () => void;
-  disabled?: boolean;
-  as?: "span";
-}) {
-  const className = `inline-flex items-center rounded-lg px-3.5 py-1.5 text-sm font-semibold text-[#0A0A0C] transition disabled:opacity-50 ${disabled ? "" : "hover:brightness-110"}`;
-  const style = { background: hex };
-  if (as === "span") {
-    return (
-      <span className={className} style={style}>
-        {children}
-      </span>
-    );
-  }
-  return (
-    <button type="button" onClick={onClick} disabled={disabled} className={className} style={style}>
-      {children}
-    </button>
-  );
-}
-
-function SecondaryButton({
-  children,
-  onClick,
-  disabled,
-  small,
-}: {
-  children: React.ReactNode;
-  onClick?: () => void;
-  disabled?: boolean;
-  small?: boolean;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      className={`rounded-lg border border-white/[0.12] font-medium text-white/70 transition hover:border-white/25 hover:text-white disabled:opacity-50 ${
-        small ? "px-2.5 py-1 text-xs" : "px-3.5 py-1.5 text-sm"
-      }`}
-    >
-      {children}
-    </button>
-  );
-}
-
-function IconSearch({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={className}>
-      <circle cx="11" cy="11" r="7" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="m21 21-4.3-4.3" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-function IconChevron({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={className}>
-      <path d="m6 9 6 6 6-6" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
   );
 }

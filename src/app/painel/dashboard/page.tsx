@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { getSupabase } from "@/lib/supabase";
 import { useStore, type Store } from "@/lib/store-context";
+import { useThemeColors, SEMANTIC_COLORS } from "@/components/ui/theme";
 
 type Order = {
   id: string;
@@ -294,15 +295,10 @@ function RankRow({ rank, name, pct, value, hex }: { rank?: number; name: string;
   );
 }
 
-const COLOR_HEX = {
-  accent: "#5CACFF",
-  positive: "#34E88C",
-  warning: "#F0BB5E",
-  afil: "#B37FE8",
-  assin: "#34D9C4",
-  entr: "#FF9F5C",
-  negative: "#FF5C68",
-};
+// COLOR_HEX vem de useThemeColors() agora, chamado dentro de cada componente
+// que precisa dele (Dashboard, FinancialHealthCard, FinanceSplitCard) — o
+// "accent" passa a ser a cor de destaque que o dono escolhe em
+// Configurações (mesma que já colore a vitrine), as outras continuam fixas.
 
 function Card({ children, className = "", delay = 0 }: { children: React.ReactNode; className?: string; delay?: number }) {
   return (
@@ -318,9 +314,9 @@ function Card({ children, className = "", delay = 0 }: { children: React.ReactNo
 type HealthStatus = "bom" | "atencao" | "ruim";
 
 const HEALTH_COLOR: Record<HealthStatus, string> = {
-  bom: COLOR_HEX.positive,
-  atencao: COLOR_HEX.warning,
-  ruim: COLOR_HEX.negative,
+  bom: SEMANTIC_COLORS.positive,
+  atencao: SEMANTIC_COLORS.warning,
+  ruim: SEMANTIC_COLORS.negative,
 };
 const HEALTH_LABEL: Record<HealthStatus, string> = { bom: "Bom", atencao: "Atenção", ruim: "Ruim" };
 
@@ -391,6 +387,7 @@ function FinancialHealthCard({
   lucroLiquido: number;
   marginRatio: number;
 }) {
+  const COLOR_HEX = useThemeColors();
   if (faturamentoTotal <= 0) {
     return (
       <Card className="mb-4">
@@ -475,6 +472,7 @@ function FinanceSplitCard({
   periodLabel: string;
   fiadoRevenueInPeriod: number;
 }) {
+  const COLOR_HEX = useThemeColors();
   const [editing, setEditing] = useState(false);
   const [enabled, setEnabled] = useState(store.finance_split_enabled);
   const [giro, setGiro] = useState(String(store.finance_split_giro_percent));
@@ -646,6 +644,7 @@ function FinanceSplitCard({
 
 export default function Dashboard() {
   const store = useStore();
+  const COLOR_HEX = useThemeColors();
   const [period, setPeriod] = useState<PeriodKey>("30d");
   const [customSince, setCustomSince] = useState("");
   const [customUntil, setCustomUntil] = useState("");

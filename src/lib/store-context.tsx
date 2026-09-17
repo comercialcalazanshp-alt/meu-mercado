@@ -23,6 +23,9 @@ export type Store = {
   finance_split_investimento_percent: number;
   finance_split_impostos_percent: number;
   credit_term_days: number;
+  brand_color: string;
+  accent_color: string;
+  logo_url: string | null;
 };
 
 export const StoreContext = createContext<Store | null>(null);

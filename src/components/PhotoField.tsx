@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { getSupabase } from "@/lib/supabase";
 
-export function resizeImage(file: File, maxSize = 800): Promise<Blob> {
+export function resizeImage(file: File, maxSize = 800, format: "jpeg" | "png" = "jpeg"): Promise<Blob> {
   return new Promise((resolve, reject) => {
     const img = new Image();
     const url = URL.createObjectURL(file);
@@ -20,7 +20,12 @@ export function resizeImage(file: File, maxSize = 800): Promise<Blob> {
       }
       ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
       URL.revokeObjectURL(url);
-      canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error("Falha ao gerar imagem"))), "image/jpeg", 0.85);
+      // PNG preserva transparência — importante pra logo (fundo transparente
+      // vira preto se for convertido pra JPEG, que não tem canal alfa).
+      // Produto/banner continuam em JPEG (arquivo bem menor, e foto de
+      // produto não costuma ter fundo transparente pra preservar).
+      const mime = format === "png" ? "image/png" : "image/jpeg";
+      canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error("Falha ao gerar imagem"))), mime, 0.85);
     };
     img.onerror = () => {
       URL.revokeObjectURL(url);
@@ -30,10 +35,13 @@ export function resizeImage(file: File, maxSize = 800): Promise<Blob> {
   });
 }
 
-export async function uploadStoreImage(file: File, storeId: string, prefix: string): Promise<string> {
-  const blob = await resizeImage(file);
-  const path = `${storeId}/${prefix}-${crypto.randomUUID()}.jpg`;
-  const { error } = await getSupabase().storage.from("product-images").upload(path, blob, { contentType: "image/jpeg" });
+export async function uploadStoreImage(file: File, storeId: string, prefix: string, format: "jpeg" | "png" = "jpeg"): Promise<string> {
+  const blob = await resizeImage(file, 800, format);
+  const ext = format === "png" ? "png" : "jpg";
+  const path = `${storeId}/${prefix}-${crypto.randomUUID()}.${ext}`;
+  const { error } = await getSupabase()
+    .storage.from("product-images")
+    .upload(path, blob, { contentType: format === "png" ? "image/png" : "image/jpeg" });
   if (error) throw new Error(error.message);
   const { data } = getSupabase().storage.from("product-images").getPublicUrl(path);
   return data.publicUrl;
@@ -54,6 +62,7 @@ export default function PhotoField({
   promptSeed,
   catalogProducts = [],
   imageSize = "1024x1024",
+  format = "jpeg",
 }: {
   storeId: string;
   value: string;
@@ -62,6 +71,7 @@ export default function PhotoField({
   promptSeed: string;
   catalogProducts?: CatalogProduct[];
   imageSize?: "1024x1024" | "1536x1024" | "1024x1536";
+  format?: "jpeg" | "png";
 }) {
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -104,7 +114,7 @@ export default function PhotoField({
     setUploading(true);
     setError(null);
     try {
-      const url = await uploadStoreImage(file, storeId, uploadPrefix);
+      const url = await uploadStoreImage(file, storeId, uploadPrefix, format);
       onChange(url);
       setRecentImages(null);
     } catch (err) {
