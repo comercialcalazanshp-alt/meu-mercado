@@ -35,11 +35,10 @@ export default function Configuracoes() {
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Trava de 4 dígitos: o dono da loja nunca vê essa tela de bloqueio (só
-  // quem logou como membro da equipe, ex: "Acesso completo" cobrindo a
-  // loja). "checking" evita mostrar a tela certa (ou a errada) antes de
-  // saber se quem abriu é o dono ou não.
-  const [ownerCheck, setOwnerCheck] = useState<"checking" | "owner" | "member">("checking");
+  // Trava de 4 dígitos: vale pra quem abrir essa tela, mesmo usando o
+  // mesmo login do dono — pensada pra quando alguém vai cobrir a loja
+  // usando a sua própria conta em vez de um acesso separado de equipe.
+  const [pinChecking, setPinChecking] = useState(true);
   const [settingsPin, setSettingsPin] = useState<string | null>(null);
   const [unlocked, setUnlocked] = useState(false);
   const [pinInput, setPinInput] = useState("");
@@ -168,22 +167,18 @@ export default function Configuracoes() {
         setPixReceiverName(data.pix_receiver_name ?? "");
         setPixCity(data.pix_city ?? "");
         setSettingsPin(data.settings_pin ?? null);
+        setPinChecking(false);
       });
   }, [store.id]);
 
   useEffect(() => {
-    getSupabase()
-      .auth.getSession()
-      .then(({ data: { session } }) => {
-        setOwnerCheck(session?.user.id === store.owner_id ? "owner" : "member");
-      });
     try {
       if (sessionStorage.getItem(`mm_settings_unlocked_${store.id}`) === "1") setUnlocked(true);
     } catch {
       // sessionStorage indisponível (modo privado etc.) — só significa que
       // vai pedir o PIN de novo se a página recarregar, sem problema.
     }
-  }, [store.id, store.owner_id]);
+  }, [store.id]);
 
   function handleUnlock(e: FormEvent) {
     e.preventDefault();
@@ -489,11 +484,11 @@ export default function Configuracoes() {
     router.refresh();
   }
 
-  if (ownerCheck === "checking") {
+  if (pinChecking) {
     return <p className="text-sm text-slate-500">Carregando…</p>;
   }
 
-  if (ownerCheck === "member" && settingsPin && !unlocked) {
+  if (settingsPin && !unlocked) {
     return (
       <div className="mx-auto max-w-xs pt-12 text-center">
         <p className="text-3xl">🔒</p>
@@ -658,51 +653,50 @@ export default function Configuracoes() {
         </div>
       </form>
 
-      {ownerCheck === "owner" && (
-        <div className="mt-4 rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-            🔒 Segurança
-          </h2>
-          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-            Trava essa tela de Configurações com um PIN de 4 dígitos — vale só pra quem acessa como
-            equipe (ex: "Acesso completo" cobrindo a loja). Você, como dono, nunca precisa digitar o
-            PIN.
-          </p>
-          {settingsPin ? (
-            <div className="mt-3 flex items-center gap-3">
-              <span className="rounded-lg bg-green-100 px-3 py-1.5 text-sm font-medium text-green-700 dark:bg-green-900/40 dark:text-green-400">
-                Trava ativada
-              </span>
-              <button
-                type="button"
-                onClick={handleRemovePin}
-                disabled={savingPin}
-                className="text-sm font-medium text-red-600 hover:underline disabled:opacity-60 dark:text-red-400"
-              >
-                Desativar
-              </button>
-            </div>
-          ) : null}
-          <form onSubmit={handleSavePin} className="mt-3 flex items-center gap-2">
-            <input
-              value={newPin}
-              onChange={(e) => setNewPin(e.target.value.replace(/\D/g, "").slice(0, 4))}
-              inputMode="numeric"
-              maxLength={4}
-              placeholder="0000"
-              className="w-24 rounded-lg border border-slate-300 bg-white px-3 py-2 text-center text-lg tracking-widest text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
-            />
+      <div className="mt-4 rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+          🔒 Segurança
+        </h2>
+        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+          Trava essa tela de Configurações com um PIN de 4 dígitos. Vale pra qualquer um que abrir
+          essa tela nesse login — útil quando alguém vai cobrir a loja usando a sua própria conta:
+          a pessoa mexe em tudo normalmente (PDV, Pedidos etc.), mas pra entrar aqui em
+          Configurações precisa saber o PIN.
+        </p>
+        {settingsPin ? (
+          <div className="mt-3 flex items-center gap-3">
+            <span className="rounded-lg bg-green-100 px-3 py-1.5 text-sm font-medium text-green-700 dark:bg-green-900/40 dark:text-green-400">
+              Trava ativada
+            </span>
             <button
-              type="submit"
-              disabled={savingPin || newPin.length !== 4}
-              className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 disabled:opacity-60 dark:border-slate-700 dark:text-slate-300"
+              type="button"
+              onClick={handleRemovePin}
+              disabled={savingPin}
+              className="text-sm font-medium text-red-600 hover:underline disabled:opacity-60 dark:text-red-400"
             >
-              {savingPin ? "Salvando…" : settingsPin ? "Trocar PIN" : "Ativar trava"}
+              Desativar
             </button>
-            {pinSaved && <span className="text-sm text-green-600">Salvo!</span>}
-          </form>
-        </div>
-      )}
+          </div>
+        ) : null}
+        <form onSubmit={handleSavePin} className="mt-3 flex items-center gap-2">
+          <input
+            value={newPin}
+            onChange={(e) => setNewPin(e.target.value.replace(/\D/g, "").slice(0, 4))}
+            inputMode="numeric"
+            maxLength={4}
+            placeholder="0000"
+            className="w-24 rounded-lg border border-slate-300 bg-white px-3 py-2 text-center text-lg tracking-widest text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+          />
+          <button
+            type="submit"
+            disabled={savingPin || newPin.length !== 4}
+            className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 disabled:opacity-60 dark:border-slate-700 dark:text-slate-300"
+          >
+            {savingPin ? "Salvando…" : settingsPin ? "Trocar PIN" : "Ativar trava"}
+          </button>
+          {pinSaved && <span className="text-sm text-green-600">Salvo!</span>}
+        </form>
+      </div>
 
       <form
         onSubmit={handleSavePaper}
