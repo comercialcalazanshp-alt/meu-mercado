@@ -267,210 +267,324 @@ export default function Clientes() {
   }
 
   return (
-    <div className="space-y-6">
-      <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-50">Clientes</h1>
-      <p className="text-sm text-slate-500 dark:text-slate-400">
-        Tudo relacionado a um cliente num lugar só: conta/bloqueio, saldo de cashback, fiado em aberto e
-        histórico de pedidos (com reimpressão de cupom).
-      </p>
-
-      <input
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-        placeholder="Buscar por nome ou WhatsApp"
-        className="w-full max-w-sm rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+    <div className="relative overflow-hidden rounded-[22px] bg-black">
+      <div
+        aria-hidden
+        className="pointer-events-none absolute -top-36 left-1/4 h-[420px] w-[420px] rounded-full opacity-25 blur-[100px]"
+        style={{ background: `radial-gradient(circle, ${COLOR_HEX.accent}30, transparent 65%)` }}
+      />
+      <div
+        aria-hidden
+        className="pointer-events-none absolute -bottom-28 -right-16 h-[360px] w-[360px] rounded-full opacity-20 blur-[100px]"
+        style={{ background: `radial-gradient(circle, ${COLOR_HEX.afil}28, transparent 65%)` }}
       />
 
-      {loading && <p className="text-sm text-slate-500">Carregando…</p>}
-      {!loading && filtered.length === 0 && (
-        <p className="text-sm text-slate-500">Nenhum cliente encontrado.</p>
-      )}
+      <div className="relative mx-auto max-w-3xl px-4 py-6 text-[#F5F3EF] sm:px-6">
+        <h1 className="text-xl font-extrabold">Clientes</h1>
+        <p className="mt-1 text-[13px] text-white/40">
+          Tudo relacionado a um cliente num lugar só: conta/bloqueio, cashback, fiado em aberto e histórico de
+          pedidos.
+        </p>
 
-      <div className="space-y-3">
-        {filtered.map((customer) => (
-          <div
-            key={customer.phone}
-            className="rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900"
-          >
-            <button
-              onClick={() => toggleCustomer(customer)}
-              className="flex w-full flex-wrap items-center justify-between gap-2 p-4 text-left"
-            >
-              <div>
-                <p className="font-semibold text-slate-900 dark:text-slate-50">{customer.name}</p>
-                <p className="text-sm text-slate-500 dark:text-slate-400">{customer.phone}</p>
-              </div>
-              <div className="flex items-center gap-3 text-sm">
-                {customer.cashbackBalance > 0 && (
-                  <span className="text-green-700 dark:text-green-400">
-                    {formatCurrency(customer.cashbackBalance)} cashback
-                  </span>
-                )}
-                {customer.creditBalance > 0 && (
-                  <span className="text-red-600">{formatCurrency(customer.creditBalance)} fiado</span>
-                )}
-                <span className="text-slate-400">{expandedPhone === customer.phone ? "▲" : "▼"}</span>
-              </div>
-            </button>
+        <div className="relative mt-4">
+          <IconSearch className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-white/30" />
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Buscar por nome ou WhatsApp"
+            className="w-full rounded-xl border border-white/[0.09] bg-white/[0.035] py-2.5 pl-10 pr-4 text-sm text-white placeholder:text-white/30 backdrop-blur-xl transition focus:border-[#5CACFF]/50 focus:outline-none focus:ring-2 focus:ring-[#5CACFF]/15"
+          />
+        </div>
 
-            {expandedPhone === customer.phone && (
-              <div className="space-y-4 border-t border-slate-100 p-4 dark:border-slate-800">
-                <div>
-                  <div className="flex items-center justify-between gap-2">
-                    <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                      📝 Nota interna
-                    </h3>
-                    <label className="flex items-center gap-1.5 text-xs font-medium text-red-600 dark:text-red-400">
-                      <input
-                        type="checkbox"
-                        checked={blockedDraft}
-                        onChange={(e) => setBlockedDraft(e.target.checked)}
-                      />
-                      Bloquear cliente
-                    </label>
-                  </div>
-                  <textarea
-                    value={noteDraft}
-                    onChange={(e) => setNoteDraft(e.target.value)}
-                    placeholder="Só você vê essa nota — ex: atrasa pagamento, pede pra não tocar buzina..."
-                    rows={2}
-                    className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
-                  />
-                  <div className="mt-1.5 flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        setSavingNote(true);
-                        await getSupabase()
-                          .from("customer_notes")
-                          .upsert({ store_id: store.id, phone: customer.phone, note: noteDraft.trim() || null, blocked: blockedDraft, updated_at: new Date().toISOString() });
-                        setSavingNote(false);
-                        setNoteSaved(true);
-                        setTimeout(() => setNoteSaved(false), 2000);
-                      }}
-                      disabled={savingNote}
-                      className="rounded-lg bg-blue-900 px-3 py-1.5 text-xs font-semibold text-amber-300 disabled:opacity-60 dark:bg-blue-800"
-                    >
-                      {savingNote ? "Salvando…" : "Salvar"}
-                    </button>
-                    {noteSaved && <span className="text-xs text-green-600">Salvo!</span>}
-                    {blockedDraft && <span className="text-xs text-red-600">Cliente bloqueado — não consegue mais fazer pedidos.</span>}
-                  </div>
-                </div>
-
-                <div>
-                  <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                    🔐 Conta
-                  </h3>
-                  {loadingAccount && <p className="mt-1 text-sm text-slate-500">Checando…</p>}
-                  {!loadingAccount && accountStatus && !accountStatus.has_account && (
-                    <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-                      Esse cliente ainda não criou uma conta — comprou como visitante.
-                    </p>
-                  )}
-                  {!loadingAccount && accountStatus?.has_account && (
-                    <div className="mt-1 space-y-2">
-                      <p className="text-sm text-slate-600 dark:text-slate-400">
-                        Conta ativa ({accountStatus.email_masked}){" "}
-                        {accountStatus.locked && (
-                          <span className="font-semibold text-red-600">— bloqueada</span>
-                        )}
-                      </p>
-                      <button
-                        onClick={() => handleResetAccess(customer)}
-                        disabled={resettingAccess}
-                        className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 disabled:opacity-60 dark:border-slate-700 dark:text-slate-300"
-                      >
-                        {resettingAccess ? "Enviando…" : "🔓 Resetar acesso / senha"}
-                      </button>
-                      {resetMessage && (
-                        <p className={`text-sm ${resetMessage.ok ? "text-green-600" : "text-red-600"}`}>
-                          {resetMessage.text}
-                        </p>
-                      )}
-                    </div>
-                  )}
-                </div>
-
-                {customer.cashbackBalance > 0 && (
-                  <div>
-                    <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                      💰 Cashback
-                    </h3>
-                    <p className="mt-1 text-sm text-green-700 dark:text-green-400">
-                      Saldo: {formatCurrency(customer.cashbackBalance)}
-                      {customer.referralCode && ` · Código de indicação: ${customer.referralCode}`}
-                    </p>
-                  </div>
-                )}
-
-                {customer.creditCustomerId && (
-                  <div>
-                    <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                      🧾 Fiado
-                    </h3>
-                    <p
-                      className={`mt-1 text-sm font-semibold ${customer.creditBalance > 0 ? "text-red-600" : "text-green-600"}`}
-                    >
-                      {formatCurrency(customer.creditBalance)} em aberto
-                    </p>
-                    <ul className="mt-2 space-y-1 text-sm">
-                      {transactions.map((tx) => (
-                        <li key={tx.id} className="flex justify-between text-slate-600 dark:text-slate-400">
-                          <span>
-                            {tx.type === "venda" ? "Venda" : "Pagamento"}
-                            {tx.note ? ` — ${tx.note}` : ""} · {formatDate(tx.created_at)}
-                          </span>
-                          <span className={tx.type === "venda" ? "text-red-600" : "text-green-600"}>
-                            {tx.type === "venda" ? "+" : "−"}
-                            {formatCurrency(tx.amount)}
-                          </span>
-                        </li>
-                      ))}
-                    </ul>
-                    <div className="mt-2">
-                      <Link
-                        href={`/painel/fiado?cliente=${customer.creditCustomerId}`}
-                        className="inline-block rounded-lg border border-slate-300 px-3 py-1 text-sm font-medium text-slate-700 dark:border-slate-700 dark:text-slate-300"
-                      >
-                        Registrar pagamento no Crediário →
-                      </Link>
-                    </div>
-                  </div>
-                )}
-
-                <div>
-                  <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                    📦 Histórico de pedidos
-                  </h3>
-                  {loadingOrders && <p className="mt-1 text-sm text-slate-500">Carregando…</p>}
-                  {!loadingOrders && orders.length === 0 && (
-                    <p className="mt-1 text-sm text-slate-500">Nenhum pedido registrado.</p>
-                  )}
-                  <ul className="mt-2 space-y-2">
-                    {orders.map((order) => (
-                      <li
-                        key={order.id}
-                        className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-100 p-2 text-sm dark:border-slate-800"
-                      >
-                        <span className="text-slate-600 dark:text-slate-400">
-                          {formatDate(order.created_at)} · {formatCurrency(order.total)}
-                        </span>
-                        <button
-                          onClick={() => reprintOrder(order)}
-                          className="rounded-lg border border-slate-300 px-2 py-1 text-xs font-medium text-slate-700 dark:border-slate-700 dark:text-slate-300"
-                        >
-                          🖨️ Reimprimir cupom
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              </div>
-            )}
+        {loading && (
+          <div className="mt-4 space-y-3">
+            {[0, 1, 2].map((i) => (
+              <div key={i} className="h-16 animate-pulse rounded-2xl border border-white/[0.06] bg-white/[0.03]" />
+            ))}
           </div>
-        ))}
+        )}
+        {!loading && filtered.length === 0 && (
+          <p className="mt-6 text-sm text-white/35">Nenhum cliente encontrado.</p>
+        )}
+
+        <div className="mt-4 space-y-3">
+          {filtered.map((customer, i) => {
+            const expanded = expandedPhone === customer.phone;
+            return (
+              <div
+                key={customer.phone}
+                className="animate-mm-fade-up overflow-hidden rounded-2xl border border-white/[0.09] bg-white/[0.035] backdrop-blur-xl"
+                style={{ animationDelay: `${Math.min(i, 12) * 35}ms` }}
+              >
+                <button
+                  onClick={() => toggleCustomer(customer)}
+                  className="flex w-full flex-wrap items-center justify-between gap-3 p-4 text-left transition hover:bg-white/[0.03]"
+                >
+                  <div className="min-w-0">
+                    <p className="truncate font-semibold text-white">{customer.name}</p>
+                    <p className="text-[13px] text-white/40">{customer.phone}</p>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-2">
+                    {customer.cashbackBalance > 0 && (
+                      <span
+                        className="animate-mm-badge-bump rounded-full px-2.5 py-1 text-xs font-bold"
+                        style={{ background: `${COLOR_HEX.positive}22`, color: COLOR_HEX.positive }}
+                      >
+                        {formatCurrency(customer.cashbackBalance)}
+                      </span>
+                    )}
+                    {customer.creditBalance > 0 && (
+                      <span
+                        className="animate-mm-badge-bump rounded-full px-2.5 py-1 text-xs font-bold"
+                        style={{ background: `${COLOR_HEX.negative}22`, color: COLOR_HEX.negative }}
+                      >
+                        {formatCurrency(customer.creditBalance)} fiado
+                      </span>
+                    )}
+                    <IconChevron className={`h-4 w-4 text-white/30 transition-transform ${expanded ? "rotate-180" : ""}`} />
+                  </div>
+                </button>
+
+                {expanded && (
+                  <div className="animate-mm-slide-up space-y-5 border-t border-white/[0.06] p-4">
+                    <Section dot="#8B8FA3" label="Nota interna">
+                      <div className="flex items-center justify-between gap-2">
+                        <span />
+                        <label className="flex items-center gap-1.5 text-xs font-medium" style={{ color: COLOR_HEX.negative }}>
+                          <input
+                            type="checkbox"
+                            checked={blockedDraft}
+                            onChange={(e) => setBlockedDraft(e.target.checked)}
+                            className="h-3.5 w-3.5 accent-[#FF5C68]"
+                          />
+                          Bloquear cliente
+                        </label>
+                      </div>
+                      <textarea
+                        value={noteDraft}
+                        onChange={(e) => setNoteDraft(e.target.value)}
+                        placeholder="Só você vê essa nota — ex: atrasa pagamento, pede pra não tocar buzina..."
+                        rows={2}
+                        className="mt-1.5 w-full rounded-lg border border-white/[0.09] bg-white/[0.03] px-3 py-2 text-sm text-white placeholder:text-white/25 focus:border-[#5CACFF]/50 focus:outline-none"
+                      />
+                      <div className="mt-2 flex items-center gap-2">
+                        <PrimaryButton
+                          hex={COLOR_HEX.accent}
+                          disabled={savingNote}
+                          onClick={async () => {
+                            setSavingNote(true);
+                            await getSupabase()
+                              .from("customer_notes")
+                              .upsert({ store_id: store.id, phone: customer.phone, note: noteDraft.trim() || null, blocked: blockedDraft, updated_at: new Date().toISOString() });
+                            setSavingNote(false);
+                            setNoteSaved(true);
+                            setTimeout(() => setNoteSaved(false), 2000);
+                          }}
+                        >
+                          {savingNote ? "Salvando…" : "Salvar"}
+                        </PrimaryButton>
+                        {noteSaved && (
+                          <span className="animate-mm-fade-in text-xs font-semibold" style={{ color: COLOR_HEX.positive }}>
+                            Salvo!
+                          </span>
+                        )}
+                        {blockedDraft && (
+                          <span className="text-xs" style={{ color: COLOR_HEX.negative }}>
+                            Cliente bloqueado — não consegue mais fazer pedidos.
+                          </span>
+                        )}
+                      </div>
+                    </Section>
+
+                    <Section dot={COLOR_HEX.accent} label="Conta">
+                      {loadingAccount && <p className="text-sm text-white/35">Checando…</p>}
+                      {!loadingAccount && accountStatus && !accountStatus.has_account && (
+                        <p className="text-sm text-white/40">Esse cliente ainda não criou uma conta — comprou como visitante.</p>
+                      )}
+                      {!loadingAccount && accountStatus?.has_account && (
+                        <div className="space-y-2">
+                          <p className="text-sm text-white/55">
+                            Conta ativa ({accountStatus.email_masked}){" "}
+                            {accountStatus.locked && (
+                              <span className="font-semibold" style={{ color: COLOR_HEX.negative }}>
+                                — bloqueada
+                              </span>
+                            )}
+                          </p>
+                          <SecondaryButton onClick={() => handleResetAccess(customer)} disabled={resettingAccess}>
+                            {resettingAccess ? "Enviando…" : "Resetar acesso / senha"}
+                          </SecondaryButton>
+                          {resetMessage && (
+                            <p className="text-sm" style={{ color: resetMessage.ok ? COLOR_HEX.positive : COLOR_HEX.negative }}>
+                              {resetMessage.text}
+                            </p>
+                          )}
+                        </div>
+                      )}
+                    </Section>
+
+                    {customer.cashbackBalance > 0 && (
+                      <Section dot={COLOR_HEX.positive} label="Cashback">
+                        <p className="text-sm font-semibold" style={{ color: COLOR_HEX.positive }}>
+                          Saldo: {formatCurrency(customer.cashbackBalance)}
+                          {customer.referralCode && (
+                            <span className="font-normal text-white/40"> · Código de indicação: {customer.referralCode}</span>
+                          )}
+                        </p>
+                      </Section>
+                    )}
+
+                    {customer.creditCustomerId && (
+                      <Section dot={COLOR_HEX.negative} label="Fiado">
+                        <p className="font-semibold" style={{ color: customer.creditBalance > 0 ? COLOR_HEX.negative : COLOR_HEX.positive }}>
+                          {formatCurrency(customer.creditBalance)} em aberto
+                        </p>
+                        <ul className="mt-2 space-y-1.5 text-sm">
+                          {transactions.map((tx) => (
+                            <li key={tx.id} className="flex justify-between gap-3 text-white/50">
+                              <span className="truncate">
+                                {tx.type === "venda" ? "Venda" : "Pagamento"}
+                                {tx.note ? ` — ${tx.note}` : ""} · {formatDate(tx.created_at)}
+                              </span>
+                              <span
+                                className="shrink-0 font-medium tabular-nums"
+                                style={{ color: tx.type === "venda" ? COLOR_HEX.negative : COLOR_HEX.positive }}
+                              >
+                                {tx.type === "venda" ? "+" : "−"}
+                                {formatCurrency(tx.amount)}
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
+                        <div className="mt-3">
+                          <Link href={`/painel/fiado?cliente=${customer.creditCustomerId}`}>
+                            <PrimaryButton hex={COLOR_HEX.positive} as="span">
+                              Registrar pagamento no Crediário →
+                            </PrimaryButton>
+                          </Link>
+                        </div>
+                      </Section>
+                    )}
+
+                    <Section dot={COLOR_HEX.afil} label="Histórico de pedidos">
+                      {loadingOrders && <p className="text-sm text-white/35">Carregando…</p>}
+                      {!loadingOrders && orders.length === 0 && (
+                        <p className="text-sm text-white/35">Nenhum pedido registrado.</p>
+                      )}
+                      <ul className="space-y-2">
+                        {orders.map((order) => (
+                          <li
+                            key={order.id}
+                            className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-white/[0.06] bg-white/[0.02] p-2.5 text-sm"
+                          >
+                            <span className="text-white/55">
+                              {formatDate(order.created_at)} · <span className="font-medium text-white/80">{formatCurrency(order.total)}</span>
+                            </span>
+                            <SecondaryButton small onClick={() => reprintOrder(order)}>
+                              Reimprimir cupom
+                            </SecondaryButton>
+                          </li>
+                        ))}
+                      </ul>
+                    </Section>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
       </div>
     </div>
+  );
+}
+
+const COLOR_HEX = {
+  accent: "#5CACFF",
+  positive: "#34E88C",
+  warning: "#F0BB5E",
+  afil: "#B37FE8",
+  negative: "#FF5C68",
+};
+
+function Section({ dot, label, children }: { dot: string; label: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <h3 className="mb-2 flex items-center gap-2 text-[11px] font-bold uppercase tracking-wide text-white/35">
+        <span className="h-2 w-2 rounded-full" style={{ background: dot, boxShadow: `0 0 6px ${dot}99` }} />
+        {label}
+      </h3>
+      {children}
+    </div>
+  );
+}
+
+function PrimaryButton({
+  hex,
+  children,
+  onClick,
+  disabled,
+  as,
+}: {
+  hex: string;
+  children: React.ReactNode;
+  onClick?: () => void;
+  disabled?: boolean;
+  as?: "span";
+}) {
+  const className = `inline-flex items-center rounded-lg px-3.5 py-1.5 text-sm font-semibold text-[#0A0A0C] transition disabled:opacity-50 ${disabled ? "" : "hover:brightness-110"}`;
+  const style = { background: hex };
+  if (as === "span") {
+    return (
+      <span className={className} style={style}>
+        {children}
+      </span>
+    );
+  }
+  return (
+    <button type="button" onClick={onClick} disabled={disabled} className={className} style={style}>
+      {children}
+    </button>
+  );
+}
+
+function SecondaryButton({
+  children,
+  onClick,
+  disabled,
+  small,
+}: {
+  children: React.ReactNode;
+  onClick?: () => void;
+  disabled?: boolean;
+  small?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className={`rounded-lg border border-white/[0.12] font-medium text-white/70 transition hover:border-white/25 hover:text-white disabled:opacity-50 ${
+        small ? "px-2.5 py-1 text-xs" : "px-3.5 py-1.5 text-sm"
+      }`}
+    >
+      {children}
+    </button>
+  );
+}
+
+function IconSearch({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={className}>
+      <circle cx="11" cy="11" r="7" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="m21 21-4.3-4.3" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function IconChevron({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={className}>
+      <path d="m6 9 6 6 6-6" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
   );
 }
