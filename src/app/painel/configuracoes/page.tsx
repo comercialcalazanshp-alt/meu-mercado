@@ -35,6 +35,19 @@ export default function Configuracoes() {
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Trava de 4 dígitos: o dono da loja nunca vê essa tela de bloqueio (só
+  // quem logou como membro da equipe, ex: "Acesso completo" cobrindo a
+  // loja). "checking" evita mostrar a tela certa (ou a errada) antes de
+  // saber se quem abriu é o dono ou não.
+  const [ownerCheck, setOwnerCheck] = useState<"checking" | "owner" | "member">("checking");
+  const [settingsPin, setSettingsPin] = useState<string | null>(null);
+  const [unlocked, setUnlocked] = useState(false);
+  const [pinInput, setPinInput] = useState("");
+  const [pinError, setPinError] = useState<string | null>(null);
+  const [newPin, setNewPin] = useState("");
+  const [savingPin, setSavingPin] = useState(false);
+  const [pinSaved, setPinSaved] = useState(false);
+
   const [name, setName] = useState(store.name);
   const [whatsapp, setWhatsapp] = useState(store.whatsapp ?? "");
   const [cnpj, setCnpj] = useState(store.cnpj ?? "");
@@ -115,7 +128,7 @@ export default function Configuracoes() {
     getSupabase()
       .from("stores")
       .select(
-        "business_hours_enabled, opens_at, closes_at, open_days, manually_closed, hide_out_of_stock, accountant_token, brand_color, accent_color, cashback_percent, referral_bonus, loyalty_silver_threshold, loyalty_gold_threshold, credit_interest_percent, sales_goal, alert_low_stock_enabled, alert_stalled_order_enabled, alert_delivery_delay_enabled, alert_goal_reached_enabled, weekly_summary_enabled, complaint_notification_enabled, card_installment_interest_enabled, card_installment_interest_percent, fee_pix_percent, fee_card_percent, fee_boleto_fixed, bad_review_notification_enabled, pix_key_1, pix_key_1_label, pix_key_2, pix_key_2_label, pix_receiver_name, pix_city",
+        "business_hours_enabled, opens_at, closes_at, open_days, manually_closed, hide_out_of_stock, accountant_token, brand_color, accent_color, cashback_percent, referral_bonus, loyalty_silver_threshold, loyalty_gold_threshold, credit_interest_percent, sales_goal, alert_low_stock_enabled, alert_stalled_order_enabled, alert_delivery_delay_enabled, alert_goal_reached_enabled, weekly_summary_enabled, complaint_notification_enabled, card_installment_interest_enabled, card_installment_interest_percent, fee_pix_percent, fee_card_percent, fee_boleto_fixed, bad_review_notification_enabled, pix_key_1, pix_key_1_label, pix_key_2, pix_key_2_label, pix_receiver_name, pix_city, settings_pin",
       )
       .eq("id", store.id)
       .single()
@@ -154,8 +167,62 @@ export default function Configuracoes() {
         setPixKey2Label(data.pix_key_2_label ?? "");
         setPixReceiverName(data.pix_receiver_name ?? "");
         setPixCity(data.pix_city ?? "");
+        setSettingsPin(data.settings_pin ?? null);
       });
   }, [store.id]);
+
+  useEffect(() => {
+    getSupabase()
+      .auth.getSession()
+      .then(({ data: { session } }) => {
+        setOwnerCheck(session?.user.id === store.owner_id ? "owner" : "member");
+      });
+    try {
+      if (sessionStorage.getItem(`mm_settings_unlocked_${store.id}`) === "1") setUnlocked(true);
+    } catch {
+      // sessionStorage indisponível (modo privado etc.) — só significa que
+      // vai pedir o PIN de novo se a página recarregar, sem problema.
+    }
+  }, [store.id, store.owner_id]);
+
+  function handleUnlock(e: FormEvent) {
+    e.preventDefault();
+    setPinError(null);
+    if (pinInput === settingsPin) {
+      setUnlocked(true);
+      setPinInput("");
+      try {
+        sessionStorage.setItem(`mm_settings_unlocked_${store.id}`, "1");
+      } catch {
+        // sem sessionStorage, só perde o "lembrar" — segue liberado por agora
+      }
+    } else {
+      setPinError("PIN incorreto.");
+    }
+  }
+
+  async function handleSavePin(e: FormEvent) {
+    e.preventDefault();
+    if (!/^\d{4}$/.test(newPin)) {
+      setError("O PIN precisa ter exatamente 4 números.");
+      return;
+    }
+    setSavingPin(true);
+    await getSupabase().from("stores").update({ settings_pin: newPin }).eq("id", store.id);
+    setSavingPin(false);
+    setSettingsPin(newPin);
+    setNewPin("");
+    setPinSaved(true);
+    setTimeout(() => setPinSaved(false), 2500);
+  }
+
+  async function handleRemovePin() {
+    if (!window.confirm("Desativar a trava de 4 dígitos? Quem tiver acesso completo vai poder abrir Configurações direto.")) return;
+    setSavingPin(true);
+    await getSupabase().from("stores").update({ settings_pin: null }).eq("id", store.id);
+    setSavingPin(false);
+    setSettingsPin(null);
+  }
 
   async function handleSavePix(e: FormEvent) {
     e.preventDefault();
@@ -422,6 +489,44 @@ export default function Configuracoes() {
     router.refresh();
   }
 
+  if (ownerCheck === "checking") {
+    return <p className="text-sm text-slate-500">Carregando…</p>;
+  }
+
+  if (ownerCheck === "member" && settingsPin && !unlocked) {
+    return (
+      <div className="mx-auto max-w-xs pt-12 text-center">
+        <p className="text-3xl">🔒</p>
+        <h1 className="mt-2 text-lg font-bold text-slate-900 dark:text-slate-50">Configurações trancada</h1>
+        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+          Peça o PIN de 4 dígitos pra quem administra a loja.
+        </p>
+        <form onSubmit={handleUnlock} className="mt-4 space-y-2">
+          <input
+            value={pinInput}
+            onChange={(e) => {
+              setPinInput(e.target.value.replace(/\D/g, "").slice(0, 4));
+              setPinError(null);
+            }}
+            inputMode="numeric"
+            maxLength={4}
+            autoFocus
+            placeholder="••••"
+            className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-center text-2xl tracking-[0.5em] text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+          />
+          {pinError && <p className="text-sm text-red-600">{pinError}</p>}
+          <button
+            type="submit"
+            disabled={pinInput.length !== 4}
+            className="w-full rounded-lg bg-blue-900 px-4 py-2 text-sm font-semibold text-amber-300 disabled:opacity-60 dark:bg-blue-800"
+          >
+            Entrar
+          </button>
+        </form>
+      </div>
+    );
+  }
+
   return (
     <div className="max-w-lg">
       <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-50">⚙️ Configurações</h1>
@@ -552,6 +657,52 @@ export default function Configuracoes() {
           {storeSaved && <span className="text-sm text-green-600">Salvo!</span>}
         </div>
       </form>
+
+      {ownerCheck === "owner" && (
+        <div className="mt-4 rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+            🔒 Segurança
+          </h2>
+          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+            Trava essa tela de Configurações com um PIN de 4 dígitos — vale só pra quem acessa como
+            equipe (ex: "Acesso completo" cobrindo a loja). Você, como dono, nunca precisa digitar o
+            PIN.
+          </p>
+          {settingsPin ? (
+            <div className="mt-3 flex items-center gap-3">
+              <span className="rounded-lg bg-green-100 px-3 py-1.5 text-sm font-medium text-green-700 dark:bg-green-900/40 dark:text-green-400">
+                Trava ativada
+              </span>
+              <button
+                type="button"
+                onClick={handleRemovePin}
+                disabled={savingPin}
+                className="text-sm font-medium text-red-600 hover:underline disabled:opacity-60 dark:text-red-400"
+              >
+                Desativar
+              </button>
+            </div>
+          ) : null}
+          <form onSubmit={handleSavePin} className="mt-3 flex items-center gap-2">
+            <input
+              value={newPin}
+              onChange={(e) => setNewPin(e.target.value.replace(/\D/g, "").slice(0, 4))}
+              inputMode="numeric"
+              maxLength={4}
+              placeholder="0000"
+              className="w-24 rounded-lg border border-slate-300 bg-white px-3 py-2 text-center text-lg tracking-widest text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
+            />
+            <button
+              type="submit"
+              disabled={savingPin || newPin.length !== 4}
+              className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 disabled:opacity-60 dark:border-slate-700 dark:text-slate-300"
+            >
+              {savingPin ? "Salvando…" : settingsPin ? "Trocar PIN" : "Ativar trava"}
+            </button>
+            {pinSaved && <span className="text-sm text-green-600">Salvo!</span>}
+          </form>
+        </div>
+      )}
 
       <form
         onSubmit={handleSavePaper}

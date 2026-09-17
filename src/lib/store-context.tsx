@@ -26,6 +26,7 @@ export type Store = {
   brand_color: string;
   accent_color: string;
   logo_url: string | null;
+  settings_pin: string | null;
 };
 
 export const StoreContext = createContext<Store | null>(null);
