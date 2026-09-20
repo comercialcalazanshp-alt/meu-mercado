@@ -367,7 +367,7 @@ export default function Clientes() {
                           e.stopPropagation();
                           toggleDebtVisibility(customer.phone);
                         }}
-                        aria-label={revealedDebts.has(customer.phone) ? "Esconder valor do fiado" : "Mostrar valor do fiado"}
+                        aria-label={revealedDebts.has(customer.phone) ? "Esconder valor do débito" : "Mostrar valor do débito"}
                         title={revealedDebts.has(customer.phone) ? "Esconder valor" : "Mostrar valor"}
                         className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-bold transition hover:brightness-125"
                         style={{ background: `${COLOR_HEX.negative}22`, color: COLOR_HEX.negative }}
@@ -378,7 +378,7 @@ export default function Clientes() {
                           <IconEye className="h-3.5 w-3.5" />
                         )}
                         <span>
-                          {revealedDebts.has(customer.phone) ? `${formatCurrency(customer.creditBalance)} fiado` : "fiado"}
+                          {revealedDebts.has(customer.phone) ? `${formatCurrency(customer.creditBalance)} débito` : "débito"}
                         </span>
                       </button>
                     )}
