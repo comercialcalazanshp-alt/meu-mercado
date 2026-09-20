@@ -6,7 +6,7 @@ import { getSupabase } from "@/lib/supabase";
 import { useStore } from "@/lib/store-context";
 import { buildReceiptHtml, printHtml } from "@/lib/receipt";
 import { resetCustomerAccess } from "./actions";
-import { Section, PrimaryButton, SecondaryButton, IconSearch, IconChevron } from "@/components/ui";
+import { Section, PrimaryButton, SecondaryButton, IconSearch, IconChevron, IconEye, IconEyeOff } from "@/components/ui";
 import { useThemeColors } from "@/components/ui/theme";
 
 type CashbackCustomer = {
@@ -86,6 +86,7 @@ export default function Clientes() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [expandedPhone, setExpandedPhone] = useState<string | null>(null);
+  const [revealedDebts, setRevealedDebts] = useState<Set<string>>(new Set());
 
   const [accountStatus, setAccountStatus] = useState<AccountStatus | null>(null);
   const [loadingAccount, setLoadingAccount] = useState(false);
@@ -154,12 +155,26 @@ export default function Clientes() {
   }, [cashbackCustomers, creditCustomers]);
 
   const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
+    const normalize = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+    const raw = search.trim();
+    const q = normalize(raw);
     if (!q) return merged;
+    const looksLikePhone = /^[\d\s()+-]+$/.test(raw);
+    const digits = raw.replace(/\D/g, "");
     return merged.filter(
-      (c) => c.name.toLowerCase().includes(q) || c.phone.replace(/\D/g, "").includes(q.replace(/\D/g, "")),
+      (c) =>
+        normalize(c.name).includes(q) || (looksLikePhone && digits.length > 0 && c.phone.replace(/\D/g, "").includes(digits)),
     );
   }, [merged, search]);
+
+  function toggleDebtVisibility(phone: string) {
+    setRevealedDebts((prev) => {
+      const next = new Set(prev);
+      if (next.has(phone)) next.delete(phone);
+      else next.add(phone);
+      return next;
+    });
+  }
 
   async function toggleCustomer(customer: MergedCustomer) {
     if (expandedPhone === customer.phone) {
@@ -319,9 +334,18 @@ export default function Clientes() {
                 className="animate-mm-fade-up overflow-hidden rounded-2xl border border-white/[0.09] bg-white/[0.035] backdrop-blur-xl"
                 style={{ animationDelay: `${Math.min(i, 12) * 35}ms` }}
               >
-                <button
+                <div
+                  role="button"
+                  tabIndex={0}
+                  aria-expanded={expanded}
                   onClick={() => toggleCustomer(customer)}
-                  className="flex w-full flex-wrap items-center justify-between gap-3 p-4 text-left transition hover:bg-white/[0.03]"
+                  onKeyDown={(e) => {
+                    if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) {
+                      e.preventDefault();
+                      toggleCustomer(customer);
+                    }
+                  }}
+                  className="flex w-full cursor-pointer flex-wrap items-center justify-between gap-3 p-4 text-left transition hover:bg-white/[0.03]"
                 >
                   <div className="min-w-0">
                     <p className="truncate font-semibold text-white">{customer.name}</p>
@@ -337,16 +361,30 @@ export default function Clientes() {
                       </span>
                     )}
                     {customer.creditBalance > 0 && (
-                      <span
-                        className="animate-mm-badge-bump rounded-full px-2.5 py-1 text-xs font-bold"
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toggleDebtVisibility(customer.phone);
+                        }}
+                        aria-label={revealedDebts.has(customer.phone) ? "Esconder valor do fiado" : "Mostrar valor do fiado"}
+                        title={revealedDebts.has(customer.phone) ? "Esconder valor" : "Mostrar valor"}
+                        className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-bold transition hover:brightness-125"
                         style={{ background: `${COLOR_HEX.negative}22`, color: COLOR_HEX.negative }}
                       >
-                        {formatCurrency(customer.creditBalance)} fiado
-                      </span>
+                        {revealedDebts.has(customer.phone) ? (
+                          <IconEyeOff className="h-3.5 w-3.5" />
+                        ) : (
+                          <IconEye className="h-3.5 w-3.5" />
+                        )}
+                        <span>
+                          {revealedDebts.has(customer.phone) ? `${formatCurrency(customer.creditBalance)} fiado` : "fiado"}
+                        </span>
+                      </button>
                     )}
                     <IconChevron className={`h-4 w-4 text-white/30 transition-transform ${expanded ? "rotate-180" : ""}`} />
                   </div>
-                </button>
+                </div>
 
                 {expanded && (
                   <div className="animate-mm-slide-up space-y-5 border-t border-white/[0.06] p-4">
