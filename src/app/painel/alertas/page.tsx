@@ -309,8 +309,8 @@ export default function Alertas() {
           label: c.name,
           detail: `${formatCurrency(c.balance)} de ${formatCurrency(c.credit_limit!)}`,
         })),
-        resolveHref: "/painel/fiado",
-        resolveLabel: "Ver crediário",
+        resolveHref: "/painel/clientes",
+        resolveLabel: "Ver clientes",
       });
     }
 
