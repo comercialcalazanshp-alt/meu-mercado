@@ -686,75 +686,6 @@ function ClientesInner() {
           </form>
         )}
 
-        <div className="mt-3 overflow-hidden rounded-2xl border border-white/[0.09] bg-white/[0.035] backdrop-blur-xl">
-          <button
-            type="button"
-            onClick={() => setSettingsOpen((v) => !v)}
-            className="flex w-full items-center justify-between gap-3 p-4 text-left transition hover:bg-white/[0.03]"
-          >
-            <span className="text-sm font-semibold text-white/80">Crediário: capital de giro, prazo e juros</span>
-            <IconChevron className={`h-4 w-4 text-white/30 transition-transform ${settingsOpen ? "rotate-180" : ""}`} />
-          </button>
-          {settingsOpen && (
-            <div className="animate-mm-slide-up space-y-5 border-t border-white/[0.06] p-4">
-              {collectionStats && collectionStats.dailyFiadoRate > 0 && (
-                <Section dot={COLOR_HEX.warning} label="Capital de giro pro fiado">
-                  <p className="text-sm text-white/55">
-                    Ritmo atual: {formatCurrency(collectionStats.dailyFiadoRate)}/dia vendido fiado. Prazo combinado
-                    com os clientes: {creditTermDays} dias.
-                  </p>
-                  <p className="mt-2 text-sm text-white/70">
-                    Reserva de capital de giro recomendada:{" "}
-                    <strong className="font-semibold text-white">{formatCurrency(collectionStats.recommendedReserve)}</strong>{" "}
-                    (ritmo × prazo combinado).
-                  </p>
-                  {collectionStats.avgDays === null ? (
-                    <p className="mt-1 text-xs text-white/35">Ainda sem pagamento registrado pra comparar com o prazo combinado.</p>
-                  ) : (
-                    <p className="mt-1 text-xs text-white/35">
-                      Prazo real medido até agora: ~{Math.round(collectionStats.avgDays)} dias ({collectionStats.paymentsCount}{" "}
-                      pagamento{collectionStats.paymentsCount === 1 ? "" : "s"}
-                      {collectionStats.paymentsCount < 5 ? " — ainda poucos pra confiar" : ""}).
-                    </p>
-                  )}
-                </Section>
-              )}
-              <Section dot={COLOR_HEX.accent} label="Prazo e juros por atraso">
-                <p className="text-xs text-white/40">
-                  O prazo preenche sozinho o vencimento de toda venda fiado nova (dá pra mudar em cada venda). Se o
-                  cliente passar do vencimento, o juro é calculado por mês de atraso — só vira saldo de verdade quando
-                  você clicar em &quot;Aplicar ao saldo&quot; no extrato do cliente.
-                </p>
-                <form onSubmit={handleSaveInterest} className="mt-3 flex flex-wrap items-center gap-2">
-                  <input
-                    value={creditTermDays}
-                    onChange={(e) => setCreditTermDays(Number(e.target.value) || 0)}
-                    inputMode="numeric"
-                    className={`${INPUT} w-20`}
-                  />
-                  <span className="text-sm text-white/45">dias de prazo</span>
-                  <input
-                    value={interestPercent}
-                    onChange={(e) => setInterestPercent(e.target.value)}
-                    placeholder="0 = sem juros"
-                    inputMode="decimal"
-                    className={`${INPUT} w-32`}
-                  />
-                  <span className="text-sm text-white/45">% ao mês de juros</span>
-                  <PrimaryButton type="submit" hex={COLOR_HEX.accent} disabled={savingInterest}>
-                    {savingInterest ? "Salvando…" : "Salvar"}
-                  </PrimaryButton>
-                  {interestSaved && (
-                    <span className="animate-mm-fade-in text-xs font-semibold" style={{ color: COLOR_HEX.positive }}>
-                      Salvo!
-                    </span>
-                  )}
-                </form>
-              </Section>
-            </div>
-          )}
-        </div>
-
         {loading && (
           <div className="mt-4 space-y-3">
             {[0, 1, 2].map((i) => (
@@ -1132,6 +1063,75 @@ function ClientesInner() {
               </div>
             );
           })}
+        </div>
+
+        <div className="mt-6 overflow-hidden rounded-2xl border border-white/[0.09] bg-white/[0.035] backdrop-blur-xl">
+          <button
+            type="button"
+            onClick={() => setSettingsOpen((v) => !v)}
+            className="flex w-full items-center justify-between gap-3 p-4 text-left transition hover:bg-white/[0.03]"
+          >
+            <span className="text-sm font-semibold text-white/80">Crediário: capital de giro, prazo e juros</span>
+            <IconChevron className={`h-4 w-4 text-white/30 transition-transform ${settingsOpen ? "rotate-180" : ""}`} />
+          </button>
+          {settingsOpen && (
+            <div className="animate-mm-slide-up space-y-5 border-t border-white/[0.06] p-4">
+              {collectionStats && collectionStats.dailyFiadoRate > 0 && (
+                <Section dot={COLOR_HEX.warning} label="Capital de giro pro fiado">
+                  <p className="text-sm text-white/55">
+                    Ritmo atual: {formatCurrency(collectionStats.dailyFiadoRate)}/dia vendido fiado. Prazo combinado
+                    com os clientes: {creditTermDays} dias.
+                  </p>
+                  <p className="mt-2 text-sm text-white/70">
+                    Reserva de capital de giro recomendada:{" "}
+                    <strong className="font-semibold text-white">{formatCurrency(collectionStats.recommendedReserve)}</strong>{" "}
+                    (ritmo × prazo combinado).
+                  </p>
+                  {collectionStats.avgDays === null ? (
+                    <p className="mt-1 text-xs text-white/35">Ainda sem pagamento registrado pra comparar com o prazo combinado.</p>
+                  ) : (
+                    <p className="mt-1 text-xs text-white/35">
+                      Prazo real medido até agora: ~{Math.round(collectionStats.avgDays)} dias ({collectionStats.paymentsCount}{" "}
+                      pagamento{collectionStats.paymentsCount === 1 ? "" : "s"}
+                      {collectionStats.paymentsCount < 5 ? " — ainda poucos pra confiar" : ""}).
+                    </p>
+                  )}
+                </Section>
+              )}
+              <Section dot={COLOR_HEX.accent} label="Prazo e juros por atraso">
+                <p className="text-xs text-white/40">
+                  O prazo preenche sozinho o vencimento de toda venda fiado nova (dá pra mudar em cada venda). Se o
+                  cliente passar do vencimento, o juro é calculado por mês de atraso — só vira saldo de verdade quando
+                  você clicar em &quot;Aplicar ao saldo&quot; no extrato do cliente.
+                </p>
+                <form onSubmit={handleSaveInterest} className="mt-3 flex flex-wrap items-center gap-2">
+                  <input
+                    value={creditTermDays}
+                    onChange={(e) => setCreditTermDays(Number(e.target.value) || 0)}
+                    inputMode="numeric"
+                    className={`${INPUT} w-20`}
+                  />
+                  <span className="text-sm text-white/45">dias de prazo</span>
+                  <input
+                    value={interestPercent}
+                    onChange={(e) => setInterestPercent(e.target.value)}
+                    placeholder="0 = sem juros"
+                    inputMode="decimal"
+                    className={`${INPUT} w-32`}
+                  />
+                  <span className="text-sm text-white/45">% ao mês de juros</span>
+                  <PrimaryButton type="submit" hex={COLOR_HEX.accent} disabled={savingInterest}>
+                    {savingInterest ? "Salvando…" : "Salvar"}
+                  </PrimaryButton>
+                  {interestSaved && (
+                    <span className="animate-mm-fade-in text-xs font-semibold" style={{ color: COLOR_HEX.positive }}>
+                      Salvo!
+                    </span>
+                  )}
+                </form>
+              </Section>
+            </div>
+          )}
         </div>
       </div>
     </div>
