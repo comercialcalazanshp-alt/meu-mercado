@@ -140,6 +140,7 @@ function ClientesInner() {
 
   const [orders, setOrders] = useState<OrderRow[]>([]);
   const [loadingOrders, setLoadingOrders] = useState(false);
+  const [ordersOpen, setOrdersOpen] = useState(false);
 
   const [noteDraft, setNoteDraft] = useState("");
   const [blockedDraft, setBlockedDraft] = useState(false);
@@ -295,6 +296,7 @@ function ClientesInner() {
       return;
     }
     setExpandedPhone(customer.phone);
+    setOrdersOpen(false);
     setResetMessage(null);
     setAccountStatus(null);
     payment.cancel();
@@ -1050,21 +1052,37 @@ function ClientesInner() {
                       {!loadingOrders && orders.length === 0 && (
                         <p className="text-sm text-white/35">Nenhum pedido registrado.</p>
                       )}
-                      <ul className="space-y-2">
-                        {orders.map((order) => (
-                          <li
-                            key={order.id}
-                            className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-white/[0.06] bg-white/[0.02] p-2.5 text-sm"
+                      {!loadingOrders && orders.length > 0 && (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => setOrdersOpen((v) => !v)}
+                            className="flex w-full items-center justify-between gap-2 rounded-lg border border-white/[0.06] bg-white/[0.02] px-3 py-2 text-sm text-white/60 transition hover:text-white"
                           >
-                            <span className="text-white/55">
-                              {formatDate(order.created_at)} · <span className="font-medium text-white/80">{formatCurrency(order.total)}</span>
+                            <span>
+                              {orders.length} pedido{orders.length === 1 ? "" : "s"} registrado{orders.length === 1 ? "" : "s"}
                             </span>
-                            <SecondaryButton small onClick={() => reprintOrder(order)}>
-                              Reimprimir cupom
-                            </SecondaryButton>
-                          </li>
-                        ))}
-                      </ul>
+                            <IconChevron className={`h-4 w-4 text-white/30 transition-transform ${ordersOpen ? "rotate-180" : ""}`} />
+                          </button>
+                          {ordersOpen && (
+                            <ul className="animate-mm-slide-up mt-2 space-y-2">
+                              {orders.map((order) => (
+                                <li
+                                  key={order.id}
+                                  className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-white/[0.06] bg-white/[0.02] p-2.5 text-sm"
+                                >
+                                  <span className="text-white/55">
+                                    {formatDate(order.created_at)} · <span className="font-medium text-white/80">{formatCurrency(order.total)}</span>
+                                  </span>
+                                  <SecondaryButton small onClick={() => reprintOrder(order)}>
+                                    Reimprimir cupom
+                                  </SecondaryButton>
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+                        </>
+                      )}
                     </Section>
                   </div>
                 )}
