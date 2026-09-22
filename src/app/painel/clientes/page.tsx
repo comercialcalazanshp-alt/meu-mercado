@@ -838,9 +838,17 @@ function ClientesInner() {
                             </button>
                           </div>
 
-                          {transactions.length > 0 && (
+                          {/* Toda venda fiado feita no PDV já entra registrada como venda em
+                              "Histórico de pedidos" logo abaixo — mostrar de novo aqui seria
+                              repetir a mesma linha duas vezes. Só ficam no extrato os lançamentos
+                              que não aparecem em nenhum outro lugar: pagamento, juros, perdão de
+                              dívida e venda fiado lançada manualmente (essa sim tem vencimento e
+                              pode render juro, então continua aqui). */}
+                          {transactions.filter((tx) => !(tx.type === "venda" && tx.note === "Venda no balcão (PDV)")).length > 0 && (
                             <ul className="mt-2 max-h-72 space-y-2 overflow-y-auto pr-1 text-sm">
-                              {transactions.map((tx) => {
+                              {transactions
+                                .filter((tx) => !(tx.type === "venda" && tx.note === "Venda no balcão (PDV)"))
+                                .map((tx) => {
                                 const overdue = tx.type === "venda" && tx.due_date && isOverdue(tx.due_date);
                                 const interestAlreadyApplied = transactions.some(
                                   (t) => t.type === "juros" && t.note?.includes(`ref:${tx.id}`),
