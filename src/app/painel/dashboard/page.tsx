@@ -374,7 +374,7 @@ function FinancialHealthCard({
   faturamentoTotal,
   cashProfit,
   cashRatio,
-  fiadoRevenueInPeriod,
+  fiadoOutstandingInPeriod,
   fiadoRatio,
   lucroLiquido,
   marginRatio,
@@ -382,7 +382,7 @@ function FinancialHealthCard({
   faturamentoTotal: number;
   cashProfit: number;
   cashRatio: number;
-  fiadoRevenueInPeriod: number;
+  fiadoOutstandingInPeriod: number;
   fiadoRatio: number;
   lucroLiquido: number;
   marginRatio: number;
@@ -437,7 +437,7 @@ function FinancialHealthCard({
           label="Concentração de fiado"
           status={fiadoStatus}
           valueText={`${(fiadoRatio * 100).toFixed(0)}%`}
-          detail={`${formatCurrency(fiadoRevenueInPeriod)} do faturamento (${(fiadoRatio * 100).toFixed(0)}%) ainda está em fiado, não é dinheiro na mão.`}
+          detail={`${formatCurrency(fiadoOutstandingInPeriod)} do faturamento (${(fiadoRatio * 100).toFixed(0)}%) ainda está em fiado, não é dinheiro na mão.`}
           markerPct={fiadoMarkerPct}
           zoneStops={[33.3, 66.7]}
           zoneColors={[COLOR_HEX.positive, COLOR_HEX.warning, COLOR_HEX.negative]}
@@ -465,12 +465,12 @@ function FinanceSplitCard({
   store,
   cashProfit,
   periodLabel,
-  fiadoRevenueInPeriod,
+  fiadoOutstandingInPeriod,
 }: {
   store: Store;
   cashProfit: number;
   periodLabel: string;
-  fiadoRevenueInPeriod: number;
+  fiadoOutstandingInPeriod: number;
 }) {
   const COLOR_HEX = useThemeColors();
   const [editing, setEditing] = useState(false);
@@ -616,8 +616,8 @@ function FinanceSplitCard({
           <p className="mt-3 text-sm text-white/50">
             {periodLabel} fechou sem sobra em dinheiro de verdade pra dividir (lucro já descontando o que ainda tá em
             fiado: {formatCurrency(cashProfit)}).
-            {fiadoRevenueInPeriod > 0 &&
-              ` Tem ${formatCurrency(fiadoRevenueInPeriod)} parado em fiado nesse período — quando entrar, essa conta muda.`}
+            {fiadoOutstandingInPeriod > 0 &&
+              ` Tem ${formatCurrency(fiadoOutstandingInPeriod)} parado em fiado nesse período — quando entrar, essa conta muda.`}
           </p>
         ) : (
           <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -972,12 +972,19 @@ export default function Dashboard() {
   const cashProfit = lucroLiquido - fiadoRevenueInPeriod + creditPaymentsInPeriod;
   const periodLabel = PERIODS.find((p) => p.key === period)?.label ?? "o período selecionado";
 
+  // Quanto do fiado do período ainda está parado, já descontando o que foi
+  // recebido (de venda desse período ou de venda antiga — não dá pra saber
+  // qual dívida específica foi paga, então trata como uma conta só). Sem
+  // isso, "Concentração de fiado" nunca baixava mesmo o dono recebendo
+  // pagamento, porque só olhava o que foi vendido fiado, nunca o que voltou.
+  const fiadoOutstandingInPeriod = Math.max(0, fiadoRevenueInPeriod - creditPaymentsInPeriod);
+
   // ---------- Saúde financeira (farol verde/amarelo/vermelho) ----------
   // 3 critérios calculados só com número que já existe nessa página — nada
   // de fonte nova, só uma leitura de "tá bom ou não" em cima do que o resto
   // do Dashboard já mostra em detalhe.
   const cashRatio = faturamentoTotal > 0 ? cashProfit / faturamentoTotal : 0;
-  const fiadoRatio = faturamentoTotal > 0 ? fiadoRevenueInPeriod / faturamentoTotal : 0;
+  const fiadoRatio = faturamentoTotal > 0 ? fiadoOutstandingInPeriod / faturamentoTotal : 0;
   const marginRatio = faturamentoTotal > 0 ? lucroLiquido / faturamentoTotal : 0;
 
   const maxRank = (arr: { value: number }[]) => Math.max(1, ...arr.map((a) => a.value));
@@ -1464,7 +1471,7 @@ export default function Dashboard() {
           faturamentoTotal={faturamentoTotal}
           cashProfit={cashProfit}
           cashRatio={cashRatio}
-          fiadoRevenueInPeriod={fiadoRevenueInPeriod}
+          fiadoOutstandingInPeriod={fiadoOutstandingInPeriod}
           fiadoRatio={fiadoRatio}
           lucroLiquido={lucroLiquido}
           marginRatio={marginRatio}
@@ -1473,7 +1480,7 @@ export default function Dashboard() {
           store={store}
           cashProfit={cashProfit}
           periodLabel={periodLabel}
-          fiadoRevenueInPeriod={fiadoRevenueInPeriod}
+          fiadoOutstandingInPeriod={fiadoOutstandingInPeriod}
         />
       </div>
     </div>
