@@ -19,6 +19,7 @@ import { PAYMENT_METHODS, PAYMENT_METHOD_LABELS, useCreditPayment, type PaymentM
 import { resetCustomerAccess } from "./actions";
 import { Card, Section, PrimaryButton, SecondaryButton, IconSearch, IconChevron, IconEye, IconEyeOff } from "@/components/ui";
 import { useThemeColors } from "@/components/ui/theme";
+import PixQrPanel from "@/components/PixQrPanel";
 
 type CashbackCustomer = {
   id: string;
@@ -911,6 +912,7 @@ function ClientesInner() {
 
                           <div className="mt-3">
                             {payment.payingId === customer.creditCustomerId ? (
+                              <>
                               <form
                                 onSubmit={(e) => {
                                   e.preventDefault();
@@ -930,6 +932,14 @@ function ClientesInner() {
                                   autoFocus
                                   className={`${INPUT} w-36`}
                                 />
+                                {customer.creditBalance > 0 && (
+                                  <SecondaryButton
+                                    small
+                                    onClick={() => payment.setAmount(customer.creditBalance.toFixed(2).replace(".", ","))}
+                                  >
+                                    Valor total
+                                  </SecondaryButton>
+                                )}
                                 <div className="flex overflow-hidden rounded-lg border border-white/[0.12]">
                                   {PAYMENT_METHODS.map((method) => (
                                     <button
@@ -952,6 +962,10 @@ function ClientesInner() {
                                   Cancelar
                                 </SecondaryButton>
                               </form>
+                              {payment.method === "pix" && (
+                                <PixQrPanel amount={Number(payment.amount.replace(",", ".")) || 0} />
+                              )}
+                              </>
                             ) : (
                               <div className="flex flex-wrap items-center gap-2">
                                 <PrimaryButton hex={COLOR_HEX.positive} onClick={() => payment.start(customer.creditCustomerId!)}>
