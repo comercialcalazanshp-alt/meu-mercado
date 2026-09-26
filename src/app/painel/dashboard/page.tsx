@@ -60,6 +60,7 @@ const CYCLE_MONTHS: Record<Partnership["billing_cycle"], number> = {
 
 const PERIODS = [
   { key: "hoje", label: "Hoje" },
+  { key: "ontem", label: "Ontem" },
   { key: "7d", label: "7 dias" },
   { key: "30d", label: "30 dias" },
   { key: "mes", label: "Este mês" },
@@ -73,8 +74,16 @@ function formatCurrency(v: number) {
 function formatCurrencyCompact(v: number) {
   return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
 }
+// Dia no fuso do navegador (não UTC) — venda às 22h do dia 25 tem que cair no
+// dia 25, não no 26, senão o gráfico por dia perde as vendas do fim da noite.
 function dayKey(iso: string) {
-  return iso.slice(0, 10);
+  const d = new Date(iso);
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${d.getFullYear()}-${m}-${day}`;
+}
+function todayInputValue() {
+  return dayKey(new Date().toISOString());
 }
 function shortDay(key: string) {
   const [, m, d] = key.split("-");
@@ -86,6 +95,12 @@ function periodRange(period: PeriodKey): { since: Date; until: Date; prevSince: 
     const since = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const until = new Date(since.getTime() + 24 * 3600 * 1000);
     const prevSince = new Date(since.getTime() - 24 * 3600 * 1000);
+    return { since, until, prevSince, prevUntil: since };
+  }
+  if (period === "ontem") {
+    const until = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const since = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
+    const prevSince = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 2);
     return { since, until, prevSince, prevUntil: since };
   }
   if (period === "mes") {
@@ -671,7 +686,10 @@ export default function Dashboard() {
   const range = useMemo(() => {
     if (period === "custom" && customSince && customUntil) {
       const since = new Date(customSince + "T00:00:00");
-      const until = new Date(customUntil + "T23:59:59");
+      // fim exclusivo: meia-noite do dia SEGUINTE à data final escolhida,
+      // mesma convenção de "Hoje"/"Ontem" (o dia final entra inteiro).
+      const until = new Date(customUntil + "T00:00:00");
+      until.setDate(until.getDate() + 1);
       const rangeMs = Math.max(0, until.getTime() - since.getTime());
       const prevUntil = since;
       const prevSince = new Date(since.getTime() - rangeMs);
@@ -680,7 +698,11 @@ export default function Dashboard() {
     return periodRange(period);
   }, [period, customSince, customUntil]);
 
+  // "Personalizado" só vale com as duas datas e a inicial não depois da final.
+  const customInvalid = period === "custom" && (!customSince || !customUntil || customSince > customUntil);
+
   useEffect(() => {
+    if (customInvalid) return;
     let cancelled = false;
     async function load() {
       setLoading(true);
@@ -780,8 +802,7 @@ export default function Dashboard() {
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [store.id, period]);
+  }, [store.id, range, customInvalid]);
 
   // ---------- KPIs ----------
   const revenue = useMemo(() => orders.reduce((s, o) => s + o.total, 0), [orders]);
@@ -970,7 +991,15 @@ export default function Dashboard() {
   const fiadoRevenueInPeriod = orders.filter((o) => o.payment_method === "fiado").reduce((s, o) => s + o.total, 0);
   const creditPaymentsInPeriod = creditPayments.reduce((s, c) => s + Number(c.amount), 0);
   const cashProfit = lucroLiquido - fiadoRevenueInPeriod + creditPaymentsInPeriod;
-  const periodLabel = PERIODS.find((p) => p.key === period)?.label ?? "o período selecionado";
+  const brDate = (key: string) => key.split("-").reverse().join("/");
+  const periodLabel =
+    period === "custom"
+      ? customSince === customUntil
+        ? `O dia ${brDate(customSince)}`
+        : `O período de ${brDate(customSince)} a ${brDate(customUntil)}`
+      : (PERIODS.find((p) => p.key === period)?.label ?? "o período selecionado");
+  const prevCtx =
+    period === "hoje" ? "vs. ontem" : period === "ontem" ? "vs. anteontem" : "vs. período anterior";
 
   // Quanto do fiado do período ainda está parado, já descontando o que foi
   // recebido (de venda desse período ou de venda antiga — não dá pra saber
@@ -1017,7 +1046,14 @@ export default function Dashboard() {
             {PERIODS.map((p) => (
               <button
                 key={p.key}
-                onClick={() => setPeriod(p.key)}
+                onClick={() => {
+                  // primeira vez em "Personalizado": já começa com hoje nas duas datas
+                  if (p.key === "custom" && (!customSince || !customUntil)) {
+                    setCustomSince(todayInputValue());
+                    setCustomUntil(todayInputValue());
+                  }
+                  setPeriod(p.key);
+                }}
                 className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition ${
                   period === p.key ? "bg-[#5CACFF] text-[#0A1A2E]" : "text-white/45 hover:bg-white/[0.06]"
                 }`}
@@ -1043,10 +1079,17 @@ export default function Dashboard() {
               onChange={(e) => setCustomUntil(e.target.value)}
               className="rounded-lg border border-white/[0.12] bg-white/[0.03] px-3 py-1.5 text-xs text-white"
             />
+            {customInvalid && (
+              <span className="text-xs text-[#F0BB5E]">
+                {customSince && customUntil
+                  ? "A data inicial precisa ser antes (ou igual) à data final."
+                  : "Escolha as duas datas pra ver o período."}
+              </span>
+            )}
           </div>
         )}
 
-        {loading ? (
+        {customInvalid ? null : loading ? (
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
             {[0, 1, 2, 3].map((i) => (
               <div key={i} className="h-32 animate-pulse rounded-2xl border border-white/[0.06] bg-white/[0.03]" />
@@ -1059,7 +1102,7 @@ export default function Dashboard() {
                 label="Faturamento"
                 value={formatCurrency(faturamentoTotal)}
                 delta={pctDelta(faturamentoTotal, prevFaturamentoTotal)}
-                ctx="vs. período anterior"
+                ctx={prevCtx}
                 spark={chartSpark}
                 hex={COLOR_HEX.accent}
                 delay={0}
@@ -1068,7 +1111,7 @@ export default function Dashboard() {
                 label="Pedidos"
                 value={orders.length.toLocaleString("pt-BR")}
                 delta={pctDelta(orders.length, prevOrders.length)}
-                ctx="vs. período anterior"
+                ctx={prevCtx}
                 spark={ordersCountSeries.map(([, v]) => v || 0.01)}
                 hex={COLOR_HEX.positive}
                 delay={80}
@@ -1077,7 +1120,7 @@ export default function Dashboard() {
                 label="Ticket médio"
                 value={formatCurrency(ticketMedio)}
                 delta={pctDelta(ticketMedio, prevTicketMedio)}
-                ctx="vs. período anterior"
+                ctx={prevCtx}
                 spark={chartSpark}
                 hex={COLOR_HEX.warning}
                 delay={160}
@@ -1467,21 +1510,25 @@ export default function Dashboard() {
             em cima, esses dois painéis são a "conclusão" depois de ver tudo
             o resto. Fora do if/else de loading pra não piscar/desmontar a
             cada troca de período. */}
-        <FinancialHealthCard
-          faturamentoTotal={faturamentoTotal}
-          cashProfit={cashProfit}
-          cashRatio={cashRatio}
-          fiadoOutstandingInPeriod={fiadoOutstandingInPeriod}
-          fiadoRatio={fiadoRatio}
-          lucroLiquido={lucroLiquido}
-          marginRatio={marginRatio}
-        />
-        <FinanceSplitCard
-          store={store}
-          cashProfit={cashProfit}
-          periodLabel={periodLabel}
-          fiadoOutstandingInPeriod={fiadoOutstandingInPeriod}
-        />
+        {!customInvalid && (
+          <>
+            <FinancialHealthCard
+              faturamentoTotal={faturamentoTotal}
+              cashProfit={cashProfit}
+              cashRatio={cashRatio}
+              fiadoOutstandingInPeriod={fiadoOutstandingInPeriod}
+              fiadoRatio={fiadoRatio}
+              lucroLiquido={lucroLiquido}
+              marginRatio={marginRatio}
+            />
+            <FinanceSplitCard
+              store={store}
+              cashProfit={cashProfit}
+              periodLabel={periodLabel}
+              fiadoOutstandingInPeriod={fiadoOutstandingInPeriod}
+            />
+          </>
+        )}
       </div>
     </div>
   );
