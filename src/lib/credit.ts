@@ -25,6 +25,15 @@ export function isOverdue(dueDate: string) {
   return new Date(dueDate + "T00:00:00") < today;
 }
 
+// Dias corridos entre um vencimento (já passado) e hoje — usado nos avisos
+// de "atrasado há X dias" (Clientes e PDV).
+export function daysOverdue(dueDate: string) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const due = new Date(dueDate + "T00:00:00");
+  return Math.max(0, Math.round((today.getTime() - due.getTime()) / (1000 * 60 * 60 * 24)));
+}
+
 export function calcInterest(amount: number, dueDate: string, monthlyRate: number) {
   if (monthlyRate <= 0 || !isOverdue(dueDate)) return 0;
   const today = new Date();

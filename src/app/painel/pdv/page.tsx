@@ -6,6 +6,7 @@ import { getSupabase } from "@/lib/supabase";
 import { useStore } from "@/lib/store-context";
 import { buildReceiptHtml, printHtml } from "@/lib/receipt";
 import { buildPixBRCode } from "@/lib/pix-brcode";
+import { daysOverdue, defaultDueDate } from "@/lib/credit";
 import {
   cacheProducts,
   getCachedProducts,
@@ -375,6 +376,7 @@ export default function Pdv() {
   const [creditSearch, setCreditSearch] = useState("");
   const [creditMatches, setCreditMatches] = useState<CreditCustomer[]>([]);
   const [creditCustomerId, setCreditCustomerId] = useState<string | null>(null);
+  const [creditWarning, setCreditWarning] = useState<{ daysLate: number; blocked: boolean } | null>(null);
   const creditSearchRef = useRef<HTMLInputElement>(null);
   const [splitMode, setSplitMode] = useState(false);
   const [splitPayments, setSplitPayments] = useState<{ method: PaymentMethod; amount: string }[]>([
@@ -794,6 +796,7 @@ export default function Pdv() {
     setCreditSearch("");
     setCreditMatches([]);
     setCreditCustomerId(null);
+    setCreditWarning(null);
     setDiscountValue("");
     setError(null);
     setPixQrImage(null);
@@ -940,6 +943,7 @@ export default function Pdv() {
       setCreditSearch("");
       setCreditMatches([]);
       setCreditCustomerId(null);
+      setCreditWarning(null);
       setCustomerName("");
       setCustomerPhone("");
     }
@@ -955,6 +959,29 @@ export default function Pdv() {
     setCustomerPhone(customer.phone);
     setCreditSearch(customer.name);
     setCreditMatches([]);
+    checkCreditWarning(customer.id, customer.phone);
+  }
+
+  // Só um aviso — o dono decide na hora se vende fiado de novo ou não pra
+  // quem já está devendo há muito tempo. Não trava a venda no balcão.
+  async function checkCreditWarning(customerId: string, phone: string) {
+    setCreditWarning(null);
+    const todayStr = defaultDueDate(0);
+    const [{ data: vendas }, { data: note }] = await Promise.all([
+      getSupabase()
+        .from("credit_transactions")
+        .select("due_date")
+        .eq("customer_id", customerId)
+        .eq("type", "venda")
+        .not("due_date", "is", null)
+        .lt("due_date", todayStr)
+        .order("due_date", { ascending: true })
+        .limit(1),
+      getSupabase().from("customer_notes").select("blocked").eq("store_id", store.id).eq("phone", phone).maybeSingle(),
+    ]);
+    if (vendas && vendas.length > 0) {
+      setCreditWarning({ daysLate: daysOverdue(vendas[0].due_date), blocked: note?.blocked ?? false });
+    }
   }
 
   function focusCreditSearch() {
@@ -974,6 +1001,7 @@ export default function Pdv() {
       setCreditSearch("");
       setCreditMatches([]);
       setCreditCustomerId(null);
+      setCreditWarning(null);
       setCustomerName("");
       setCustomerPhone("");
       if (next) {
@@ -1123,6 +1151,7 @@ export default function Pdv() {
     setCreditSearch("");
     setCreditMatches([]);
     setCreditCustomerId(null);
+    setCreditWarning(null);
     setDiscountValue("");
     if (splitMode) {
       setSplitPayments([
@@ -1877,6 +1906,7 @@ export default function Pdv() {
                   setCreditSearch(e.target.value);
                   if (creditCustomerId) {
                     setCreditCustomerId(null);
+                    setCreditWarning(null);
                     setCustomerName("");
                     setCustomerPhone("");
                   }
@@ -1903,10 +1933,19 @@ export default function Pdv() {
             </div>
 
             {creditCustomerId ? (
-              <p className="flex items-center gap-1.5 rounded-lg bg-[#34E88C]/10 px-3 py-2 text-sm text-[#34E88C]">
-                <IconCheck className="h-4 w-4 shrink-0" />
-                Cliente encontrado: {customerName} · {customerPhone}
-              </p>
+              <>
+                <p className="flex items-center gap-1.5 rounded-lg bg-[#34E88C]/10 px-3 py-2 text-sm text-[#34E88C]">
+                  <IconCheck className="h-4 w-4 shrink-0" />
+                  Cliente encontrado: {customerName} · {customerPhone}
+                </p>
+                {creditWarning && (
+                  <p className="flex items-center gap-1.5 rounded-lg bg-[#F0BB5E]/10 px-3 py-2 text-sm text-[#F0BB5E]">
+                    <IconWarning className="h-4 w-4 shrink-0" />
+                    Esse cliente já está atrasado no fiado há {creditWarning.daysLate} dias
+                    {creditWarning.blocked ? " e está bloqueado na vitrine" : ""} — decida se vende fiado de novo.
+                  </p>
+                )}
+              </>
             ) : (
               <>
                 <p className="text-xs text-white/40">

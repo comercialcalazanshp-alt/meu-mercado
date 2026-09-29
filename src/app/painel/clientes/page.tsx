@@ -8,6 +8,7 @@ import { buildReceiptHtml, printHtml } from "@/lib/receipt";
 import {
   calcInterest,
   computeCollectionStats,
+  daysOverdue,
   defaultDueDate,
   formatCurrency,
   formatDate,
@@ -46,6 +47,14 @@ type MergedCustomer = {
   creditBalance: number;
   creditLimit: number | null;
 };
+
+// Atraso de um cliente = a venda fiado (com vencimento) mais antiga ainda
+// não paga. Simplificação: não faz "fila" de qual pagamento quitou qual
+// venda (como computeCollectionStats faz pra prazo médio) — qualquer venda
+// vencida conta enquanto o saldo total do cliente for > 0. É a mesma lógica
+// que o extrato individual já usa pra marcar "atrasado" em cada linha.
+type OverdueInfo = { oldestDueDate: string; daysLate: number };
+type BlockInfo = { blocked: boolean; autoBlocked: boolean; note: string | null };
 
 type AccountStatus = {
   has_account: boolean;
@@ -145,8 +154,19 @@ function ClientesInner() {
 
   const [noteDraft, setNoteDraft] = useState("");
   const [blockedDraft, setBlockedDraft] = useState(false);
+  const [autoBlockedDraft, setAutoBlockedDraft] = useState(false);
   const [savingNote, setSavingNote] = useState(false);
   const [noteSaved, setNoteSaved] = useState(false);
+
+  // Cobrança/atraso — carregado uma vez junto com a lista de clientes, pra
+  // dar pra mostrar o aviso e a lista "Cobranças em atraso" sem esperar
+  // abrir cada cliente um por um.
+  const [overdueByCustomer, setOverdueByCustomer] = useState<Map<string, OverdueInfo>>(new Map());
+  const [blockByPhone, setBlockByPhone] = useState<Map<string, BlockInfo>>(new Map());
+  const [collectionsOpen, setCollectionsOpen] = useState(true);
+  const [extendingPhone, setExtendingPhone] = useState<string | null>(null);
+  const [extendDraft, setExtendDraft] = useState("");
+  const [extendSaving, setExtendSaving] = useState(false);
 
   const [interestPercent, setInterestPercent] = useState("");
   const [creditTermDays, setCreditTermDays] = useState(30);
@@ -169,6 +189,11 @@ function ClientesInner() {
   const payment = useCreditPayment((customerId) => {
     loadCustomers();
     fetchCreditTransactions(customerId);
+    // pagamento pode ter zerado ou atualizado o vencimento em aberto — reavalia
+    // o bloqueio automático desse cliente na hora, sem esperar o cron do dia seguinte.
+    getSupabase()
+      .rpc("apply_credit_auto_block", { p_customer_id: customerId })
+      .then(() => loadCollections());
   });
 
   async function loadCustomers() {
@@ -184,6 +209,57 @@ function ClientesInner() {
     setCreditCustomers(credit ?? []);
     loadedOnce.current = true;
     setLoading(false);
+    if (credit && credit.length > 0) loadCollections(credit);
+  }
+
+  // Carrega, pra todo mundo de uma vez (não só o cliente aberto): a venda
+  // fiado vencida mais antiga de cada cliente com saldo em aberto (pra
+  // calcular "atrasado há X dias") e o bloqueio de cada telefone. É o que
+  // alimenta o card "Cobranças em atraso" e o aviso dentro de cada cliente.
+  async function loadCollections(customers?: CreditCustomer[]) {
+    const list = customers ?? creditCustomers;
+    const withDebt = list.filter((c) => c.balance > 0);
+    if (withDebt.length === 0) {
+      setOverdueByCustomer(new Map());
+      setBlockByPhone(new Map());
+      return;
+    }
+    const todayStr = defaultDueDate(0);
+    const [{ data: vendas }, { data: notes }] = await Promise.all([
+      getSupabase()
+        .from("credit_transactions")
+        .select("customer_id, due_date")
+        .in(
+          "customer_id",
+          withDebt.map((c) => c.id),
+        )
+        .eq("type", "venda")
+        .not("due_date", "is", null)
+        .lt("due_date", todayStr),
+      getSupabase()
+        .from("customer_notes")
+        .select("phone, blocked, auto_blocked, note")
+        .eq("store_id", store.id)
+        .in(
+          "phone",
+          withDebt.map((c) => c.phone),
+        ),
+    ]);
+
+    const overdue = new Map<string, OverdueInfo>();
+    for (const v of vendas ?? []) {
+      const prev = overdue.get(v.customer_id);
+      if (!prev || v.due_date < prev.oldestDueDate) {
+        overdue.set(v.customer_id, { oldestDueDate: v.due_date, daysLate: daysOverdue(v.due_date) });
+      }
+    }
+    setOverdueByCustomer(overdue);
+
+    const blocks = new Map<string, BlockInfo>();
+    for (const n of notes ?? []) {
+      blocks.set(n.phone, { blocked: n.blocked, autoBlocked: n.auto_blocked, note: n.note });
+    }
+    setBlockByPhone(blocks);
   }
 
   async function fetchCreditTransactions(creditCustomerId: string) {
@@ -282,6 +358,13 @@ function ClientesInner() {
   const debtorsCount = creditCustomers.filter((c) => c.balance > 0).length;
   const interestRate = Number(interestPercent.replace(",", ".")) || 0;
 
+  const overdueList = useMemo(() => {
+    return merged
+      .filter((c) => c.creditCustomerId && overdueByCustomer.has(c.creditCustomerId))
+      .map((c) => ({ customer: c, overdue: overdueByCustomer.get(c.creditCustomerId!)! }))
+      .sort((a, b) => b.overdue.daysLate - a.overdue.daysLate);
+  }, [merged, overdueByCustomer]);
+
   function toggleDebtVisibility(phone: string) {
     setRevealedDebts((prev) => {
       const next = new Set(prev);
@@ -312,16 +395,19 @@ function ClientesInner() {
 
     setNoteDraft("");
     setBlockedDraft(false);
+    setAutoBlockedDraft(false);
     setNoteSaved(false);
+    setExtendingPhone(null);
     getSupabase()
       .from("customer_notes")
-      .select("note, blocked")
+      .select("note, blocked, auto_blocked")
       .eq("store_id", store.id)
       .eq("phone", customer.phone)
       .maybeSingle()
       .then(({ data }) => {
         setNoteDraft(data?.note ?? "");
         setBlockedDraft(data?.blocked ?? false);
+        setAutoBlockedDraft(data?.auto_blocked ?? false);
       });
 
     if (customer.creditCustomerId) {
@@ -528,8 +614,46 @@ function ClientesInner() {
       amount: value,
       note: "Baixa de dívida incobrável",
     });
+    await getSupabase().rpc("apply_credit_auto_block", { p_customer_id: customerId });
     loadCustomers();
     fetchCreditTransactions(customerId);
+  }
+
+  function collectionWhatsappLink(customer: MergedCustomer, overdue: OverdueInfo) {
+    const firstName = customer.name.split(" ")[0];
+    const msg =
+      `Oi ${firstName}! Aqui é d${store.name.match(/^[AEIOUaeiou]/) ? "e" : "o"} ${store.name}. ` +
+      `Vi aqui que sua conta de fiado tá em aberto: ${formatCurrency(customer.creditBalance)}, vencida desde ` +
+      `${formatDateOnly(overdue.oldestDueDate)} (${overdue.daysLate} dias). Quando puder, dá uma passada aqui ou me chama que a gente resolve 🙂`;
+    return `https://wa.me/55${customer.phone.replace(/\D/g, "")}?text=${encodeURIComponent(msg)}`;
+  }
+
+  async function handleGrantExtension(customer: MergedCustomer) {
+    if (!customer.creditCustomerId || !extendDraft) return;
+    setExtendSaving(true);
+    const todayStr = defaultDueDate(0);
+    await getSupabase()
+      .from("credit_transactions")
+      .update({ due_date: extendDraft })
+      .eq("customer_id", customer.creditCustomerId)
+      .eq("type", "venda")
+      .lt("due_date", todayStr);
+    // devolve o bloqueio automático na hora, sem esperar o cron do dia seguinte
+    await getSupabase().rpc("apply_credit_auto_block", { p_customer_id: customer.creditCustomerId });
+    setExtendSaving(false);
+    setExtendingPhone(null);
+    loadCollections();
+    fetchCreditTransactions(customer.creditCustomerId);
+    getSupabase()
+      .from("customer_notes")
+      .select("note, blocked, auto_blocked")
+      .eq("store_id", store.id)
+      .eq("phone", customer.phone)
+      .maybeSingle()
+      .then(({ data }) => {
+        setBlockedDraft(data?.blocked ?? false);
+        setAutoBlockedDraft(data?.auto_blocked ?? false);
+      });
   }
 
   async function handleApplyInterest(customerId: string, tx: CreditTransaction, interest: number) {
@@ -600,6 +724,61 @@ function ClientesInner() {
             {debtorsCount} cliente{debtorsCount === 1 ? "" : "s"} com débito
           </p>
         </Card>
+
+        {overdueList.length > 0 && (
+          <Card className="mt-3" style={{ borderColor: `${COLOR_HEX.warning}35` }}>
+            <button
+              type="button"
+              onClick={() => setCollectionsOpen((v) => !v)}
+              className="flex w-full items-center justify-between gap-3 text-left"
+            >
+              <Section dot={COLOR_HEX.warning} label={`Cobranças em atraso (${overdueList.length})`}>
+                <p className="text-xs text-white/35">
+                  Vencido há mais de 30 dias bloqueia sozinho (vitrine online). Você sempre pode dar mais prazo.
+                </p>
+              </Section>
+              <IconChevron className={`h-4 w-4 shrink-0 text-white/30 transition-transform ${collectionsOpen ? "rotate-180" : ""}`} />
+            </button>
+            {collectionsOpen && (
+              <ul className="mt-3 space-y-2">
+                {overdueList.map(({ customer, overdue }) => {
+                  const block = blockByPhone.get(customer.phone);
+                  const hasRealPhone = !customer.phone.startsWith("sem-telefone-") && /\d{8,}/.test(customer.phone.replace(/\D/g, ""));
+                  return (
+                    <li
+                      key={customer.phone}
+                      className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-white/[0.07] bg-white/[0.02] px-3 py-2 text-sm"
+                    >
+                      <button
+                        type="button"
+                        onClick={() => toggleCustomer(customer)}
+                        className="min-w-0 flex-1 text-left"
+                      >
+                        <p className="truncate font-medium text-white">{customer.name}</p>
+                        <p className="text-xs" style={{ color: COLOR_HEX.warning }}>
+                          {overdue.daysLate} dias atrasado · {formatCurrency(customer.creditBalance)}
+                          {block?.blocked && <span style={{ color: COLOR_HEX.negative }}> · bloqueado</span>}
+                        </p>
+                      </button>
+                      {hasRealPhone && (
+                        <a
+                          href={collectionWhatsappLink(customer, overdue)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="shrink-0 rounded-lg border px-2.5 py-1 text-xs font-medium transition hover:brightness-110"
+                          style={{ borderColor: `${COLOR_HEX.warning}60`, color: COLOR_HEX.warning }}
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          Cobrar no WhatsApp
+                        </a>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </Card>
+        )}
 
         <div className="relative mt-4">
           <IconSearch className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-white/30" />
@@ -740,6 +919,23 @@ function ClientesInner() {
                         {formatCurrency(customer.cashbackBalance)}
                       </span>
                     )}
+                    {customer.creditCustomerId && overdueByCustomer.has(customer.creditCustomerId) && (
+                      <span
+                        className="rounded-full px-2.5 py-1 text-xs font-bold"
+                        style={{ background: `${COLOR_HEX.warning}22`, color: COLOR_HEX.warning }}
+                        title={`Vencido desde ${formatDateOnly(overdueByCustomer.get(customer.creditCustomerId)!.oldestDueDate)}`}
+                      >
+                        {overdueByCustomer.get(customer.creditCustomerId)!.daysLate}d atrasado
+                      </span>
+                    )}
+                    {blockByPhone.get(customer.phone)?.blocked && (
+                      <span
+                        className="rounded-full px-2.5 py-1 text-xs font-bold"
+                        style={{ background: `${COLOR_HEX.negative}22`, color: COLOR_HEX.negative }}
+                      >
+                        bloqueado
+                      </span>
+                    )}
                     {customer.creditBalance > 0 && (
                       <button
                         type="button"
@@ -800,12 +996,24 @@ function ClientesInner() {
                           disabled={savingNote}
                           onClick={async () => {
                             setSavingNote(true);
+                            // Salvar aqui é sempre uma decisão manual do dono — mesmo que o
+                            // bloqueio tivesse sido automático, a partir daqui ele manda:
+                            // o cron não desfaz mais sozinho (auto_blocked: false).
                             await getSupabase()
                               .from("customer_notes")
-                              .upsert({ store_id: store.id, phone: customer.phone, note: noteDraft.trim() || null, blocked: blockedDraft, updated_at: new Date().toISOString() });
+                              .upsert({
+                                store_id: store.id,
+                                phone: customer.phone,
+                                note: noteDraft.trim() || null,
+                                blocked: blockedDraft,
+                                auto_blocked: false,
+                                updated_at: new Date().toISOString(),
+                              });
+                            setAutoBlockedDraft(false);
                             setSavingNote(false);
                             setNoteSaved(true);
                             setTimeout(() => setNoteSaved(false), 2000);
+                            loadCollections();
                           }}
                         >
                           {savingNote ? "Salvando…" : "Salvar"}
@@ -821,6 +1029,12 @@ function ClientesInner() {
                           </span>
                         )}
                       </div>
+                      {autoBlockedDraft && blockedDraft && (
+                        <p className="mt-1.5 text-xs" style={{ color: COLOR_HEX.warning }}>
+                          Bloqueado sozinho pelo sistema — fiado em aberto vencido há mais de 30 dias. Se
+                          desmarcar e salvar, ou usar &quot;Dar mais prazo&quot; abaixo, o bloqueio some.
+                        </p>
+                      )}
                     </Section>
 
                     <Section dot={COLOR_HEX.negative} label="Débito (fiado)">
@@ -840,6 +1054,63 @@ function ClientesInner() {
                                 : "Sem limite de crédito — definir"}
                             </button>
                           </div>
+
+                          {customer.creditBalance > 0 &&
+                            customer.creditCustomerId &&
+                            overdueByCustomer.has(customer.creditCustomerId) && (
+                              <div
+                                className="mt-2 rounded-xl border px-3 py-2 text-xs"
+                                style={{ borderColor: `${COLOR_HEX.warning}40`, background: `${COLOR_HEX.warning}12`, color: COLOR_HEX.warning }}
+                              >
+                                <p className="font-semibold">
+                                  Atrasado há {overdueByCustomer.get(customer.creditCustomerId)!.daysLate} dias — vencia{" "}
+                                  {formatDateOnly(overdueByCustomer.get(customer.creditCustomerId)!.oldestDueDate)}.
+                                </p>
+                                {extendingPhone === customer.phone ? (
+                                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                                    <input
+                                      type="date"
+                                      value={extendDraft}
+                                      onChange={(e) => setExtendDraft(e.target.value)}
+                                      className={`${INPUT} w-auto`}
+                                    />
+                                    <SecondaryButton
+                                      small
+                                      disabled={extendSaving || !extendDraft}
+                                      onClick={() => handleGrantExtension(customer)}
+                                    >
+                                      {extendSaving ? "Salvando…" : "Confirmar novo prazo"}
+                                    </SecondaryButton>
+                                    <SecondaryButton small onClick={() => setExtendingPhone(null)} disabled={extendSaving}>
+                                      Cancelar
+                                    </SecondaryButton>
+                                  </div>
+                                ) : (
+                                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                                    <SecondaryButton
+                                      small
+                                      onClick={() => {
+                                        setExtendDraft(defaultDueDate(7));
+                                        setExtendingPhone(customer.phone);
+                                      }}
+                                    >
+                                      Dar mais prazo
+                                    </SecondaryButton>
+                                    {hasRealPhone && (
+                                      <a
+                                        href={collectionWhatsappLink(customer, overdueByCustomer.get(customer.creditCustomerId)!)}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="rounded-lg border px-2.5 py-1 text-xs font-medium transition hover:brightness-110"
+                                        style={{ borderColor: `${COLOR_HEX.warning}60`, color: COLOR_HEX.warning }}
+                                      >
+                                        Cobrar no WhatsApp
+                                      </a>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            )}
 
                           {/* Toda venda fiado feita no PDV já entra registrada como venda em
                               "Histórico de pedidos" logo abaixo — mostrar de novo aqui seria
