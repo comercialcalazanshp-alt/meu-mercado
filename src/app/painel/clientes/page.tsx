@@ -175,17 +175,6 @@ function ClientesInner() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [collectionStats, setCollectionStats] = useState<CollectionStats | null>(null);
 
-  const [saleFormOpen, setSaleFormOpen] = useState(false);
-  const [saleName, setSaleName] = useState("");
-  const [salePhone, setSalePhone] = useState("");
-  const [saleAmount, setSaleAmount] = useState("");
-  const [saleNote, setSaleNote] = useState("");
-  const [saleDueDate, setSaleDueDate] = useState(() => defaultDueDate(30));
-  const [savingSale, setSavingSale] = useState(false);
-  const [saleError, setSaleError] = useState<string | null>(null);
-  const [saleSaved, setSaleSaved] = useState(false);
-  const saleFormRef = useRef<HTMLFormElement>(null);
-
   const payment = useCreditPayment((customerId) => {
     loadCustomers();
     fetchCreditTransactions(customerId);
@@ -281,9 +270,7 @@ function ClientesInner() {
       .then(({ data }) => {
         if (!data) return;
         setInterestPercent(data.credit_interest_percent > 0 ? String(data.credit_interest_percent) : "");
-        const days = data.credit_term_days ?? 30;
-        setCreditTermDays(days);
-        setSaleDueDate(defaultDueDate(days));
+        setCreditTermDays(data.credit_term_days ?? 30);
       });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [store.id]);
@@ -501,75 +488,6 @@ function ClientesInner() {
       paymentLines: [`Pagamento: ${ORDER_PAYMENT_LABELS[order.payment_method ?? ""] ?? "Combinado com a loja"}`],
     });
     printHtml(html);
-  }
-
-  function openSaleForm(prefill?: { name: string; phone: string }) {
-    setSaleError(null);
-    if (prefill) {
-      setSaleName(prefill.name);
-      setSalePhone(prefill.phone.startsWith("sem-telefone-") ? "" : prefill.phone);
-    }
-    setSaleFormOpen(true);
-    setTimeout(() => saleFormRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }), 100);
-  }
-
-  async function handleAddSale(e: FormEvent) {
-    e.preventDefault();
-    setSaleError(null);
-
-    const value = Number(saleAmount.replace(",", "."));
-    if (!saleName.trim() || !salePhone.trim() || Number.isNaN(value) || value <= 0) {
-      setSaleError("Preencha nome, WhatsApp e um valor válido.");
-      return;
-    }
-
-    setSavingSale(true);
-    const supabase = getSupabase();
-    const phone = salePhone.trim();
-
-    const { data: customer, error: upsertError } = await supabase
-      .from("credit_customers")
-      .upsert(
-        { store_id: store.id, name: saleName.trim(), phone },
-        { onConflict: "store_id,phone", ignoreDuplicates: false },
-      )
-      .select("id")
-      .single();
-
-    if (upsertError || !customer) {
-      setSavingSale(false);
-      setSaleError("Não deu pra salvar o cliente: " + upsertError?.message);
-      return;
-    }
-
-    const { error: txError } = await supabase.from("credit_transactions").insert({
-      customer_id: customer.id,
-      type: "venda",
-      amount: value,
-      note: saleNote.trim() || null,
-      due_date: saleDueDate || null,
-    });
-    setSavingSale(false);
-
-    if (txError) {
-      setSaleError(
-        txError.message.includes("limite de crédito")
-          ? txError.message
-          : "Não deu pra registrar a venda: " + txError.message,
-      );
-      return;
-    }
-
-    setSaleName("");
-    setSalePhone("");
-    setSaleAmount("");
-    setSaleNote("");
-    setSaleDueDate(defaultDueDate(creditTermDays));
-    setSaleFormOpen(false);
-    setSaleSaved(true);
-    setTimeout(() => setSaleSaved(false), 2500);
-    loadCustomers();
-    if (expandedPhone === phone) fetchCreditTransactions(customer.id);
   }
 
   async function handleUpdateCreditLimit(customer: MergedCustomer) {
@@ -809,64 +727,7 @@ function ClientesInner() {
               {chip.label}
             </button>
           ))}
-          <div className="ml-auto flex items-center gap-2">
-            {saleSaved && (
-              <span className="animate-mm-fade-in text-xs font-semibold" style={{ color: COLOR_HEX.positive }}>
-                Venda fiado registrada!
-              </span>
-            )}
-            <PrimaryButton hex={COLOR_HEX.negative} onClick={() => (saleFormOpen ? setSaleFormOpen(false) : openSaleForm())}>
-              {saleFormOpen ? "Fechar" : "+ Lançar venda no fiado"}
-            </PrimaryButton>
-          </div>
         </div>
-
-        {saleFormOpen && (
-          <form
-            ref={saleFormRef}
-            onSubmit={handleAddSale}
-            className="animate-mm-slide-up mt-3 rounded-2xl border border-white/[0.09] bg-white/[0.035] p-4 backdrop-blur-xl"
-          >
-            <p className="text-sm font-semibold text-white">Lançar venda no fiado</p>
-            <p className="mt-0.5 text-xs text-white/40">
-              Serve pra cliente novo ou antigo — se o WhatsApp já existe, a venda entra na conta dele.
-            </p>
-            <div className="mt-3 grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-              <input value={saleName} onChange={(e) => setSaleName(e.target.value)} placeholder="Nome do cliente" className={INPUT} />
-              <input value={salePhone} onChange={(e) => setSalePhone(e.target.value)} placeholder="WhatsApp" className={INPUT} />
-              <input
-                value={saleAmount}
-                onChange={(e) => setSaleAmount(e.target.value)}
-                placeholder="Valor da venda (R$)"
-                inputMode="decimal"
-                className={INPUT}
-              />
-              <input value={saleNote} onChange={(e) => setSaleNote(e.target.value)} placeholder="O que levou (opcional)" className={INPUT} />
-              <div className="sm:col-span-2">
-                <label className="block text-xs text-white/40">Vencimento (opcional)</label>
-                <input
-                  type="date"
-                  value={saleDueDate}
-                  onChange={(e) => setSaleDueDate(e.target.value)}
-                  className={`${INPUT} mt-1 w-full sm:w-auto`}
-                />
-              </div>
-            </div>
-            {saleError && (
-              <p className="mt-2 text-sm" style={{ color: COLOR_HEX.negative }}>
-                {saleError}
-              </p>
-            )}
-            <div className="mt-3 flex items-center gap-2">
-              <PrimaryButton type="submit" hex={COLOR_HEX.negative} disabled={savingSale}>
-                {savingSale ? "Salvando…" : "Registrar venda fiado"}
-              </PrimaryButton>
-              <SecondaryButton onClick={() => setSaleFormOpen(false)} disabled={savingSale}>
-                Cancelar
-              </SecondaryButton>
-            </div>
-          </form>
-        )}
 
         {loading && (
           <div className="mt-4 space-y-3">
@@ -1242,9 +1103,6 @@ function ClientesInner() {
                                 <PrimaryButton hex={COLOR_HEX.positive} onClick={() => payment.start(customer.creditCustomerId!)}>
                                   Registrar pagamento
                                 </PrimaryButton>
-                                <SecondaryButton onClick={() => openSaleForm({ name: customer.name, phone: customer.phone })}>
-                                  Lançar venda fiado
-                                </SecondaryButton>
                                 {customer.creditBalance > 0 && (
                                   <button
                                     type="button"
@@ -1285,12 +1143,7 @@ function ClientesInner() {
                           )}
                         </>
                       ) : (
-                        <div className="flex flex-wrap items-center gap-3">
-                          <p className="text-sm text-white/40">Esse cliente não tem fiado registrado.</p>
-                          <SecondaryButton onClick={() => openSaleForm({ name: customer.name, phone: customer.phone })}>
-                            Lançar venda fiado
-                          </SecondaryButton>
-                        </div>
+                        <p className="text-sm text-white/40">Esse cliente não tem fiado registrado.</p>
                       )}
                     </Section>
 
