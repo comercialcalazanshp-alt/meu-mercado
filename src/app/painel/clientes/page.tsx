@@ -507,36 +507,6 @@ function ClientesInner() {
     await getSupabase().from("credit_customers").update({ credit_limit: value }).eq("id", customer.creditCustomerId);
   }
 
-  async function handleWriteOff(customerId: string, currentBalance: number) {
-    if (currentBalance <= 0) return;
-    if (
-      !window.confirm(
-        "Atenção: isso é pra PERDOAR uma dívida que você não vai cobrar (cliente sumiu, deu calote etc). Se o cliente pagou de verdade, cancele aqui e use o botão \"Registrar pagamento\" em vez desse.\n\nContinuar mesmo assim?",
-      )
-    )
-      return;
-    const raw = window.prompt(
-      `Perdoar quanto da dívida de ${formatCurrency(currentBalance)}? (fica registrado como perdão, não como pagamento recebido)`,
-      String(currentBalance),
-    );
-    if (raw === null) return;
-    const value = Number(raw.replace(",", "."));
-    if (Number.isNaN(value) || value <= 0 || value > currentBalance) {
-      window.alert("Digite um valor válido, até o saldo devedor atual.");
-      return;
-    }
-    if (!window.confirm(`Confirma perdoar ${formatCurrency(value)}? Essa dívida sai do saldo do cliente sem ter sido paga.`)) return;
-    await getSupabase().from("credit_transactions").insert({
-      customer_id: customerId,
-      type: "baixa",
-      amount: value,
-      note: "Baixa de dívida incobrável",
-    });
-    await getSupabase().rpc("apply_credit_auto_block", { p_customer_id: customerId });
-    loadCustomers();
-    fetchCreditTransactions(customerId);
-  }
-
   function collectionWhatsappLink(customer: MergedCustomer, overdue: OverdueInfo) {
     const firstName = customer.name.split(" ")[0];
     const msg =
@@ -1099,22 +1069,9 @@ function ClientesInner() {
                               )}
                               </>
                             ) : (
-                              <div className="flex flex-wrap items-center gap-2">
-                                <PrimaryButton hex={COLOR_HEX.positive} onClick={() => payment.start(customer.creditCustomerId!)}>
-                                  Registrar pagamento
-                                </PrimaryButton>
-                                {customer.creditBalance > 0 && (
-                                  <button
-                                    type="button"
-                                    onClick={() => handleWriteOff(customer.creditCustomerId!, customer.creditBalance)}
-                                    title="Pra receber um pagamento de verdade, use 'Registrar pagamento' — esse aqui é só pra perdoar dívida que não vai ser cobrada"
-                                    className="rounded-lg border px-3.5 py-1.5 text-sm font-medium transition hover:brightness-125"
-                                    style={{ borderColor: `${COLOR_HEX.negative}55`, color: COLOR_HEX.negative }}
-                                  >
-                                    Perdoar dívida
-                                  </button>
-                                )}
-                              </div>
+                              <PrimaryButton hex={COLOR_HEX.positive} onClick={() => payment.start(customer.creditCustomerId!)}>
+                                Registrar pagamento
+                              </PrimaryButton>
                             )}
                             {payment.error && payment.payingId === customer.creditCustomerId && (
                               <p className="mt-2 text-sm" style={{ color: COLOR_HEX.negative }}>
