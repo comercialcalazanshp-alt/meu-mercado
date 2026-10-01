@@ -60,6 +60,10 @@ type CartLine = {
   onOffer?: boolean;
   offerPrice?: number | null;
   offerEndsAt?: string | null;
+  // Preço negociado na hora pelo caixa, só pra essa venda — vale no lugar de
+  // qualquer preço de tabela/oferta/atacado/fiado/combo. Nunca junto com uma
+  // mudança permanente (essa já muda line.price direto, sem precisar disso).
+  priceOverride?: number | null;
 };
 
 type RecentSale = {
@@ -125,6 +129,7 @@ function pdvLineTotal(
   paymentMethod: PaymentMethod | null,
   isSplit: boolean,
 ): number {
+  if (line.priceOverride != null) return line.priceOverride * quantity;
   if (line.isKit) return line.price * quantity;
   if (!isSplit && paymentMethod === "fiado" && line.priceFiado != null) {
     return line.priceFiado * quantity;
@@ -295,6 +300,13 @@ function IconTrash({ className }: { className?: string }) {
     </svg>
   );
 }
+function IconPencil({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" className={className} aria-hidden="true">
+      <path d="M4 20h4L19 9a2.1 2.1 0 0 0-3-3L5 17v3zM14.5 7.5l3 3" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
 
 export default function Pdv() {
   const store = useStore();
@@ -312,6 +324,11 @@ export default function Pdv() {
       return [];
     }
   });
+  const [editingPriceId, setEditingPriceId] = useState<string | null>(null);
+  const [priceDraft, setPriceDraft] = useState("");
+  const [costDraft, setCostDraft] = useState("");
+  const [priceScope, setPriceScope] = useState<"once" | "always">("once");
+  const [priceSaving, setPriceSaving] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   // Salva o carrinho em andamento no navegador — se a página recarregar no
@@ -774,6 +791,63 @@ export default function Pdv() {
 
   function removeLine(productId: string) {
     setCart((prev) => prev.filter((l) => l.productId !== productId));
+    setEditingPriceId((cur) => (cur === productId ? null : cur));
+  }
+
+  function openPriceEditor(line: CartLine) {
+    if (editingPriceId === line.productId) {
+      setEditingPriceId(null);
+      return;
+    }
+    const current = line.priceOverride ?? line.price;
+    setPriceDraft(current.toFixed(2).replace(".", ","));
+    setCostDraft("");
+    setPriceScope("once");
+    setEditingPriceId(line.productId);
+  }
+
+  // "Só nessa venda": muda só o carrinho (priceOverride), igual antes.
+  // "Em todas as vendas": muda o preço (e custo, se digitado) do produto de
+  // vez no cadastro, e a linha do carrinho passa a usar esse preço normal
+  // (sem override) — já que agora É o preço de tabela.
+  async function confirmPriceDraft(line: CartLine) {
+    const parsedPrice = Number(priceDraft.replace(/\./g, "").replace(",", "."));
+    if (!Number.isFinite(parsedPrice) || parsedPrice < 0) return;
+    const roundedPrice = Math.round(parsedPrice * 100) / 100;
+
+    if (priceScope === "once") {
+      setCart((prev) =>
+        prev.map((l) => (l.productId === line.productId ? { ...l, priceOverride: roundedPrice } : l)),
+      );
+      setEditingPriceId(null);
+      focusSearch();
+      return;
+    }
+
+    // "em todas as vendas" não existe pra kit — kit não tem linha própria em products.
+    if (line.isKit) {
+      setEditingPriceId(null);
+      return;
+    }
+
+    const parsedCost = costDraft.trim() ? Number(costDraft.replace(/\./g, "").replace(",", ".")) : null;
+    if (costDraft.trim() && (!Number.isFinite(parsedCost) || (parsedCost as number) < 0)) return;
+
+    setPriceSaving(true);
+    const update: Record<string, number> = { price: roundedPrice };
+    if (parsedCost != null) update.cost_price = parsedCost;
+    const { error } = await getSupabase().from("products").update(update).eq("id", line.productId);
+    setPriceSaving(false);
+    if (error) return;
+
+    setCart((prev) =>
+      prev.map((l) =>
+        l.productId === line.productId ? { ...l, price: roundedPrice, priceOverride: null } : l,
+      ),
+    );
+    setProducts((prev) => prev.map((p) => (p.id === line.productId ? { ...p, price: roundedPrice } : p)));
+    setEditingPriceId(null);
+    focusSearch();
   }
 
   // Se o carrinho mudar depois do QR gerado, o código impresso ficaria com
@@ -1041,9 +1115,12 @@ export default function Pdv() {
     setSaving(true);
     setError(null);
 
-    const items = cart.map((l) =>
-      l.isKit ? { kit_id: l.productId, quantity: l.quantity } : { product_id: l.productId, quantity: l.quantity },
-    );
+    const items = cart.map((l) => {
+      const base = l.isKit
+        ? { kit_id: l.productId, quantity: l.quantity }
+        : { product_id: l.productId, quantity: l.quantity };
+      return l.priceOverride != null ? { ...base, unit_price: l.priceOverride } : base;
+    });
 
     const payload: Record<string, unknown> = splitMode
       ? {
@@ -1504,12 +1581,13 @@ export default function Pdv() {
           {cart.map((line) => (
             <div
               key={line.productId}
-              className="flex flex-col gap-2.5 rounded-2xl border border-white/[0.09] bg-white/[0.035] p-3.5 backdrop-blur-xl sm:flex-row sm:items-center sm:justify-between"
+              className="rounded-2xl border border-white/[0.09] bg-white/[0.035] p-3.5 backdrop-blur-xl"
             >
+            <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between">
               <div className="min-w-0 flex-1">
                 <p className="break-words font-medium text-[#F5F3EF]">{line.name}</p>
                 <p className="text-sm text-white/40">
-                  {formatCurrency(line.price)} {line.soldByWeight ? "/kg" : "un."}
+                  {formatCurrency(line.priceOverride ?? line.price)} {line.soldByWeight ? "/kg" : "un."}
                 </p>
                 {line.quantity > line.stock && (
                   <p className="mt-1 inline-flex items-center gap-1 rounded-full bg-[#FF5C68]/10 px-2 py-0.5 text-xs font-medium text-[#FF5C68]">
@@ -1566,14 +1644,127 @@ export default function Pdv() {
                 <p className="w-20 shrink-0 text-right font-semibold tabular-nums text-[#F5F3EF]">
                   {formatCurrency(pdvLineTotal(line, line.quantity, paymentMethod, splitMode))}
                 </p>
-                <button
-                  onClick={() => removeLine(line.productId)}
-                  aria-label="Remover item"
-                  className="shrink-0 rounded-lg p-1.5 text-white/30 transition hover:bg-[#FF5C68]/10 hover:text-[#FF5C68]"
-                >
-                  <IconTrash className="h-4 w-4" />
-                </button>
+                <div className="flex shrink-0 items-center">
+                  <button
+                    onClick={() => openPriceEditor(line)}
+                    aria-label="Alterar preço do item"
+                    title="Alterar preço"
+                    className={`rounded-lg p-1.5 transition hover:bg-[#F0BB5E]/10 hover:text-[#F0BB5E] ${
+                      editingPriceId === line.productId ? "text-[#F0BB5E]" : "text-white/30"
+                    }`}
+                  >
+                    <IconPencil className="h-4 w-4" />
+                  </button>
+                  <button
+                    onClick={() => removeLine(line.productId)}
+                    aria-label="Remover item"
+                    className="rounded-lg p-1.5 text-white/30 transition hover:bg-[#FF5C68]/10 hover:text-[#FF5C68]"
+                  >
+                    <IconTrash className="h-4 w-4" />
+                  </button>
+                </div>
               </div>
+            </div>
+            {editingPriceId === line.productId && (
+              <div className="mt-3 space-y-2.5 border-t border-white/[0.06] pt-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <label className="text-sm text-white/55" htmlFor={`price-${line.productId}`}>
+                    Novo preço {line.soldByWeight ? "por kg" : "da unidade"}
+                  </label>
+                  <div className="flex items-center rounded-lg border border-white/10 bg-white/[0.04] px-2.5 focus-within:border-[#F0BB5E]/50">
+                    <span className="text-sm text-white/40">R$</span>
+                    <input
+                      id={`price-${line.productId}`}
+                      autoFocus
+                      type="text"
+                      inputMode="decimal"
+                      value={priceDraft}
+                      onChange={(e) => setPriceDraft(e.target.value)}
+                      onFocus={(e) => e.currentTarget.select()}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          confirmPriceDraft(line);
+                        } else if (e.key === "Escape") {
+                          setEditingPriceId(null);
+                          focusSearch();
+                        }
+                      }}
+                      className="w-24 bg-transparent px-2 py-1.5 text-sm font-semibold tabular-nums text-[#F5F3EF] focus:outline-none"
+                    />
+                  </div>
+                </div>
+
+                {!line.isKit && (
+                  <div className="flex flex-wrap items-center gap-3 text-sm">
+                    <label className="flex items-center gap-1.5 text-white/60">
+                      <input
+                        type="radio"
+                        name={`scope-${line.productId}`}
+                        checked={priceScope === "once"}
+                        onChange={() => setPriceScope("once")}
+                        className="accent-[#F0BB5E]"
+                      />
+                      Só nessa venda
+                    </label>
+                    <label className="flex items-center gap-1.5 text-white/60">
+                      <input
+                        type="radio"
+                        name={`scope-${line.productId}`}
+                        checked={priceScope === "always"}
+                        onChange={() => setPriceScope("always")}
+                        className="accent-[#F0BB5E]"
+                      />
+                      Em todas as vendas (muda o cadastro)
+                    </label>
+                  </div>
+                )}
+
+                {priceScope === "always" && !line.isKit && (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <label className="text-sm text-white/55" htmlFor={`cost-${line.productId}`}>
+                      Novo custo (opcional)
+                    </label>
+                    <div className="flex items-center rounded-lg border border-white/10 bg-white/[0.04] px-2.5 focus-within:border-[#F0BB5E]/50">
+                      <span className="text-sm text-white/40">R$</span>
+                      <input
+                        id={`cost-${line.productId}`}
+                        type="text"
+                        inputMode="decimal"
+                        value={costDraft}
+                        onChange={(e) => setCostDraft(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            confirmPriceDraft(line);
+                          }
+                        }}
+                        className="w-24 bg-transparent px-2 py-1.5 text-sm font-semibold tabular-nums text-[#F5F3EF] focus:outline-none"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => confirmPriceDraft(line)}
+                    disabled={priceSaving}
+                    className="rounded-lg bg-[#F0BB5E] px-3 py-1.5 text-sm font-semibold text-black transition hover:brightness-110 disabled:opacity-60"
+                  >
+                    {priceSaving ? "Salvando…" : "Aplicar"}
+                  </button>
+                  <button
+                    onClick={() => {
+                      setEditingPriceId(null);
+                      focusSearch();
+                    }}
+                    className="rounded-lg px-3 py-1.5 text-sm text-white/40 transition hover:text-white/70"
+                  >
+                    Cancelar
+                  </button>
+                </div>
+              </div>
+            )}
             </div>
           ))}
         </div>
