@@ -706,6 +706,21 @@ export default function Pdv() {
   const splitDiff = Math.round((total - splitSum) * 100) / 100;
   const splitHasFiado = splitPayments.some((p, i) => p.method === "fiado" && splitAmounts[i] > 0);
 
+  // Pão não entra no crediário: a parte da compra que é pão tem que ser paga
+  // na hora. breadTotal = quanto do carrinho é pão; fiadoMax = o máximo que
+  // pode ir pro crediário (o resto da compra, já com o desconto aplicado).
+  const breadTotal =
+    Math.round(
+      cart.filter((l) => l.quick).reduce((sum, l) => sum + pdvLineTotal(l, l.quantity, paymentMethod, splitMode), 0) * 100,
+    ) / 100;
+  const fiadoMax = Math.max(0, Math.round((total - breadTotal) * 100) / 100);
+  const fiadoRequested = splitMode
+    ? splitPayments.reduce((sum, pay, i) => sum + (pay.method === "fiado" ? splitAmounts[i] : 0), 0)
+    : paymentMethod === "fiado"
+      ? total
+      : 0;
+  const breadFiadoBlocked = breadTotal > 0 && fiadoRequested > fiadoMax + 0.004;
+
   function focusSearch() {
     searchInputRef.current?.focus();
   }
@@ -1183,6 +1198,20 @@ export default function Pdv() {
     setSplitPayments((prev) => (prev.length >= 4 ? prev : [...prev, { method: "cartao", amount: "" }]));
   }
 
+  // "Pães agora, resto no crediário": monta o pagamento dividido já com a parte
+  // dos pães paga na hora e o resto no crediário, sem perder o cliente do
+  // crediário que já tenha sido escolhido.
+  function applyBreadSplit() {
+    const fmt = (v: number) => v.toFixed(2).replace(".", ",");
+    setSplitMode(true);
+    setPaymentMethod(null);
+    setCashReceived("");
+    setSplitPayments([
+      { method: "dinheiro", amount: fmt(breadTotal) },
+      { method: "fiado", amount: fmt(fiadoMax) },
+    ]);
+  }
+
   function removeSplitRow(index: number) {
     setSplitPayments((prev) => (prev.length <= 2 ? prev : prev.filter((_, i) => i !== index)));
   }
@@ -1190,6 +1219,7 @@ export default function Pdv() {
   const canFinalize =
     cart.length > 0 &&
     !saving &&
+    !breadFiadoBlocked &&
     (splitMode
       ? splitAmounts.every((a) => a > 0) &&
         Math.abs(splitDiff) < 0.005 &&
@@ -2380,11 +2410,27 @@ export default function Pdv() {
           </div>
         )}
 
-        {(paymentMethod === "fiado" || splitHasFiado) && cart.some((l) => l.quick) && (
-          <p className="mt-3 flex items-center gap-1.5 rounded-lg bg-[#FF5C68]/10 px-3 py-2 text-sm font-medium text-[#FF5C68]">
-            <IconWarning className="h-4 w-4 shrink-0" />
-            Atenção: pães não entram no crediário.
-          </p>
+        {breadFiadoBlocked && (
+          <div className="mt-3 rounded-lg bg-[#FF5C68]/10 px-3 py-2 text-sm text-[#FF5C68]">
+            <p className="flex items-start gap-1.5 font-medium">
+              <IconWarning className="mt-0.5 h-4 w-4 shrink-0" />
+              <span>
+                Pão não entra no crediário. Os pães somam {formatCurrency(breadTotal)} e precisam ser pagos agora
+                {fiadoMax > 0
+                  ? ` — só ${formatCurrency(fiadoMax)} (o resto da compra) pode ir pro crediário.`
+                  : ". Escolha Dinheiro, Pix ou Cartão."}
+              </span>
+            </p>
+            {fiadoMax > 0 && (
+              <button
+                type="button"
+                onClick={applyBreadSplit}
+                className="mt-2 rounded-md border border-[#FF5C68]/40 px-2.5 py-1 text-xs font-semibold transition hover:bg-[#FF5C68]/10"
+              >
+                Pagar {formatCurrency(breadTotal)} dos pães agora e {formatCurrency(fiadoMax)} no crediário
+              </button>
+            )}
+          </div>
         )}
 
         {error && (
