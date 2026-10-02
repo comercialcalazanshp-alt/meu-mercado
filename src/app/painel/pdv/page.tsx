@@ -35,6 +35,9 @@ type Product = {
   on_offer: boolean;
   offer_price: number | null;
   offer_ends_at: string | null;
+  // Tela de venda rápida (Pães): quais produtos viram botão e em que ordem.
+  quick_sale?: boolean;
+  quick_sale_order?: number;
 };
 
 type KitOption = {
@@ -64,6 +67,9 @@ type CartLine = {
   // qualquer preço de tabela/oferta/atacado/fiado/combo. Nunca junto com uma
   // mudança permanente (essa já muda line.price direto, sem precisar disso).
   priceOverride?: number | null;
+  // veio de um botão da faixa de pães — estoque de pão não é controlado no
+  // dia a dia, então não deve travar nem assustar a venda.
+  quick?: boolean;
 };
 
 type RecentSale = {
@@ -329,6 +335,21 @@ export default function Pdv() {
   const [costDraft, setCostDraft] = useState("");
   const [priceScope, setPriceScope] = useState<"once" | "always">("once");
   const [priceSaving, setPriceSaving] = useState(false);
+  // Modo "Pães": mostra a faixa de botões de venda rápida. Lembra a escolha
+  // em cada aparelho (o notebook dos pães fica ligado, o outro desligado).
+  const paesKey = `mm_pdv_paes_${store.id}`;
+  const [paesMode, setPaesMode] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false;
+    try {
+      return window.localStorage.getItem(paesKey) === "1";
+    } catch {
+      return false;
+    }
+  });
+  const [contagemOpen, setContagemOpen] = useState(false);
+  const [contagemDraft, setContagemDraft] = useState<Record<string, string>>({});
+  const [contagemSaving, setContagemSaving] = useState(false);
+  const [contagemError, setContagemError] = useState<string | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   // Salva o carrinho em andamento no navegador — se a página recarregar no
@@ -425,7 +446,7 @@ export default function Pdv() {
       const { data, error: fetchError } = await getSupabase()
         .from("products")
         .select(
-          "id, name, price, stock, barcode, sold_by_weight, promo_buy_qty, promo_pay_qty, price_wholesale, wholesale_min_qty, price_fiado, on_offer, offer_price, offer_ends_at",
+          "id, name, price, stock, barcode, sold_by_weight, promo_buy_qty, promo_pay_qty, price_wholesale, wholesale_min_qty, price_fiado, on_offer, offer_price, offer_ends_at, quick_sale, quick_sale_order",
         )
         .eq("store_id", store.id)
         .order("name", { ascending: true })
@@ -660,6 +681,14 @@ export default function Pdv() {
     return kits.filter((k) => k.name.toLowerCase().includes(q)).slice(0, 4);
   }, [search, qtyPrefix, kits]);
 
+  const breadProducts = useMemo(
+    () =>
+      products
+        .filter((p) => p.quick_sale)
+        .sort((a, b) => (a.quick_sale_order ?? 0) - (b.quick_sale_order ?? 0) || a.name.localeCompare(b.name)),
+    [products],
+  );
+
   const subtotal = cart.reduce(
     (sum, line) => sum + pdvLineTotal(line, line.quantity, paymentMethod, splitMode),
     0,
@@ -699,6 +728,7 @@ export default function Pdv() {
           quantity: qty,
           stock: product.stock,
           soldByWeight: product.sold_by_weight,
+          quick: !!product.quick_sale,
           promoBuyQty: product.promo_buy_qty,
           promoPayQty: product.promo_pay_qty,
           priceWholesale: product.price_wholesale,
@@ -787,6 +817,63 @@ export default function Pdv() {
   function setQuantityDirect(productId: string, value: number) {
     if (!Number.isFinite(value) || value <= 0) return;
     setCart((prev) => prev.map((l) => (l.productId === productId ? { ...l, quantity: round3(value) } : l)));
+  }
+
+  function togglePaes() {
+    const next = !paesMode;
+    setPaesMode(next);
+    setContagemOpen(false);
+    try {
+      window.localStorage.setItem(paesKey, next ? "1" : "0");
+    } catch {
+      // sem localStorage — a escolha só vale até recarregar a página
+    }
+    focusSearch();
+  }
+
+  function openContagem() {
+    if (contagemOpen) {
+      setContagemOpen(false);
+      return;
+    }
+    setContagemDraft({});
+    setContagemError(null);
+    setContagemOpen(true);
+  }
+
+  // "Contagem do dia": o dono digita quantos pães de cada tipo chegaram e isso
+  // SUBSTITUI o estoque (não soma). Só mexe nos que foram digitados.
+  async function saveContagem() {
+    const changes = breadProducts
+      .map((p) => ({ p, raw: (contagemDraft[p.id] ?? "").trim() }))
+      .filter((x) => x.raw !== "")
+      .map((x) => ({ id: x.p.id, value: Number(x.raw) }));
+    if (changes.some((c) => !Number.isInteger(c.value) || c.value < 0)) {
+      setContagemError("Use só números inteiros (0 ou mais).");
+      return;
+    }
+    if (changes.length === 0) {
+      setContagemOpen(false);
+      return;
+    }
+    setContagemSaving(true);
+    setContagemError(null);
+    const results = await Promise.all(
+      changes.map((c) => getSupabase().from("products").update({ stock: c.value }).eq("id", c.id)),
+    );
+    setContagemSaving(false);
+    if (results.some((r) => r.error)) {
+      setContagemError("Não consegui salvar tudo. Confira a internet e tente de novo.");
+      return;
+    }
+    setProducts((prev) =>
+      prev.map((pr) => {
+        const c = changes.find((x) => x.id === pr.id);
+        return c ? { ...pr, stock: c.value } : pr;
+      }),
+    );
+    setContagemOpen(false);
+    focusSearch();
   }
 
   function removeLine(productId: string) {
@@ -1141,6 +1228,12 @@ export default function Pdv() {
           p_discount_amount: discountAmount,
         };
 
+    // Pão não trava por estoque (a contagem do dia pode estar desatualizada e
+    // fila não espera): só libera quando a única falta de estoque é de pão.
+    if (cart.some((l) => l.quick && l.quantity > l.stock) && cart.every((l) => l.quick || l.quantity <= l.stock)) {
+      payload.p_allow_negative_stock = true;
+    }
+
     let saleTotal = total;
     let wentOffline = false;
 
@@ -1346,6 +1439,21 @@ export default function Pdv() {
               Atalhos
               <kbd className="ml-0.5 rounded bg-white/10 px-1 py-0.5 font-mono text-[10px] text-white/45">F1</kbd>
             </button>
+            <button
+              type="button"
+              onClick={togglePaes}
+              aria-pressed={paesMode}
+              className={`inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-sm font-medium backdrop-blur-xl transition ${
+                paesMode
+                  ? "border-[var(--mm-accent)]/50 bg-[var(--mm-accent)]/15 text-[var(--mm-accent)]"
+                  : "border-white/[0.09] bg-white/[0.035] text-white/55 hover:bg-white/[0.06] hover:text-white/80"
+              }`}
+            >
+              <span className={`relative inline-block h-4 w-7 rounded-full transition ${paesMode ? "bg-[var(--mm-accent)]" : "bg-white/15"}`}>
+                <span className={`absolute top-0.5 h-3 w-3 rounded-full bg-white transition-all ${paesMode ? "left-[14px]" : "left-0.5"}`} />
+              </span>
+              Pães
+            </button>
             {lastSale && lastSale.length > 0 && (
               <button
                 onClick={repeatLastSale}
@@ -1397,6 +1505,102 @@ export default function Pdv() {
               ? "Sincronizando vendas feitas sem internet…"
               : `${pendingSaleCount} venda${pendingSaleCount > 1 ? "s" : ""} ainda não sincronizada${pendingSaleCount > 1 ? "s" : ""}.`}
           </p>
+        )}
+
+        {paesMode && (
+          <div className="mt-4 rounded-2xl border border-white/[0.09] bg-white/[0.035] p-3 backdrop-blur-xl">
+            <div className="mb-2 flex items-center justify-between">
+              <p className="text-xs font-bold uppercase tracking-wide text-white/40">Pães</p>
+              <button
+                type="button"
+                onClick={openContagem}
+                className="text-xs font-semibold text-white/50 underline underline-offset-2 hover:text-white/80"
+              >
+                Contagem do dia
+              </button>
+            </div>
+            {breadProducts.length === 0 ? (
+              <p className="text-sm text-white/40">
+                {loadingProducts ? "Carregando…" : "Nenhum produto marcado como venda rápida ainda."}
+              </p>
+            ) : (
+              <div className="grid grid-cols-[repeat(auto-fill,minmax(128px,1fr))] gap-2">
+                {breadProducts.map((p) => {
+                  const q = cart.find((l) => l.productId === p.id)?.quantity ?? 0;
+                  const resta = p.stock - q;
+                  return (
+                    <div key={p.id} className="relative">
+                      <button
+                        type="button"
+                        onClick={() => addToCart(p)}
+                        className="w-full rounded-xl border border-white/10 bg-white/[0.04] px-3 py-3 text-left transition hover:bg-white/[0.08] active:scale-[0.98]"
+                      >
+                        <span className="block pr-7 text-sm font-semibold leading-tight text-[#F5F3EF]">{p.name}</span>
+                        <span className="mt-1 block text-xs text-white/40">{formatCurrency(p.price)}</span>
+                        <span className={`mt-1 block text-[11px] ${resta > 0 ? "text-white/30" : "text-[#FF5C68]"}`}>
+                          {resta > 0 ? `restam ${resta}` : "acabou"}
+                        </span>
+                      </button>
+                      {q > 0 && (
+                        <>
+                          <span className="pointer-events-none absolute right-2 top-2 flex h-7 min-w-7 items-center justify-center rounded-full bg-[var(--mm-accent)] px-1.5 text-sm font-bold text-[#0A0A0C]">
+                            {q}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => changeQuantity(p.id, -1)}
+                            aria-label={`Tirar um ${p.name}`}
+                            className="absolute bottom-1.5 right-1.5 rounded-md border border-white/15 bg-black/40 px-2 text-sm leading-6 text-white/70 hover:text-white"
+                          >
+                            −
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            {contagemOpen && (
+              <div className="mt-3 border-t border-white/[0.06] pt-3">
+                <p className="mb-2 text-xs text-white/40">
+                  Quantos pães chegaram hoje? O número digitado substitui o estoque atual de cada pão (deixe em branco o que não mudou).
+                </p>
+                <div className="grid grid-cols-[repeat(auto-fill,minmax(170px,1fr))] gap-2">
+                  {breadProducts.map((p) => (
+                    <label key={p.id} className="flex items-center justify-between gap-2 text-xs text-white/60">
+                      <span className="truncate">{p.name}</span>
+                      <input
+                        inputMode="numeric"
+                        value={contagemDraft[p.id] ?? ""}
+                        onChange={(e) => setContagemDraft((prev) => ({ ...prev, [p.id]: e.target.value }))}
+                        placeholder={String(p.stock)}
+                        className="w-16 rounded-md border border-white/10 bg-white/[0.04] px-2 py-1 text-center text-sm text-[#F5F3EF] placeholder:text-white/25"
+                      />
+                    </label>
+                  ))}
+                </div>
+                {contagemError && <p className="mt-2 text-xs text-[#FF5C68]">{contagemError}</p>}
+                <div className="mt-3 flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={saveContagem}
+                    disabled={contagemSaving}
+                    className="rounded-lg bg-[#F0BB5E] px-3 py-1.5 text-sm font-semibold text-black transition hover:brightness-110 disabled:opacity-60"
+                  >
+                    {contagemSaving ? "Salvando…" : "Salvar contagem"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setContagemOpen(false)}
+                    className="rounded-lg px-3 py-1.5 text-sm text-white/40 transition hover:text-white/70"
+                  >
+                    Cancelar
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
         )}
 
         <div className="relative mt-4">
@@ -1589,13 +1793,13 @@ export default function Pdv() {
                 <p className="text-sm text-white/40">
                   {formatCurrency(line.priceOverride ?? line.price)} {line.soldByWeight ? "/kg" : "un."}
                 </p>
-                {line.quantity > line.stock && (
+                {!line.quick && line.quantity > line.stock && (
                   <p className="mt-1 inline-flex items-center gap-1 rounded-full bg-[#FF5C68]/10 px-2 py-0.5 text-xs font-medium text-[#FF5C68]">
                     <IconWarning className="h-3 w-3" />
                     Só tem {line.soldByWeight ? line.stock.toFixed(3) : line.stock} em estoque
                   </p>
                 )}
-                {line.quantity <= line.stock && line.quantity === line.stock && (
+                {!line.quick && line.quantity <= line.stock && line.quantity === line.stock && (
                   <p className="mt-1 inline-flex items-center gap-1 rounded-full bg-[#F0BB5E]/10 px-2 py-0.5 text-xs font-medium text-[#F0BB5E]">
                     <IconWarning className="h-3 w-3" />
                     Vai zerar o estoque
@@ -2174,6 +2378,13 @@ export default function Pdv() {
               </>
             )}
           </div>
+        )}
+
+        {(paymentMethod === "fiado" || splitHasFiado) && cart.some((l) => l.quick) && (
+          <p className="mt-3 flex items-center gap-1.5 rounded-lg bg-[#FF5C68]/10 px-3 py-2 text-sm font-medium text-[#FF5C68]">
+            <IconWarning className="h-4 w-4 shrink-0" />
+            Atenção: pães não entram no crediário.
+          </p>
         )}
 
         {error && (
