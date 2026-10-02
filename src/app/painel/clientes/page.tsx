@@ -967,8 +967,9 @@ function ClientesInner() {
                                   <li key={tx.id}>
                                     <div className="flex justify-between gap-3 text-white/50">
                                       <span className="min-w-0">
-                                        {TX_LABELS[tx.type]}
-                                        {tx.note ? ` — ${tx.note}` : ""}
+                                        {tx.type === "baixa" && tx.note?.startsWith("Desconto")
+                                          ? tx.note
+                                          : `${TX_LABELS[tx.type]}${tx.note ? ` — ${tx.note}` : ""}`}
                                         {tx.type === "pagamento" && tx.payment_method
                                           ? ` (${PAYMENT_METHOD_LABELS[tx.payment_method as PaymentMethod] ?? tx.payment_method})`
                                           : ""}{" "}
@@ -1029,10 +1030,10 @@ function ClientesInner() {
                                 <input
                                   value={payment.amount}
                                   onChange={(e) => payment.setAmount(e.target.value)}
-                                  placeholder="Valor pago (R$)"
+                                  placeholder="Valor a quitar (R$)"
                                   inputMode="decimal"
                                   autoFocus
-                                  className={`${INPUT} w-36`}
+                                  className={`${INPUT} w-40`}
                                 />
                                 {customer.creditBalance > 0 && (
                                   <SecondaryButton
@@ -1041,6 +1042,47 @@ function ClientesInner() {
                                   >
                                     Valor total
                                   </SecondaryButton>
+                                )}
+                                <div className="flex w-full flex-wrap items-center gap-2">
+                                  <span className="text-sm text-white/50">Desconto</span>
+                                  <div className="flex overflow-hidden rounded-lg border border-white/[0.12]">
+                                    {(["valor", "percent"] as const).map((mode) => (
+                                      <button
+                                        key={mode}
+                                        type="button"
+                                        onClick={() => payment.setDiscountMode(mode)}
+                                        className={`px-3 py-1.5 text-sm font-medium transition ${
+                                          payment.discountMode === mode ? "text-[#0A0A0C]" : "text-white/60 hover:text-white"
+                                        }`}
+                                        style={payment.discountMode === mode ? { background: COLOR_HEX.accent } : undefined}
+                                      >
+                                        {mode === "valor" ? "R$" : "%"}
+                                      </button>
+                                    ))}
+                                  </div>
+                                  <input
+                                    value={payment.discount}
+                                    onChange={(e) => payment.setDiscount(e.target.value)}
+                                    placeholder={payment.discountMode === "valor" ? "0,00" : "0"}
+                                    inputMode="decimal"
+                                    aria-label={payment.discountMode === "valor" ? "Desconto em reais" : "Desconto em porcentagem"}
+                                    className={`${INPUT} w-24`}
+                                  />
+                                </div>
+                                {payment.breakdown.amount > 0 && (
+                                  <p className="w-full text-sm text-white/60">
+                                    Quita {formatCurrency(payment.breakdown.amount)}
+                                    {payment.breakdown.discount > 0 && (
+                                      <>
+                                        {" · "}desconto{" "}
+                                        <span style={{ color: COLOR_HEX.warning }}>−{formatCurrency(payment.breakdown.discount)}</span>
+                                      </>
+                                    )}
+                                    {" · "}cliente paga{" "}
+                                    <span className="font-semibold" style={{ color: COLOR_HEX.positive }}>
+                                      {formatCurrency(payment.breakdown.cash)}
+                                    </span>
+                                  </p>
                                 )}
                                 <div className="flex overflow-hidden rounded-lg border border-white/[0.12]">
                                   {PAYMENT_METHODS.map((method) => (
@@ -1065,7 +1107,7 @@ function ClientesInner() {
                                 </SecondaryButton>
                               </form>
                               {payment.method === "pix" && (
-                                <PixQrPanel amount={Number(payment.amount.replace(",", ".")) || 0} />
+                                <PixQrPanel amount={payment.breakdown.cash} />
                               )}
                               </>
                             ) : (
@@ -1086,7 +1128,8 @@ function ClientesInner() {
                               style={{ borderColor: `${COLOR_HEX.positive}40`, background: `${COLOR_HEX.positive}12` }}
                             >
                               <p className="font-medium" style={{ color: COLOR_HEX.positive }}>
-                                Pagamento de {formatCurrency(payment.success.amount)} registrado ({payment.success.methodLabel}).
+                                Pagamento de {formatCurrency(payment.success.amount)} registrado ({payment.success.methodLabel})
+                                {payment.success.discount > 0 && ` com desconto de ${formatCurrency(payment.success.discount)}`}.
                               </p>
                               <button
                                 type="button"

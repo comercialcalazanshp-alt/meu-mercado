@@ -119,12 +119,23 @@ export function buildCreditPaymentReceiptHtml(params: {
   paperMm: number;
   customerName: string;
   amount: number;
+  discount?: number;
   paymentMethodLabel: string;
   balanceBefore: number;
   balanceAfter: number;
 }) {
-  const { storeName, whatsapp, cnpj, paperMm, customerName, amount, paymentMethodLabel, balanceBefore, balanceAfter } =
-    params;
+  const {
+    storeName,
+    whatsapp,
+    cnpj,
+    paperMm,
+    customerName,
+    amount,
+    discount = 0,
+    paymentMethodLabel,
+    balanceBefore,
+    balanceAfter,
+  } = params;
 
   return receiptDocument(
     paperMm,
@@ -135,6 +146,7 @@ export function buildCreditPaymentReceiptHtml(params: {
     <div class="divider"></div>
     <p class="row"><span>Cliente</span><span>${escapeHtml(customerName)}</span></p>
     <p class="row"><span>Saldo anterior</span><span>${formatCurrency(balanceBefore)}</span></p>
+    ${discount > 0 ? `<p class="row"><span>Valor quitado</span><span>${formatCurrency(amount + discount)}</span></p><p class="row"><span>Desconto</span><span>-${formatCurrency(discount)}</span></p>` : ""}
     <div class="divider"></div>
     <p class="total"><span>Valor pago</span><span>${formatCurrency(amount)}</span></p>
     <div class="divider"></div>
