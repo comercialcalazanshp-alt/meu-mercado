@@ -359,7 +359,10 @@ export default function Pdv() {
   // (quando ela existe) — quem opera o caixa não mexe no estoque sozinho.
   const [stockPinDraft, setStockPinDraft] = useState("");
   const [pinForced, setPinForced] = useState(false);
-  const needsStockPin = !!store.settings_pin || pinForced;
+  const [contagemPinDraft, setContagemPinDraft] = useState("");
+  const [pricePinDraft, setPricePinDraft] = useState("");
+  const [priceError, setPriceError] = useState<string | null>(null);
+  const needsPin = !!store.settings_pin || pinForced;
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   // Salva o carrinho em andamento no navegador — se a página recarregar no
@@ -844,6 +847,28 @@ export default function Pdv() {
     setCart((prev) => prev.map((l) => (l.productId === productId ? { ...l, quantity: round3(value) } : l)));
   }
 
+  // Confere a senha de configuração (4 dígitos) com o valor ATUAL no banco — se
+  // a senha foi criada ou trocada depois que a tela abriu, o valor guardado
+  // aqui estaria velho. Sem permissão pra ler, usa o que a tela já tem.
+  // Devolve a mensagem de erro, ou null se pode seguir (inclusive quando a
+  // loja não tem senha de configuração).
+  async function checkPin(draft: string): Promise<string | null> {
+    let pin: string | null = store.settings_pin ?? null;
+    const { data, error: readError } = await getSupabase()
+      .from("stores")
+      .select("settings_pin")
+      .eq("id", store.id)
+      .maybeSingle();
+    if (!readError && data) pin = data.settings_pin ?? null;
+    if (!pin) return null;
+    if (!draft.trim()) {
+      setPinForced(true);
+      return "Digite a senha de configuração pra confirmar.";
+    }
+    if (draft.trim() !== pin) return "Senha incorreta.";
+    return null;
+  }
+
   function openStockAdd(line: CartLine) {
     if (stockAddId === line.productId) {
       setStockAddId(null);
@@ -869,29 +894,12 @@ export default function Pdv() {
     setStockAddError(null);
     const supabase = getSupabase();
 
-    // Senha: confere com o valor ATUAL no banco (se a senha foi criada ou
-    // trocada depois que a tela abriu, o valor guardado aqui estaria velho).
-    // Se não der pra ler (ex: sem permissão), usa o que a tela já tem.
-    let pin: string | null = store.settings_pin ?? null;
-    const { data: freshStore, error: pinReadError } = await supabase
-      .from("stores")
-      .select("settings_pin")
-      .eq("id", store.id)
-      .maybeSingle();
-    if (!pinReadError && freshStore) pin = freshStore.settings_pin ?? null;
-    if (pin) {
-      if (!stockPinDraft.trim()) {
-        setPinForced(true);
-        setStockAddSaving(false);
-        setStockAddError("Digite a senha de configuração pra confirmar.");
-        return;
-      }
-      if (stockPinDraft.trim() !== pin) {
-        setStockPinDraft("");
-        setStockAddSaving(false);
-        setStockAddError("Senha incorreta.");
-        return;
-      }
+    const pinError = await checkPin(stockPinDraft);
+    if (pinError) {
+      if (pinError === "Senha incorreta.") setStockPinDraft("");
+      setStockAddSaving(false);
+      setStockAddError(pinError);
+      return;
     }
 
     const { data: cur, error: readError } = await supabase.from("products").select("stock").eq("id", line.productId).single();
@@ -932,6 +940,7 @@ export default function Pdv() {
       return;
     }
     setContagemDraft({});
+    setContagemPinDraft("");
     setContagemError(null);
     setContagemOpen(true);
   }
@@ -953,6 +962,13 @@ export default function Pdv() {
     }
     setContagemSaving(true);
     setContagemError(null);
+    const pinError = await checkPin(contagemPinDraft);
+    if (pinError) {
+      if (pinError === "Senha incorreta.") setContagemPinDraft("");
+      setContagemSaving(false);
+      setContagemError(pinError);
+      return;
+    }
     const results = await Promise.all(
       changes.map((c) => getSupabase().from("products").update({ stock: c.value }).eq("id", c.id)),
     );
@@ -984,6 +1000,8 @@ export default function Pdv() {
     const current = line.priceOverride ?? line.price;
     setPriceDraft(current.toFixed(2).replace(".", ","));
     setCostDraft("");
+    setPricePinDraft("");
+    setPriceError(null);
     setPriceScope("once");
     setEditingPriceId(line.productId);
   }
@@ -1016,11 +1034,22 @@ export default function Pdv() {
     if (costDraft.trim() && (!Number.isFinite(parsedCost) || (parsedCost as number) < 0)) return;
 
     setPriceSaving(true);
+    setPriceError(null);
+    const pinError = await checkPin(pricePinDraft);
+    if (pinError) {
+      if (pinError === "Senha incorreta.") setPricePinDraft("");
+      setPriceSaving(false);
+      setPriceError(pinError);
+      return;
+    }
     const update: Record<string, number> = { price: roundedPrice };
     if (parsedCost != null) update.cost_price = parsedCost;
     const { error } = await getSupabase().from("products").update(update).eq("id", line.productId);
     setPriceSaving(false);
-    if (error) return;
+    if (error) {
+      setPriceError("Não consegui salvar. Confira a internet e tente de novo.");
+      return;
+    }
 
     setCart((prev) =>
       prev.map((l) =>
@@ -1691,7 +1720,28 @@ export default function Pdv() {
                   ))}
                 </div>
                 {contagemError && <p className="mt-2 text-xs text-[#FF5C68]">{contagemError}</p>}
-                <div className="mt-3 flex items-center gap-2">
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                  {needsPin && (
+                    <input
+                      type="password"
+                      inputMode="numeric"
+                      autoComplete="off"
+                      value={contagemPinDraft}
+                      onChange={(e) => {
+                        setContagemPinDraft(e.target.value);
+                        setContagemError(null);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          saveContagem();
+                        }
+                      }}
+                      placeholder="Senha"
+                      aria-label="Senha de configuração"
+                      className="w-24 rounded-lg border border-white/10 bg-white/[0.04] px-2.5 py-1.5 text-center text-sm font-semibold tracking-widest text-[#F5F3EF] placeholder:tracking-normal placeholder:text-white/25 focus:border-[#F0BB5E]/50 focus:outline-none"
+                    />
+                  )}
                   <button
                     type="button"
                     onClick={saveContagem}
@@ -2017,7 +2067,7 @@ export default function Pdv() {
                   }}
                   className="w-24 rounded-lg border border-white/10 bg-white/[0.04] px-2.5 py-1.5 text-center text-sm font-semibold tabular-nums text-[#F5F3EF] focus:border-[#F0BB5E]/50 focus:outline-none"
                 />
-                {needsStockPin && (
+                {needsPin && (
                   <input
                     type="password"
                     inputMode="numeric"
@@ -2139,8 +2189,31 @@ export default function Pdv() {
                         className="w-24 bg-transparent px-2 py-1.5 text-sm font-semibold tabular-nums text-[#F5F3EF] focus:outline-none"
                       />
                     </div>
+                    {needsPin && (
+                      <input
+                        type="password"
+                        inputMode="numeric"
+                        autoComplete="off"
+                        value={pricePinDraft}
+                        onChange={(e) => {
+                          setPricePinDraft(e.target.value);
+                          setPriceError(null);
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            confirmPriceDraft(line);
+                          }
+                        }}
+                        placeholder="Senha"
+                        aria-label="Senha de configuração"
+                        className="w-24 rounded-lg border border-white/10 bg-white/[0.04] px-2.5 py-1.5 text-center text-sm font-semibold tracking-widest text-[#F5F3EF] placeholder:tracking-normal placeholder:text-white/25 focus:border-[#F0BB5E]/50 focus:outline-none"
+                      />
+                    )}
                   </div>
                 )}
+
+                {priceError && <p className="text-xs text-[#FF5C68]">{priceError}</p>}
 
                 <div className="flex items-center gap-2">
                   <button
