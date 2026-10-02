@@ -355,6 +355,11 @@ export default function Pdv() {
   const [stockAddDraft, setStockAddDraft] = useState("");
   const [stockAddSaving, setStockAddSaving] = useState(false);
   const [stockAddError, setStockAddError] = useState<string | null>(null);
+  // Adicionar estoque pede a mesma senha de 4 dígitos da tela de Configurações
+  // (quando ela existe) — quem opera o caixa não mexe no estoque sozinho.
+  const [stockPinDraft, setStockPinDraft] = useState("");
+  const [pinForced, setPinForced] = useState(false);
+  const needsStockPin = !!store.settings_pin || pinForced;
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   // Salva o carrinho em andamento no navegador — se a página recarregar no
@@ -847,6 +852,7 @@ export default function Pdv() {
     // já sugere o que falta pra essa venda passar — um toque em "Adicionar" resolve
     const falta = Math.max(0, round3(line.quantity - line.stock));
     setStockAddDraft(String(falta || 1).replace(".", ","));
+    setStockPinDraft("");
     setStockAddError(null);
     setStockAddId(line.productId);
   }
@@ -862,6 +868,32 @@ export default function Pdv() {
     setStockAddSaving(true);
     setStockAddError(null);
     const supabase = getSupabase();
+
+    // Senha: confere com o valor ATUAL no banco (se a senha foi criada ou
+    // trocada depois que a tela abriu, o valor guardado aqui estaria velho).
+    // Se não der pra ler (ex: sem permissão), usa o que a tela já tem.
+    let pin: string | null = store.settings_pin ?? null;
+    const { data: freshStore, error: pinReadError } = await supabase
+      .from("stores")
+      .select("settings_pin")
+      .eq("id", store.id)
+      .maybeSingle();
+    if (!pinReadError && freshStore) pin = freshStore.settings_pin ?? null;
+    if (pin) {
+      if (!stockPinDraft.trim()) {
+        setPinForced(true);
+        setStockAddSaving(false);
+        setStockAddError("Digite a senha de configuração pra confirmar.");
+        return;
+      }
+      if (stockPinDraft.trim() !== pin) {
+        setStockPinDraft("");
+        setStockAddSaving(false);
+        setStockAddError("Senha incorreta.");
+        return;
+      }
+    }
+
     const { data: cur, error: readError } = await supabase.from("products").select("stock").eq("id", line.productId).single();
     if (readError || !cur) {
       setStockAddSaving(false);
@@ -1985,6 +2017,30 @@ export default function Pdv() {
                   }}
                   className="w-24 rounded-lg border border-white/10 bg-white/[0.04] px-2.5 py-1.5 text-center text-sm font-semibold tabular-nums text-[#F5F3EF] focus:border-[#F0BB5E]/50 focus:outline-none"
                 />
+                {needsStockPin && (
+                  <input
+                    type="password"
+                    inputMode="numeric"
+                    autoComplete="off"
+                    value={stockPinDraft}
+                    onChange={(e) => {
+                      setStockPinDraft(e.target.value);
+                      setStockAddError(null);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        confirmStockAdd(line);
+                      } else if (e.key === "Escape") {
+                        setStockAddId(null);
+                        focusSearch();
+                      }
+                    }}
+                    placeholder="Senha"
+                    aria-label="Senha de configuração"
+                    className="w-24 rounded-lg border border-white/10 bg-white/[0.04] px-2.5 py-1.5 text-center text-sm font-semibold tracking-widest text-[#F5F3EF] placeholder:tracking-normal placeholder:text-white/25 focus:border-[#F0BB5E]/50 focus:outline-none"
+                  />
+                )}
                 <button
                   type="button"
                   onClick={() => confirmStockAdd(line)}
