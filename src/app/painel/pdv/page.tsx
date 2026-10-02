@@ -350,6 +350,11 @@ export default function Pdv() {
   const [contagemDraft, setContagemDraft] = useState<Record<string, string>>({});
   const [contagemSaving, setContagemSaving] = useState(false);
   const [contagemError, setContagemError] = useState<string | null>(null);
+  // "Adicionar ao estoque" direto da linha do carrinho que avisa falta de estoque.
+  const [stockAddId, setStockAddId] = useState<string | null>(null);
+  const [stockAddDraft, setStockAddDraft] = useState("");
+  const [stockAddSaving, setStockAddSaving] = useState(false);
+  const [stockAddError, setStockAddError] = useState<string | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   // Salva o carrinho em andamento no navegador — se a página recarregar no
@@ -832,6 +837,49 @@ export default function Pdv() {
   function setQuantityDirect(productId: string, value: number) {
     if (!Number.isFinite(value) || value <= 0) return;
     setCart((prev) => prev.map((l) => (l.productId === productId ? { ...l, quantity: round3(value) } : l)));
+  }
+
+  function openStockAdd(line: CartLine) {
+    if (stockAddId === line.productId) {
+      setStockAddId(null);
+      return;
+    }
+    // já sugere o que falta pra essa venda passar — um toque em "Adicionar" resolve
+    const falta = Math.max(0, round3(line.quantity - line.stock));
+    setStockAddDraft(String(falta || 1).replace(".", ","));
+    setStockAddError(null);
+    setStockAddId(line.productId);
+  }
+
+  // Soma ao estoque do cadastro (lê o valor atual do banco antes, pra não somar
+  // em cima de um número velho) e já atualiza a linha do carrinho.
+  async function confirmStockAdd(line: CartLine) {
+    const n = Number(stockAddDraft.trim().replace(",", "."));
+    if (!Number.isFinite(n) || n <= 0) {
+      setStockAddError("Digite quantas unidades entrar no estoque.");
+      return;
+    }
+    setStockAddSaving(true);
+    setStockAddError(null);
+    const supabase = getSupabase();
+    const { data: cur, error: readError } = await supabase.from("products").select("stock").eq("id", line.productId).single();
+    if (readError || !cur) {
+      setStockAddSaving(false);
+      setStockAddError("Não consegui ler o estoque. Confira a internet e tente de novo.");
+      return;
+    }
+    const novo = round3(Number(cur.stock) + n);
+    const { error: writeError } = await supabase.from("products").update({ stock: novo }).eq("id", line.productId);
+    setStockAddSaving(false);
+    if (writeError) {
+      setStockAddError("Não consegui salvar o estoque. Tente de novo.");
+      return;
+    }
+    setProducts((prev) => prev.map((pr) => (pr.id === line.productId ? { ...pr, stock: novo } : pr)));
+    setCart((prev) => prev.map((l) => (l.productId === line.productId ? { ...l, stock: novo } : l)));
+    setStockAddId(null);
+    setError(null);
+    focusSearch();
   }
 
   function togglePaes() {
@@ -1824,10 +1872,21 @@ export default function Pdv() {
                   {formatCurrency(line.priceOverride ?? line.price)} {line.soldByWeight ? "/kg" : "un."}
                 </p>
                 {!line.quick && line.quantity > line.stock && (
-                  <p className="mt-1 inline-flex items-center gap-1 rounded-full bg-[#FF5C68]/10 px-2 py-0.5 text-xs font-medium text-[#FF5C68]">
-                    <IconWarning className="h-3 w-3" />
-                    Só tem {line.soldByWeight ? line.stock.toFixed(3) : line.stock} em estoque
-                  </p>
+                  <div className="mt-1 flex flex-wrap items-center gap-2">
+                    <p className="inline-flex items-center gap-1 rounded-full bg-[#FF5C68]/10 px-2 py-0.5 text-xs font-medium text-[#FF5C68]">
+                      <IconWarning className="h-3 w-3" />
+                      Só tem {line.soldByWeight ? line.stock.toFixed(3) : line.stock} em estoque
+                    </p>
+                    {!line.isKit && (
+                      <button
+                        type="button"
+                        onClick={() => openStockAdd(line)}
+                        className="text-xs font-semibold text-[#F0BB5E] underline underline-offset-2 transition hover:brightness-110"
+                      >
+                        Adicionar ao estoque
+                      </button>
+                    )}
+                  </div>
                 )}
                 {!line.quick && line.quantity <= line.stock && line.quantity === line.stock && (
                   <p className="mt-1 inline-flex items-center gap-1 rounded-full bg-[#F0BB5E]/10 px-2 py-0.5 text-xs font-medium text-[#F0BB5E]">
@@ -1899,6 +1958,54 @@ export default function Pdv() {
                 </div>
               </div>
             </div>
+            {stockAddId === line.productId && (
+              <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-white/[0.06] pt-3">
+                <label className="text-sm text-white/55" htmlFor={`stock-${line.productId}`}>
+                  Adicionar quantas {line.soldByWeight ? "kg" : "unidades"} ao estoque?
+                </label>
+                <input
+                  id={`stock-${line.productId}`}
+                  autoFocus
+                  type="text"
+                  inputMode="decimal"
+                  value={stockAddDraft}
+                  onChange={(e) => {
+                    setStockAddDraft(e.target.value);
+                    setStockAddError(null);
+                  }}
+                  onFocus={(e) => e.currentTarget.select()}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      confirmStockAdd(line);
+                    } else if (e.key === "Escape") {
+                      setStockAddId(null);
+                      focusSearch();
+                    }
+                  }}
+                  className="w-24 rounded-lg border border-white/10 bg-white/[0.04] px-2.5 py-1.5 text-center text-sm font-semibold tabular-nums text-[#F5F3EF] focus:border-[#F0BB5E]/50 focus:outline-none"
+                />
+                <button
+                  type="button"
+                  onClick={() => confirmStockAdd(line)}
+                  disabled={stockAddSaving}
+                  className="rounded-lg bg-[#F0BB5E] px-3 py-1.5 text-sm font-semibold text-black transition hover:brightness-110 disabled:opacity-60"
+                >
+                  {stockAddSaving ? "Salvando…" : "Adicionar"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setStockAddId(null);
+                    focusSearch();
+                  }}
+                  className="rounded-lg px-3 py-1.5 text-sm text-white/40 transition hover:text-white/70"
+                >
+                  Cancelar
+                </button>
+                {stockAddError && <p className="w-full text-xs text-[#FF5C68]">{stockAddError}</p>}
+              </div>
+            )}
             {editingPriceId === line.productId && (
               <div className="mt-3 space-y-2.5 border-t border-white/[0.06] pt-3">
                 <div className="flex flex-wrap items-center gap-2">
