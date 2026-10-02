@@ -50,6 +50,7 @@ type Profit = { revenue: number; cogs: number; missing_cost: boolean; expenses: 
 type Expense = { id: string; description: string; category: string; amount: number; expense_date: string };
 
 type CreditPayment = { amount: number; created_at: string };
+type CreditDiscount = { amount: number; created_at: string };
 
 const CYCLE_MONTHS: Record<Partnership["billing_cycle"], number> = {
   mensal: 1,
@@ -682,6 +683,8 @@ export default function Dashboard() {
   const [profit, setProfit] = useState<Profit | null>(null);
   const [prevProfit, setPrevProfit] = useState<Profit | null>(null);
   const [creditPayments, setCreditPayments] = useState<CreditPayment[]>([]);
+  const [creditDiscounts, setCreditDiscounts] = useState<CreditDiscount[]>([]);
+  const [prevCreditDiscounts, setPrevCreditDiscounts] = useState<CreditDiscount[]>([]);
 
   const range = useMemo(() => {
     if (period === "custom" && customSince && customUntil) {
@@ -709,7 +712,7 @@ export default function Dashboard() {
       const supabase = getSupabase();
       const { since, until, prevSince, prevUntil } = range;
 
-      const [ordersRes, partnershipsRes, clubRes, entregadoresRes, expensesRes, profitRes, prevProfitRes, creditPaymentsRes] = await Promise.all([
+      const [ordersRes, partnershipsRes, clubRes, entregadoresRes, expensesRes, profitRes, prevProfitRes, creditPaymentsRes, creditDiscountsRes] = await Promise.all([
         supabase
           .from("orders")
           .select("id, items, total, discount_amount, status, channel, payment_method, created_at, delivered_at, delivered_by, delivery_payout_settled")
@@ -744,6 +747,18 @@ export default function Dashboard() {
           .eq("credit_customers.store_id", store.id)
           .eq("type", "pagamento")
           .gte("created_at", since.toISOString())
+          .lt("created_at", until.toISOString()),
+        // desconto dado ao cliente na hora de receber um fiado (Clientes →
+        // Registrar pagamento) — é dívida que sumiu SEM entrar dinheiro, ou
+        // seja, receita que a loja abriu mão. Busca do período anterior
+        // junto pra o "vs. período anterior" usar a mesma regra dos dois lados.
+        supabase
+          .from("credit_transactions")
+          .select("amount, created_at, credit_customers!inner(store_id)")
+          .eq("credit_customers.store_id", store.id)
+          .eq("type", "baixa")
+          .ilike("note", "Desconto%")
+          .gte("created_at", prevSince.toISOString())
           .lt("created_at", until.toISOString()),
       ]);
       if (cancelled) return;
@@ -788,6 +803,11 @@ export default function Dashboard() {
       if (!profitRes.error && profitRes.data?.length) setProfit(profitRes.data[0]);
       if (!prevProfitRes.error && prevProfitRes.data?.length) setPrevProfit(prevProfitRes.data[0]);
       setCreditPayments((creditPaymentsRes.data ?? []) as CreditPayment[]);
+      {
+        const allDiscounts = (creditDiscountsRes.data ?? []) as CreditDiscount[];
+        setCreditDiscounts(allDiscounts.filter((d) => new Date(d.created_at) >= since));
+        setPrevCreditDiscounts(allDiscounts.filter((d) => new Date(d.created_at) < prevUntil));
+      }
 
       const { data: hubRow } = await supabase
         .from("affiliate_settings")
@@ -972,7 +992,13 @@ export default function Dashboard() {
   const faturamentoTotal = revenue + commissionRevenue;
   const prevFaturamentoTotal = prevRevenue + prevCommissionRevenue;
   const custoProdutos = profit?.cogs ?? 0;
-  const lucroLiquido = faturamentoTotal - custoProdutos - totalDespesas - custoEntregadoresTotal;
+  // Desconto dado na cobrança de fiado: a venda fiado já entrou no faturamento
+  // pelo valor cheio, mas o cliente quitou pagando menos — a diferença é
+  // dinheiro que a loja não vai receber, então sai do lucro.
+  const descontosFiado = creditDiscounts.reduce((s, d) => s + Number(d.amount), 0);
+  const prevDescontosFiado = prevCreditDiscounts.reduce((s, d) => s + Number(d.amount), 0);
+  const lucroAntesDescontosFiado = faturamentoTotal - custoProdutos - totalDespesas - custoEntregadoresTotal;
+  const lucroLiquido = lucroAntesDescontosFiado - descontosFiado;
   const prevCustoProdutos = prevProfit?.cogs ?? 0;
   // Usa prevTotalDespesas (mesma query client-side, mesmo corte de data que
   // o período atual) em vez de prevProfit.expenses — a RPC get_profit_summary
@@ -980,7 +1006,8 @@ export default function Dashboard() {
   // "until"), enquanto aqui já se soma dia inteiro incluído; misturar as
   // duas fontes faria o período atual e o anterior usarem regras de data
   // diferentes pro mesmo tipo de número, distorcendo o "vs. período anterior".
-  const prevLucroLiquido = prevFaturamentoTotal - prevCustoProdutos - prevTotalDespesas - prevCustoEntregadoresTotal;
+  const prevLucroLiquido =
+    prevFaturamentoTotal - prevCustoProdutos - prevTotalDespesas - prevCustoEntregadoresTotal - prevDescontosFiado;
 
   // ---------- Lucro que já é dinheiro de verdade (base pra "quanto posso tirar") ----------
   // lucroLiquido conta venda fiado como faturamento normal, mesmo o dinheiro
@@ -990,7 +1017,11 @@ export default function Dashboard() {
   // recebido agora (dinheiro real entrando, mesmo de venda de outro período).
   const fiadoRevenueInPeriod = orders.filter((o) => o.payment_method === "fiado").reduce((s, o) => s + o.total, 0);
   const creditPaymentsInPeriod = creditPayments.reduce((s, c) => s + Number(c.amount), 0);
-  const cashProfit = lucroLiquido - fiadoRevenueInPeriod + creditPaymentsInPeriod;
+  // Parte de dinheiro: só conta o que de fato entrou (creditPaymentsInPeriod).
+  // Por isso parte do lucro ANTES do desconto de fiado — o desconto já fica
+  // de fora de creditPaymentsInPeriod (não entrou dinheiro), então tirar de
+  // novo aqui contaria o desconto duas vezes.
+  const cashProfit = lucroAntesDescontosFiado - fiadoRevenueInPeriod + creditPaymentsInPeriod;
   const brDate = (key: string) => key.split("-").reverse().join("/");
   const periodLabel =
     period === "custom"
@@ -1006,7 +1037,9 @@ export default function Dashboard() {
   // qual dívida específica foi paga, então trata como uma conta só). Sem
   // isso, "Concentração de fiado" nunca baixava mesmo o dono recebendo
   // pagamento, porque só olhava o que foi vendido fiado, nunca o que voltou.
-  const fiadoOutstandingInPeriod = Math.max(0, fiadoRevenueInPeriod - creditPaymentsInPeriod);
+  // O desconto também quita parte da dívida (o cliente deixa de dever), mesmo
+  // sem ter entrado dinheiro — por isso entra na conta junto com os pagamentos.
+  const fiadoOutstandingInPeriod = Math.max(0, fiadoRevenueInPeriod - creditPaymentsInPeriod - descontosFiado);
 
   // ---------- Saúde financeira (farol verde/amarelo/vermelho) ----------
   // 3 critérios calculados só com número que já existe nessa página — nada
@@ -1214,6 +1247,10 @@ export default function Dashboard() {
                   <div className="flex items-center justify-between border-b border-white/[0.06] py-2 text-sm">
                     <span className="text-white/55">Pagamento a entregadores (pago + a pagar)</span>
                     <span className="font-bold tabular-nums">{formatCurrency(custoEntregadoresTotal)}</span>
+                  </div>
+                  <div className="flex items-center justify-between border-b border-white/[0.06] py-2 text-sm">
+                    <span className="text-white/55">Descontos dados na cobrança de fiado</span>
+                    <span className="font-bold tabular-nums">{formatCurrency(descontosFiado)}</span>
                   </div>
                   <div className="flex items-center justify-between py-2 text-sm font-bold">
                     <span>= Lucro líquido</span>
