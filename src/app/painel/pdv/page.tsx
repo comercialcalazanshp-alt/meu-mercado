@@ -6,7 +6,7 @@ import { getSupabase } from "@/lib/supabase";
 import { useStore } from "@/lib/store-context";
 import { buildReceiptHtml, printHtml } from "@/lib/receipt";
 import { buildPixBRCode } from "@/lib/pix-brcode";
-import { daysOverdue, defaultDueDate } from "@/lib/credit";
+import { daysOverdue } from "@/lib/credit";
 import {
   cacheProducts,
   getCachedProducts,
@@ -1251,21 +1251,14 @@ export default function Pdv() {
   // quem já está devendo há muito tempo. Não trava a venda no balcão.
   async function checkCreditWarning(customerId: string, phone: string) {
     setCreditWarning(null);
-    const todayStr = defaultDueDate(0);
-    const [{ data: vendas }, { data: note }] = await Promise.all([
-      getSupabase()
-        .from("credit_transactions")
-        .select("due_date")
-        .eq("customer_id", customerId)
-        .eq("type", "venda")
-        .not("due_date", "is", null)
-        .lt("due_date", todayStr)
-        .order("due_date", { ascending: true })
-        .limit(1),
+    // atraso só de compra ainda em aberto (pagamento abate as mais antigas primeiro)
+    const [{ data: overdue }, { data: note }] = await Promise.all([
+      getSupabase().rpc("credit_customer_overdue", { p_customer_id: customerId }),
       getSupabase().from("customer_notes").select("blocked").eq("store_id", store.id).eq("phone", phone).maybeSingle(),
     ]);
-    if (vendas && vendas.length > 0) {
-      setCreditWarning({ daysLate: daysOverdue(vendas[0].due_date), blocked: note?.blocked ?? false });
+    const oldest = (overdue as { oldest_due: string }[] | null)?.[0]?.oldest_due;
+    if (oldest) {
+      setCreditWarning({ daysLate: daysOverdue(oldest), blocked: note?.blocked ?? false });
     }
   }
 

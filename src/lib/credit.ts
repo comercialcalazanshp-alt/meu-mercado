@@ -34,6 +34,28 @@ export function daysOverdue(dueDate: string) {
   return Math.max(0, Math.round((today.getTime() - due.getTime()) / (1000 * 60 * 60 * 24)));
 }
 
+type OpenTx = { id: string; type: string; amount: number | string; created_at: string };
+
+// Quanto de cada venda/juros ainda está em aberto: pagamentos e descontos
+// (baixa) abatem as compras MAIS ANTIGAS primeiro. É a mesma conta de
+// _credit_open_vendas() no banco (v148) — se mudar uma, muda a outra.
+export function openAmountByTx(txs: OpenTx[]): Map<string, number> {
+  const sorted = [...txs].sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at) || a.id.localeCompare(b.id));
+  const paid = sorted
+    .filter((t) => t.type === "pagamento" || t.type === "baixa")
+    .reduce((s, t) => s + Number(t.amount), 0);
+  const open = new Map<string, number>();
+  let before = 0;
+  for (const t of sorted) {
+    if (t.type !== "venda" && t.type !== "juros") continue;
+    const amount = Number(t.amount);
+    const quitado = Math.min(amount, Math.max(0, paid - before));
+    open.set(t.id, amount - quitado);
+    before += amount;
+  }
+  return open;
+}
+
 export function calcInterest(amount: number, dueDate: string, monthlyRate: number) {
   if (monthlyRate <= 0 || !isOverdue(dueDate)) return 0;
   const today = new Date();

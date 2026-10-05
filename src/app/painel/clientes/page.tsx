@@ -14,6 +14,7 @@ import {
   formatDate,
   formatDateOnly,
   isOverdue,
+  openAmountByTx,
   type CollectionStats,
 } from "@/lib/credit";
 import { PAYMENT_METHODS, PAYMENT_METHOD_LABELS, useCreditPayment, type PaymentMethod } from "@/lib/use-credit-payment";
@@ -213,18 +214,10 @@ function ClientesInner() {
       setBlockByPhone(new Map());
       return;
     }
-    const todayStr = defaultDueDate(0);
+    // Atraso vem do banco: só conta compra AINDA em aberto (pagamento abate as
+    // mais antigas primeiro) — compra já quitada nunca aparece como atrasada.
     const [{ data: vendas }, { data: notes }] = await Promise.all([
-      getSupabase()
-        .from("credit_transactions")
-        .select("customer_id, due_date")
-        .in(
-          "customer_id",
-          withDebt.map((c) => c.id),
-        )
-        .eq("type", "venda")
-        .not("due_date", "is", null)
-        .lt("due_date", todayStr),
+      getSupabase().rpc("credit_overdue_by_customer", { p_store_id: store.id }),
       getSupabase()
         .from("customer_notes")
         .select("phone, blocked, auto_blocked, note")
@@ -236,11 +229,8 @@ function ClientesInner() {
     ]);
 
     const overdue = new Map<string, OverdueInfo>();
-    for (const v of vendas ?? []) {
-      const prev = overdue.get(v.customer_id);
-      if (!prev || v.due_date < prev.oldestDueDate) {
-        overdue.set(v.customer_id, { oldestDueDate: v.due_date, daysLate: daysOverdue(v.due_date) });
-      }
+    for (const v of (vendas ?? []) as { cust_id: string; oldest_due: string }[]) {
+      overdue.set(v.cust_id, { oldestDueDate: v.oldest_due, daysLate: daysOverdue(v.oldest_due) });
     }
     setOverdueByCustomer(overdue);
 
@@ -344,6 +334,17 @@ function ClientesInner() {
   const totalOwed = creditCustomers.reduce((sum, c) => sum + Math.max(0, c.balance), 0);
   const debtorsCount = creditCustomers.filter((c) => c.balance > 0).length;
   const interestRate = Number(interestPercent.replace(",", ".")) || 0;
+  // quanto de cada compra ainda está em aberto (pagamento abate as mais antigas
+  // primeiro) e o próximo vencimento do saldo do cliente aberto na tela
+  const openByTx = useMemo(() => openAmountByTx(transactions), [transactions]);
+  const nextDue = useMemo(() => {
+    const todayStr = defaultDueDate(0);
+    const dates = transactions
+      .filter((t) => t.type === "venda" && t.due_date && t.due_date >= todayStr && (openByTx.get(t.id) ?? 0) > 0.005)
+      .map((t) => t.due_date as string)
+      .sort();
+    return dates[0] ?? null;
+  }, [transactions, openByTx]);
 
   const overdueList = useMemo(() => {
     return merged
@@ -520,12 +521,19 @@ function ClientesInner() {
     if (!customer.creditCustomerId || !extendDraft) return;
     setExtendSaving(true);
     const todayStr = defaultDueDate(0);
-    await getSupabase()
+    // só as compras que ainda estão em aberto e vencidas ganham o novo prazo
+    // (as já quitadas ficam como estão no histórico)
+    const { data: all } = await getSupabase()
       .from("credit_transactions")
-      .update({ due_date: extendDraft })
-      .eq("customer_id", customer.creditCustomerId)
-      .eq("type", "venda")
-      .lt("due_date", todayStr);
+      .select("id, type, amount, created_at, due_date")
+      .eq("customer_id", customer.creditCustomerId);
+    const open = openAmountByTx(all ?? []);
+    const ids = (all ?? [])
+      .filter((t) => t.type === "venda" && t.due_date && t.due_date < todayStr && (open.get(t.id) ?? 0) > 0.005)
+      .map((t) => t.id);
+    if (ids.length > 0) {
+      await getSupabase().from("credit_transactions").update({ due_date: extendDraft }).in("id", ids);
+    }
     // devolve o bloqueio automático na hora, sem esperar o cron do dia seguinte
     await getSupabase().rpc("apply_credit_auto_block", { p_customer_id: customer.creditCustomerId });
     setExtendSaving(false);
@@ -886,6 +894,10 @@ function ClientesInner() {
                             </button>
                           </div>
 
+                          {customer.creditBalance > 0 && nextDue && !overdueByCustomer.has(customer.creditCustomerId ?? "") && (
+                            <p className="mt-1 text-xs text-white/40">Vence em {formatDateOnly(nextDue)}</p>
+                          )}
+
                           {customer.creditBalance > 0 &&
                             customer.creditCustomerId &&
                             overdueByCustomer.has(customer.creditCustomerId) && (
@@ -954,13 +966,16 @@ function ClientesInner() {
                               {transactions
                                 .filter((tx) => !(tx.type === "venda" && tx.note === "Venda no balcão (PDV)"))
                                 .map((tx) => {
-                                const overdue = tx.type === "venda" && tx.due_date && isOverdue(tx.due_date);
+                                // quanto desta compra ainda falta pagar (pagamento abate as mais antigas primeiro)
+                                const openAmount = openByTx.get(tx.id) ?? 0;
+                                const quitada = tx.type === "venda" && openAmount <= 0.005;
+                                const overdue = tx.type === "venda" && tx.due_date && !quitada && isOverdue(tx.due_date);
                                 const interestAlreadyApplied = transactions.some(
                                   (t) => t.type === "juros" && t.note?.includes(`ref:${tx.id}`),
                                 );
                                 const interest =
-                                  tx.type === "venda" && tx.due_date && !interestAlreadyApplied
-                                    ? calcInterest(tx.amount, tx.due_date, interestRate)
+                                  tx.type === "venda" && tx.due_date && !interestAlreadyApplied && !quitada
+                                    ? calcInterest(openAmount, tx.due_date, interestRate)
                                     : 0;
                                 const reducesDebt = tx.type === "pagamento" || tx.type === "baixa";
                                 return (
@@ -984,6 +999,16 @@ function ClientesInner() {
                                               </span>
                                             )}
                                           </>
+                                        )}
+                                        {quitada && (
+                                          <span className="ml-1 font-semibold" style={{ color: COLOR_HEX.positive }}>
+                                            pago
+                                          </span>
+                                        )}
+                                        {tx.type === "venda" && !quitada && openAmount < Number(tx.amount) - 0.005 && (
+                                          <span className="ml-1 font-semibold" style={{ color: COLOR_HEX.warning }}>
+                                            faltam {formatCurrency(openAmount)}
+                                          </span>
                                         )}
                                       </span>
                                       <span

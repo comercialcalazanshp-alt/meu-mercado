@@ -61,7 +61,6 @@ export default function Mensagens() {
   async function load() {
     setLoading(true);
     const supabase = getSupabase();
-    const today = new Date().toISOString().slice(0, 10);
     const month = new Date().getMonth();
     const inactiveSince = new Date();
     inactiveSince.setDate(inactiveSince.getDate() - INACTIVE_DAYS);
@@ -73,13 +72,8 @@ export default function Mensagens() {
           .select("id, name, phone, balance")
           .eq("store_id", store.id)
           .gt("balance", 0),
-        supabase
-          .from("credit_transactions")
-          .select("customer_id, credit_customers!inner(store_id)")
-          .eq("type", "venda")
-          .not("due_date", "is", null)
-          .lt("due_date", today)
-          .eq("credit_customers.store_id", store.id),
+        // atraso só de compra ainda em aberto (pagamento abate as mais antigas primeiro)
+        supabase.rpc("credit_overdue_by_customer", { p_store_id: store.id }),
         supabase.from("customers").select("id, name, phone, birthday").eq("store_id", store.id),
         supabase
           .from("orders")
@@ -89,7 +83,7 @@ export default function Mensagens() {
           .order("created_at", { ascending: false }),
       ]);
 
-    const overdueIds = new Set((overdueTx ?? []).map((t) => t.customer_id as string));
+    const overdueIds = new Set(((overdueTx ?? []) as { cust_id: string }[]).map((t) => t.cust_id));
     setOverdue(((creditCustomers ?? []) as OverdueCustomer[]).filter((c) => overdueIds.has(c.id)));
 
     setBirthdays(
