@@ -91,6 +91,7 @@ const ORDER_PAYMENT_LABELS: Record<string, string> = {
   pix: "Pix",
   cartao: "Cartão",
   fiado: "Fiado",
+  dividido: "Dividido",
   combinar: "Combinado com a loja",
   assinatura: "Assinatura",
 };
@@ -152,6 +153,7 @@ function ClientesInner() {
   const [orders, setOrders] = useState<OrderRow[]>([]);
   const [loadingOrders, setLoadingOrders] = useState(false);
   const [ordersOpen, setOrdersOpen] = useState(false);
+  const [viewOrderId, setViewOrderId] = useState<string | null>(null);
 
   const [noteDraft, setNoteDraft] = useState("");
   const [blockedDraft, setBlockedDraft] = useState(false);
@@ -369,6 +371,7 @@ function ClientesInner() {
     }
     setExpandedPhone(customer.phone);
     setOrdersOpen(false);
+    setViewOrderId(null);
     setResetMessage(null);
     setAccountStatus(null);
     payment.cancel();
@@ -1229,19 +1232,67 @@ function ClientesInner() {
                           </button>
                           {ordersOpen && (
                             <ul className="animate-mm-slide-up mt-2 space-y-2">
-                              {orders.map((order) => (
-                                <li
-                                  key={order.id}
-                                  className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-white/[0.06] bg-white/[0.02] p-2.5 text-sm"
-                                >
-                                  <span className="text-white/55">
-                                    {formatDate(order.created_at)} · <span className="font-medium text-white/80">{formatCurrency(order.total)}</span>
-                                  </span>
-                                  <SecondaryButton small onClick={() => reprintOrder(order)}>
-                                    Reimprimir cupom
-                                  </SecondaryButton>
-                                </li>
-                              ))}
+                              {orders.map((order) => {
+                                const viewing = viewOrderId === order.id;
+                                return (
+                                  <li
+                                    key={order.id}
+                                    className="rounded-lg border border-white/[0.06] bg-white/[0.02] p-2.5 text-sm"
+                                  >
+                                    <div className="flex flex-wrap items-center justify-between gap-2">
+                                      <span className="text-white/55">
+                                        {formatDate(order.created_at)} · <span className="font-medium text-white/80">{formatCurrency(order.total)}</span>
+                                      </span>
+                                      <div className="flex items-center gap-2">
+                                        <button
+                                          type="button"
+                                          onClick={() => setViewOrderId(viewing ? null : order.id)}
+                                          aria-label={viewing ? "Esconder itens do pedido" : "Ver itens do pedido"}
+                                          aria-expanded={viewing}
+                                          title={viewing ? "Esconder itens do pedido" : "Ver itens do pedido"}
+                                          className={`flex h-8 w-8 items-center justify-center rounded-lg border transition hover:text-white ${
+                                            viewing ? "border-white/30 bg-white/[0.08] text-white" : "border-white/10 text-white/50"
+                                          }`}
+                                        >
+                                          <IconEye className="h-4 w-4" />
+                                        </button>
+                                        <SecondaryButton small onClick={() => reprintOrder(order)}>
+                                          Reimprimir cupom
+                                        </SecondaryButton>
+                                      </div>
+                                    </div>
+                                    {viewing && (
+                                      <div className="animate-mm-slide-up mt-2 space-y-1 border-t border-white/[0.06] pt-2 text-white/60">
+                                        {order.items.map((item, idx) => (
+                                          <div key={idx} className="flex justify-between gap-3">
+                                            <span className="min-w-0">
+                                              {String(item.quantity).replace(".", ",")}x {item.name}
+                                            </span>
+                                            <span className="shrink-0 tabular-nums text-white/75">
+                                              {formatCurrency(item.line_total ?? item.price * item.quantity)}
+                                            </span>
+                                          </div>
+                                        ))}
+                                        {order.discount_amount > 0 && (
+                                          <div className="flex justify-between gap-3 text-white/45">
+                                            <span>Desconto</span>
+                                            <span className="tabular-nums">−{formatCurrency(order.discount_amount)}</span>
+                                          </div>
+                                        )}
+                                        <div className="flex justify-between gap-3 border-t border-white/[0.06] pt-1 font-semibold text-white/85">
+                                          <span>
+                                            Total ·{" "}
+                                            <span className="font-normal text-white/45">
+                                              {ORDER_PAYMENT_LABELS[order.payment_method ?? ""] ?? "Combinado com a loja"}
+                                            </span>
+                                          </span>
+                                          <span className="tabular-nums">{formatCurrency(order.total)}</span>
+                                        </div>
+                                      </div>
+                                    )}
+                                  </li>
+                                );
+                              })}
                             </ul>
                           )}
                         </>
