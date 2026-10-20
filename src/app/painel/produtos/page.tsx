@@ -299,6 +299,15 @@ export default function Produtos() {
   );
   const productsTableRef = useRef<HTMLDivElement>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  // Etiquetas em lote: imprime o catálogo (ou só o que já vendeu) de 50 em 50
+  // ou 100 em 100 — uma etiqueta por página, a térmica corta cada uma.
+  const [labelsOpen, setLabelsOpen] = useState(false);
+  const [labelScope, setLabelScope] = useState<"vendidos" | "todos">("vendidos");
+  const [labelBatchSize, setLabelBatchSize] = useState<50 | 100>(100);
+  const [printedVersion, setPrintedVersion] = useState(0);
+  const [soldIds, setSoldIds] = useState<Set<string> | null>(null);
+  const [soldLoading, setSoldLoading] = useState(false);
+  const [soldError, setSoldError] = useState<string | null>(null);
   const [stats, setStats] = useState<Record<string, SalesStat>>({});
   const [movements, setMovements] = useState<Record<string, StockMovement[]>>({});
   const [lossDrafts, setLossDrafts] = useState<
@@ -943,6 +952,101 @@ export default function Produtos() {
     setAdjustResult(`${data} produto${data === 1 ? "" : "s"} reajustado${data === 1 ? "" : "s"}.`);
     setAdjustPercent("");
     loadProducts();
+  }
+
+  // "Já vendidos" sai direto dos pedidos (todos, sem cancelados). Não dá pra
+  // usar as estatísticas da tela: a consulta delas devolve no máximo 1.000
+  // produtos e esta loja tem mais que isso.
+  async function loadSoldIds() {
+    setSoldLoading(true);
+    setSoldError(null);
+    const ids = new Set<string>();
+    for (let from = 0; ; from += 1000) {
+      const { data, error: soldFetchError } = await getSupabase()
+        .from("orders")
+        .select("items")
+        .eq("store_id", store.id)
+        .neq("status", "cancelado")
+        .order("created_at")
+        .order("id")
+        .range(from, from + 999);
+      if (soldFetchError || !data) {
+        setSoldError("Não deu pra carregar o que já foi vendido. Confira a internet e abra de novo.");
+        setSoldLoading(false);
+        return;
+      }
+      for (const o of data) {
+        for (const it of (o.items ?? []) as { product_id?: string }[]) if (it.product_id) ids.add(it.product_id);
+      }
+      if (data.length < 1000) break;
+    }
+    setSoldIds(ids);
+    setSoldLoading(false);
+  }
+
+  const labelKey = `mm_etiquetas_lote_${store.id}_${labelScope}_${labelBatchSize}`;
+
+  // Lembra (neste aparelho) quais lotes já saíram, pra você saber onde parou.
+  const printedBatches = useMemo<string[]>(() => {
+    if (typeof window === "undefined") return [];
+    try {
+      const saved = JSON.parse(localStorage.getItem(labelKey) ?? "[]");
+      return Array.isArray(saved) ? saved.filter((k): k is string => typeof k === "string") : [];
+    } catch {
+      return [];
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [labelKey, printedVersion]);
+
+  // Sempre a mesma ordem (categoria, depois nome), pros lotes não mudarem de
+  // lugar entre uma impressão e outra.
+  const labelProducts = useMemo(() => {
+    return products
+      .filter((p) => p.active && p.price > 0 && (labelScope === "todos" || !!soldIds?.has(p.id)))
+      .sort(
+        (a, b) =>
+          (a.category ?? "￿").localeCompare(b.category ?? "￿", "pt-BR") || a.name.localeCompare(b.name, "pt-BR"),
+      );
+  }, [products, soldIds, labelScope]);
+
+  // Lote nunca mistura categorias: cada categoria é cortada em lotes de 50 ou
+  // 100 (a última parte de cada uma pode ser menor).
+  const labelBatches = useMemo(() => {
+    const byCategory = new Map<string, Product[]>();
+    for (const p of labelProducts) {
+      const cat = p.category?.trim() || "Sem categoria";
+      byCategory.set(cat, [...(byCategory.get(cat) ?? []), p]);
+    }
+    const out: { key: string; category: string; part: number; parts: number; items: Product[] }[] = [];
+    for (const [category, list] of byCategory) {
+      const parts = Math.ceil(list.length / labelBatchSize);
+      for (let part = 0; part < parts; part++) {
+        out.push({ key: `${category}|${part + 1}`, category, part: part + 1, parts, items: list.slice(part * labelBatchSize, (part + 1) * labelBatchSize) });
+      }
+    }
+    return out;
+  }, [labelProducts, labelBatchSize]);
+
+  function printBatch(key: string) {
+    const batch = labelBatches.find((b) => b.key === key);
+    if (!batch) return;
+    printLabels(batch.items, false);
+    const next = Array.from(new Set([...printedBatches, key]));
+    try {
+      localStorage.setItem(labelKey, JSON.stringify(next));
+    } catch {
+      // sem armazenamento local: só não lembra o que já saiu
+    }
+    setPrintedVersion((v) => v + 1);
+  }
+
+  function resetPrintedBatches() {
+    try {
+      localStorage.removeItem(labelKey);
+    } catch {
+      // ignora
+    }
+    setPrintedVersion((v) => v + 1);
   }
 
   function printLabels(list: Product[], forceOffer: boolean) {
@@ -1595,6 +1699,81 @@ export default function Produtos() {
           </div>
         </details>
       )}
+
+      <div className="mt-4 rounded-xl border border-white/[0.09] bg-white/[0.03] p-3">
+        <button
+          onClick={() => {
+            if (!labelsOpen && soldIds === null && !soldLoading) loadSoldIds();
+            setLabelsOpen((v) => !v);
+          }}
+          className="flex w-full items-center justify-between gap-2 text-left text-sm font-medium text-[#F5F3EF]"
+        >
+          <span>🏷️ Etiquetas de preço em lote (50 ou 100 por vez)</span>
+          <span className="text-white/40">{labelsOpen ? "−" : "+"}</span>
+        </button>
+        {labelsOpen && (
+          <div className="mt-3 space-y-3">
+            <div className="flex flex-wrap items-center gap-2 text-sm">
+              <button
+                onClick={() => setLabelScope("vendidos")}
+                className={`rounded-lg border px-3 py-1.5 ${labelScope === "vendidos" ? "border-[#5CACFF] bg-[#5CACFF]/15 text-[#5CACFF]" : "border-white/10 text-white/60"}`}
+              >
+                Só os já vendidos
+              </button>
+              <button
+                onClick={() => setLabelScope("todos")}
+                className={`rounded-lg border px-3 py-1.5 ${labelScope === "todos" ? "border-[#5CACFF] bg-[#5CACFF]/15 text-[#5CACFF]" : "border-white/10 text-white/60"}`}
+              >
+                Todos os produtos
+              </button>
+              <span className="mx-1 text-white/30">|</span>
+              {([50, 100] as const).map((n) => (
+                <button
+                  key={n}
+                  onClick={() => setLabelBatchSize(n)}
+                  className={`rounded-lg border px-3 py-1.5 ${labelBatchSize === n ? "border-[#5CACFF] bg-[#5CACFF]/15 text-[#5CACFF]" : "border-white/10 text-white/60"}`}
+                >
+                  {n} por lote
+                </button>
+              ))}
+            </div>
+            {soldLoading && labelScope === "vendidos" && <p className="text-xs text-white/45">Carregando o que já foi vendido…</p>}
+            {soldError && <p className="text-xs text-[#FF5C68]">{soldError}</p>}
+            <p className="text-xs text-white/45">
+              {labelProducts.length} produto{labelProducts.length === 1 ? "" : "s"} em {labelBatches.length} lote{labelBatches.length === 1 ? "" : "s"}, na ordem
+              por categoria, sem misturar. Cada etiqueta sai numa página e a impressora corta sozinha. Na janela que abrir, escolha a Epson.
+            </p>
+            {labelBatches.length > 0 && (
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                {labelBatches.map((batch) => {
+                  const done = printedBatches.includes(batch.key);
+                  return (
+                    <button
+                      key={batch.key}
+                      onClick={() => printBatch(batch.key)}
+                      className={`rounded-lg border px-3 py-2 text-left text-xs ${done ? "border-[#34E88C]/40 bg-[#34E88C]/10 text-[#34E88C]" : "border-white/10 text-white/70 hover:border-white/30"}`}
+                    >
+                      <span className="block truncate text-sm font-semibold">
+                        {done ? "✓ " : ""}
+                        {batch.category}
+                      </span>
+                      <span className="block">
+                        {batch.items.length} etiqueta{batch.items.length === 1 ? "" : "s"}
+                        {batch.parts > 1 ? ` · parte ${batch.part} de ${batch.parts}` : ""}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+            {printedBatches.length > 0 && (
+              <button onClick={resetPrintedBatches} className="text-xs text-white/40 underline">
+                Limpar a marcação de lotes impressos
+              </button>
+            )}
+          </div>
+        )}
+      </div>
 
       {selectedIds.size > 0 && (
         <div className="mt-4 flex flex-wrap items-center gap-2 rounded-xl border border-[#5CACFF]/20 bg-[#5CACFF]/[0.06] px-3 py-2">
