@@ -5,6 +5,40 @@ import { useRouter, useSearchParams } from "next/navigation";
 import ReactMarkdown from "react-markdown";
 import { getSupabase } from "@/lib/supabase";
 import { useStore } from "@/lib/store-context";
+import NotaReview, { type NotaResult } from "./NotaReview";
+
+// Foto de celular tem 3-6 MB; o servidor aceita bem menos por requisição.
+// Reduz cada foto (lado maior + qualidade) até a soma caber, mantendo o texto
+// da nota legível pra IA.
+const NOTA_MAX_IMAGES = 4;
+const NOTA_TOTAL_BUDGET = 3_900_000;
+async function photosToDataUrls(files: File[]): Promise<string[]> {
+  const bitmaps = await Promise.all(files.map((f) => createImageBitmap(f)));
+  try {
+    const tiers: [number, number][] = [
+      [1800, 0.82],
+      [1600, 0.75],
+      [1400, 0.7],
+      [1200, 0.65],
+      [1000, 0.6],
+    ];
+    let last: string[] = [];
+    for (const [maxSide, quality] of tiers) {
+      last = bitmaps.map((bmp) => {
+        const scale = Math.min(1, maxSide / Math.max(bmp.width, bmp.height));
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.max(1, Math.round(bmp.width * scale));
+        canvas.height = Math.max(1, Math.round(bmp.height * scale));
+        canvas.getContext("2d")!.drawImage(bmp, 0, 0, canvas.width, canvas.height);
+        return canvas.toDataURL("image/jpeg", quality);
+      });
+      if (last.reduce((s, u) => s + u.length, 0) <= NOTA_TOTAL_BUDGET) break;
+    }
+    return last;
+  } finally {
+    bitmaps.forEach((b) => b.close());
+  }
+}
 
 // O assistente responde em markdown (##, **negrito**, listas) — sem isso
 // renderizado, aparecia tudo como texto corrido cheio de # e * soltos, sem
@@ -62,6 +96,11 @@ function AssistenteInner() {
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const notaFileRef = useRef<HTMLInputElement>(null);
+  const [notaBusy, setNotaBusy] = useState(false);
+  const [notaStatus, setNotaStatus] = useState("Lendo a nota…");
+  const [notaResult, setNotaResult] = useState<NotaResult | null>(null);
+  const [notaPhotos, setNotaPhotos] = useState<string[]>([]);
 
   useEffect(() => {
     async function load() {
@@ -88,7 +127,84 @@ function AssistenteInner() {
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
-  }, [messages, sending]);
+  }, [messages, sending, notaBusy, notaResult]);
+
+  // Foto da nota -> a IA lê os itens, acha cada um no cadastro e mostra a
+  // tela de conferência (NotaReview). Nada é gravado até o dono tocar em "Aplicar".
+  async function handleNotaFiles(fileList: FileList | null) {
+    const files = Array.from(fileList ?? []);
+    if (files.length === 0 || notaBusy) return;
+    if (files.length > NOTA_MAX_IMAGES) {
+      setError(`Mande no máximo ${NOTA_MAX_IMAGES} fotos de uma vez (as páginas da mesma nota).`);
+      return;
+    }
+    setError(null);
+    setNotaResult(null);
+    setNotaStatus("Preparando as fotos…");
+    setNotaBusy(true);
+    try {
+      const images = await photosToDataUrls(files);
+      setNotaPhotos(images);
+      const {
+        data: { session },
+      } = await getSupabase().auth.getSession();
+      if (!session) {
+        setError("Sua sessão expirou. Entre de novo.");
+        return;
+      }
+      setNotaStatus("Lendo a nota…");
+      const res = await fetch("/api/assistente/nota", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify({ store_id: store.id, images }),
+      });
+      if (!res.ok || !res.body) {
+        const data = await res.json().catch(() => ({}));
+        setError(data.error ?? "Não deu pra ler a nota agora.");
+        return;
+      }
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let result: NotaResult | null = null;
+      let streamError: string | null = null;
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() ?? "";
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          try {
+            const event = JSON.parse(line);
+            if (event.type === "status") setNotaStatus(event.text);
+            else if (event.type === "done") result = event.result;
+            else if (event.type === "error") streamError = event.error;
+          } catch {
+            // linha incompleta — o resto do stream segue
+          }
+        }
+      }
+      if (streamError) setError(streamError);
+      else if (result) setNotaResult(result);
+      else setError("Não deu pra ler a nota agora. Tente de novo.");
+    } catch {
+      setError("Não deu pra mandar a foto — confira a internet e tente de novo.");
+    } finally {
+      setNotaBusy(false);
+    }
+  }
+
+  async function reloadMessages() {
+    const { data } = await getSupabase()
+      .from("assistant_messages")
+      .select("role, content")
+      .eq("store_id", store.id)
+      .order("created_at", { ascending: true })
+      .limit(50);
+    setMessages((data ?? []) as Message[]);
+  }
 
   // Vem de um link tipo "Pedir orientação financeira" no fechamento do
   // caixa, já com a pergunta pronta — manda sozinho assim que o histórico
@@ -294,7 +410,7 @@ function AssistenteInner() {
         <div>
           <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-50">Assistente</h1>
           <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-            Conhece o financeiro, vendas, tráfego e reclamações da sua loja. Converse por texto ou voz.
+            Conhece o financeiro, vendas, tráfego e reclamações da sua loja. Converse por texto ou voz, ou toque em 📷 e mande a foto de uma nota fiscal para atualizar custo e estoque.
           </p>
         </div>
         {messages.length > 0 && (
@@ -336,6 +452,24 @@ function AssistenteInner() {
             {statusText}
           </p>
         )}
+        {notaBusy && (
+          <p className="flex items-center gap-1.5 text-xs text-slate-400">
+            <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-slate-400" />
+            {notaStatus}
+          </p>
+        )}
+        {notaResult && (
+          <NotaReview
+            data={notaResult}
+            photos={notaPhotos}
+            storeId={store.id}
+            onCancel={() => setNotaResult(null)}
+            onApplied={() => {
+              setNotaResult(null);
+              reloadMessages();
+            }}
+          />
+        )}
       </div>
 
       {error && <p className="mt-2 text-sm text-red-600 dark:text-red-400">{error}</p>}
@@ -354,6 +488,27 @@ function AssistenteInner() {
           maxLength={2000}
           className="flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-50"
         />
+        <input
+          ref={notaFileRef}
+          type="file"
+          accept="image/*"
+          multiple
+          className="hidden"
+          onChange={(e) => {
+            handleNotaFiles(e.target.files);
+            e.target.value = "";
+          }}
+        />
+        <button
+          type="button"
+          onClick={() => notaFileRef.current?.click()}
+          disabled={notaBusy || sending}
+          title="Mandar foto da nota fiscal"
+          aria-label="Mandar foto da nota fiscal"
+          className="shrink-0 rounded-full border border-slate-300 p-2.5 text-slate-600 disabled:opacity-50 dark:border-slate-700 dark:text-slate-300"
+        >
+          📷
+        </button>
         {voiceSupported && (
           <button
             type="button"
