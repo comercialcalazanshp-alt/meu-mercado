@@ -16,6 +16,8 @@ import {
   getPendingSales,
   removePendingSale,
   markPendingSaleFailed,
+  cacheCreditCustomers,
+  searchCachedCreditCustomers,
   isOfflineCapable,
   type PendingSale,
 } from "@/lib/pdv-offline";
@@ -542,6 +544,26 @@ export default function Pdv() {
     loadRecentSales();
   }
 
+  // Guarda no computador a lista de clientes do fiado, pra achar o cliente
+  // mesmo quando a internet cai (a busca do fiado antes só funcionava online
+  // e a lista ficava vazia). Roda ao abrir o PDV e depois de cada venda.
+  async function refreshCreditCustomersCache() {
+    if (!offlineCapable || !navigator.onLine) return;
+    const all: CreditCustomer[] = [];
+    for (let from = 0; ; from += 1000) {
+      const { data, error: fetchError } = await getSupabase()
+        .from("credit_customers")
+        .select("id, name, phone")
+        .eq("store_id", store.id)
+        .order("name")
+        .range(from, from + 999);
+      if (fetchError || !data) return; // não troca o que já está guardado por uma lista incompleta
+      all.push(...(data as CreditCustomer[]));
+      if (data.length < 1000) break;
+    }
+    cacheCreditCustomers(store.id, all).catch(() => {});
+  }
+
   const caixaStatusKey = `mm_pdv_caixa_${store.id}`;
 
   async function loadCaixaStatus() {
@@ -569,6 +591,7 @@ export default function Pdv() {
     loadKits();
     loadRecentSales();
     loadCaixaStatus();
+    refreshCreditCustomersCache();
     getSupabase()
       .auth.getSession()
       .then(({ data }) => setSellerEmail(data.session?.user.email ?? null));
@@ -660,17 +683,33 @@ export default function Pdv() {
       setCreditMatches([]);
       return;
     }
+    let cancelled = false;
     const timeout = setTimeout(async () => {
-      const { data } = await getSupabase()
-        .from("credit_customers")
-        .select("id, name, phone")
-        .eq("store_id", store.id)
-        .ilike("name", `%${q}%`)
-        .limit(6);
-      setCreditMatches(data ?? []);
+      let found: CreditCustomer[] | null = null;
+      if (navigator.onLine) {
+        try {
+          const { data, error: searchError } = await getSupabase()
+            .from("credit_customers")
+            .select("id, name, phone")
+            .eq("store_id", store.id)
+            .ilike("name", `%${q}%`)
+            .limit(6);
+          if (!searchError && data) found = data as CreditCustomer[];
+        } catch {
+          // sem rede: cai na lista guardada abaixo
+        }
+      }
+      // Sem internet (ou a consulta falhou): usa a lista guardada no computador.
+      if (found === null && offlineCapable) {
+        found = await searchCachedCreditCustomers(store.id, q, 6).catch(() => []);
+      }
+      if (!cancelled) setCreditMatches(found ?? []);
     }, 250);
-    return () => clearTimeout(timeout);
-  }, [creditSearch, store.id]);
+    return () => {
+      cancelled = true;
+      clearTimeout(timeout);
+    };
+  }, [creditSearch, store.id, offlineCapable]);
 
   useEffect(() => {
     searchInputRef.current?.focus();
@@ -1462,6 +1501,7 @@ export default function Pdv() {
       ]);
     }
     if (!wentOffline) {
+      refreshCreditCustomersCache();
       loadProducts();
       loadKits();
       loadRecentSales();

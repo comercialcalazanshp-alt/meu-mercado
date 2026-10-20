@@ -11,7 +11,7 @@
 // reenviada de verdade pro servidor.
 
 const DB_NAME = "mm-pdv-offline";
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 type CachedProduct = {
   id: string;
@@ -55,6 +55,10 @@ function openDb(): Promise<IDBDatabase> {
       }
       if (!db.objectStoreNames.contains("pendingSales")) {
         db.createObjectStore("pendingSales", { keyPath: "localId" });
+      }
+      // v2: lista de clientes do fiado, pra achar o cliente mesmo sem internet
+      if (!db.objectStoreNames.contains("creditCustomers")) {
+        db.createObjectStore("creditCustomers", { keyPath: "cacheKey" });
       }
     };
     req.onsuccess = () => resolve(req.result);
@@ -126,6 +130,44 @@ export async function getCachedKits(storeId: string): Promise<CachedKit[]> {
     req.onsuccess = () => resolve(req.result as CachedKit[]);
     req.onerror = () => reject(req.error);
   });
+}
+
+export type CachedCreditCustomer = { id: string; name: string; phone: string };
+
+export async function cacheCreditCustomers(storeId: string, customers: CachedCreditCustomer[]) {
+  const db = await openDb();
+  return new Promise<void>((resolve, reject) => {
+    const tx = db.transaction("creditCustomers", "readwrite");
+    const store = tx.objectStore("creditCustomers");
+    const range = IDBKeyRange.bound(`${storeId}:`, `${storeId}:￿`);
+    store.delete(range);
+    for (const c of customers) {
+      store.put({ id: c.id, name: c.name, phone: c.phone, cacheKey: `${storeId}:${c.id}` });
+    }
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+// Mesma busca do servidor (nome contendo o que foi digitado), sem diferenciar
+// maiúscula/minúscula nem acento. Quem começa com o texto aparece primeiro.
+export async function searchCachedCreditCustomers(storeId: string, query: string, limit = 6): Promise<CachedCreditCustomer[]> {
+  const norm = (t: string) => t.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+  const q = norm(query.trim());
+  if (!q) return [];
+  const db = await openDb();
+  const all = await new Promise<CachedCreditCustomer[]>((resolve, reject) => {
+    const tx = db.transaction("creditCustomers", "readonly");
+    const range = IDBKeyRange.bound(`${storeId}:`, `${storeId}:￿`);
+    const req = tx.objectStore("creditCustomers").getAll(range);
+    req.onsuccess = () => resolve(req.result as CachedCreditCustomer[]);
+    req.onerror = () => reject(req.error);
+  });
+  return all
+    .filter((c) => norm(c.name).includes(q))
+    .sort((a, b) => Number(norm(b.name).startsWith(q)) - Number(norm(a.name).startsWith(q)) || a.name.localeCompare(b.name))
+    .slice(0, limit)
+    .map((c) => ({ id: c.id, name: c.name, phone: c.phone }));
 }
 
 export async function queueSale(storeId: string, payload: Record<string, unknown>, cartSnapshot: unknown) {
