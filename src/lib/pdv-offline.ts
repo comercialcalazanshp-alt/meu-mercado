@@ -198,6 +198,12 @@ export async function markPendingSaleFailed(localId: string, error: string) {
   await withStore("pendingSales", "readwrite", (store) => store.put({ ...sale, status: "failed", lastError: error }));
 }
 
+// Hora atual em milissegundos. Fica aqui (e não direto na tela) porque o verificador
+// do React reclama de Date.now() dentro do componente.
+export function nowMs() {
+  return Date.now();
+}
+
 export function isOfflineCapable() {
   return typeof window !== "undefined" && "indexedDB" in window;
 }

@@ -39,6 +39,15 @@ type Product = {
   created_at: string;
 };
 
+// Colunas que a lista de produtos usa (carga da tela e produto recém-salvo).
+const PRODUCT_COLUMNS =
+  "id, name, category, price, cost_price, image_url, stock, active, blocked_by_hub, promo_buy_qty, promo_pay_qty, barcode, price_fiado, price_wholesale, wholesale_min_qty, stock_alert_threshold, expiry_date, supplier, on_offer, offer_price, offer_ends_at, sold_by_weight, created_at";
+
+// Quantos produtos aparecem de uma vez na tabela. Desenhar o catálogo inteiro
+// (1.700+ linhas de 12 colunas) deixava a digitação do formulário travando,
+// porque cada letra refazia a tabela toda.
+const PAGE_ROWS = 50;
+
 type SalesStat = {
   units_sold_recent: number;
   revenue_recent: number;
@@ -452,6 +461,15 @@ export default function Produtos() {
     );
   }, [products, search, gapFilter]);
 
+  const filterKey = `${search}|${gapFilter ?? ""}`;
+  const [visibleRows, setVisibleRows] = useState({ key: "", limit: PAGE_ROWS });
+  const visibleLimit = visibleRows.key === filterKey ? visibleRows.limit : PAGE_ROWS;
+  const visibleProducts = useMemo(() => filteredProducts.slice(0, visibleLimit), [filteredProducts, visibleLimit]);
+
+  // Fotos que já existem no catálogo (pra reaproveitar no formulário). Calculado
+  // uma vez por carga — antes era refeito a cada letra digitada no formulário.
+  const catalogImageProducts = useMemo(() => products.filter((p) => p.image_url), [products]);
+
   const catalogGaps = useMemo(() => {
     const withoutPhoto = products.filter((p) => !p.image_url).length;
     const withoutCost = products.filter((p) => p.cost_price === null).length;
@@ -494,9 +512,7 @@ export default function Produtos() {
     while (true) {
       const { data } = await getSupabase()
         .from("products")
-        .select(
-          "id, name, category, price, cost_price, image_url, stock, active, blocked_by_hub, promo_buy_qty, promo_pay_qty, barcode, price_fiado, price_wholesale, wholesale_min_qty, stock_alert_threshold, expiry_date, supplier, on_offer, offer_price, offer_ends_at, sold_by_weight, created_at",
-        )
+        .select(PRODUCT_COLUMNS)
         .eq("store_id", store.id)
         .order("created_at", { ascending: false })
         .range(from, from + PAGE_SIZE - 1);
@@ -627,7 +643,9 @@ export default function Produtos() {
     }
 
     setSaving(true);
-    const { error: insertError } = await getSupabase().from("products").insert({
+    const { data: created, error: insertError } = await getSupabase()
+      .from("products")
+      .insert({
       store_id: store.id,
       name: name.trim(),
       category: category.trim() || null,
@@ -641,7 +659,9 @@ export default function Produtos() {
       sold_by_weight: soldByWeight,
       price_wholesale: wholesalePriceValue,
       wholesale_min_qty: wholesaleMinQtyValue,
-    });
+    })
+      .select(PRODUCT_COLUMNS)
+      .single();
     setSaving(false);
 
     if (insertError) {
@@ -662,7 +682,11 @@ export default function Produtos() {
     setSoldByWeight(false);
     setWholesalePriceNew("");
     setWholesaleMinQtyNew("");
-    loadProducts();
+    // O produto salvo entra direto na lista (no topo, como a lista já ordena).
+    // Baixar o catálogo inteiro de novo (500 KB) a cada cadastro deixava o
+    // cadastro em fila lento; só recarrega tudo se o banco não devolver a linha.
+    if (created) setProducts((prev) => [created as Product, ...prev]);
+    else loadProducts();
   }
 
   async function updateProduct(id: string, patch: Partial<Product>) {
@@ -1504,7 +1528,7 @@ export default function Produtos() {
               onChange={setImageUrl}
               uploadPrefix="produto"
               promptSeed={buildProductPrompt(name || "produto novo", category || null)}
-              catalogProducts={products.filter((p) => p.image_url)}
+              catalogProducts={catalogImageProducts}
             />
           </div>
         </div>
@@ -1860,7 +1884,7 @@ export default function Produtos() {
                 </td>
               </tr>
             )}
-            {filteredProducts.map((p) => {
+            {visibleProducts.map((p) => {
               const margin = p.cost_price && p.price > 0 ? ((p.price - p.cost_price) / p.price) * 100 : null;
               const markup = p.cost_price && p.cost_price > 0 ? ((p.price - p.cost_price) / p.cost_price) * 100 : null;
               const stat = stats[p.id];
@@ -2096,6 +2120,28 @@ export default function Produtos() {
                 </tr>
               );
             })}
+            {filteredProducts.length > visibleProducts.length && (
+              <tr>
+                <td colSpan={12} className="px-3 py-3 text-center text-xs text-white/45">
+                  Mostrando {visibleProducts.length} de {filteredProducts.length} produtos.{" "}
+                  <button
+                    type="button"
+                    onClick={() => setVisibleRows({ key: filterKey, limit: visibleLimit + PAGE_ROWS })}
+                    className="font-semibold text-[#5CACFF] underline"
+                  >
+                    Mostrar mais {PAGE_ROWS}
+                  </button>{" "}
+                  ·{" "}
+                  <button
+                    type="button"
+                    onClick={() => setVisibleRows({ key: filterKey, limit: filteredProducts.length })}
+                    className="font-semibold text-[#5CACFF] underline"
+                  >
+                    Mostrar todos
+                  </button>
+                </td>
+              </tr>
+            )}
             {filteredProducts.map(
               (p) =>
                 expandedId === p.id && (

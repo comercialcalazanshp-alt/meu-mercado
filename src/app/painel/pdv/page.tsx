@@ -18,6 +18,7 @@ import {
   markPendingSaleFailed,
   cacheCreditCustomers,
   searchCachedCreditCustomers,
+  nowMs,
   isOfflineCapable,
   type PendingSale,
 } from "@/lib/pdv-offline";
@@ -447,8 +448,18 @@ export default function Pdv() {
   const [syncing, setSyncing] = useState(false);
   const offlineCapable = isOfflineCapable();
 
+  // O catálogo só mostra "Carregando…" (e esconde os resultados da busca) na
+  // PRIMEIRA carga. Nas recargas seguintes os produtos que já estão na tela
+  // continuam valendo e a lista é trocada em silêncio quando a internet
+  // responder — antes, depois de cada venda a busca ficava travada em
+  // "Carregando…" até o catálogo inteiro baixar de novo.
+  const productsLoadedRef = useRef(false);
+  // última vez que o catálogo inteiro foi baixado (recarga em segundo plano de tempos em tempos)
+  const lastFullRefreshRef = useRef(0);
+  const FULL_REFRESH_MS = 10 * 60 * 1000;
+
   async function loadProducts() {
-    setLoadingProducts(true);
+    if (!productsLoadedRef.current) setLoadingProducts(true);
     // Supabase só devolve até 1000 linhas por consulta por padrão — sem
     // paginar, loja com catálogo grande não encontrava produto nenhum
     // depois do milésimo na busca do PDV (bem mais grave que só a lista
@@ -477,6 +488,8 @@ export default function Pdv() {
     }
     if (!fetchFailed) {
       setProducts(all);
+      productsLoadedRef.current = true;
+      lastFullRefreshRef.current = nowMs();
       if (offlineCapable) cacheProducts(store.id, all).catch(() => {});
     } else if (offlineCapable) {
       const cached = await getCachedProducts(store.id).catch(() => []);
@@ -1501,10 +1514,27 @@ export default function Pdv() {
       ]);
     }
     if (!wentOffline) {
-      refreshCreditCustomersCache();
-      loadProducts();
-      loadKits();
+      // Baixar o catálogo inteiro (1.700+ produtos, ~600 KB) depois de CADA venda
+      // deixava o caixa lento com internet fraca. Agora: desconta o estoque aqui
+      // mesmo, atualiza só as vendas de hoje (leve) e só refaz o catálogo todo de
+      // tempos em tempos, em segundo plano. O servidor continua sendo quem confere
+      // o estoque de verdade na hora de registrar a venda.
+      const sold = new Map<string, number>();
+      for (const line of cart) if (!line.isKit) sold.set(line.productId, (sold.get(line.productId) ?? 0) + line.quantity);
+      if (sold.size > 0) {
+        setProducts((prev) => prev.map((pr) => (sold.has(pr.id) ? { ...pr, stock: round3(pr.stock - (sold.get(pr.id) ?? 0)) } : pr)));
+      }
       loadRecentSales();
+      // cliente novo no fiado entra na lista guardada na hora; kits dependem do estoque dos componentes
+      const usedCredit = (splitMode ? splitPayments.some((sp) => sp.method === "fiado") : paymentMethod === "fiado") && !creditCustomerId;
+      if (usedCredit) refreshCreditCustomersCache();
+      if (cart.some((line) => line.isKit)) loadKits();
+      if (nowMs() - lastFullRefreshRef.current > FULL_REFRESH_MS) {
+        lastFullRefreshRef.current = nowMs(); // evita disparar duas vezes seguidas
+        loadProducts();
+        loadKits();
+        refreshCreditCustomersCache();
+      }
     }
     focusSearch();
   }
