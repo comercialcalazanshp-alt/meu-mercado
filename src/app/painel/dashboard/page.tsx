@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { getSupabase } from "@/lib/supabase";
 import { useStore, type Store } from "@/lib/store-context";
+import { fetchAllPages } from "@/lib/fetch-all";
 import { useThemeColors, SEMANTIC_COLORS } from "@/components/ui/theme";
 
 type Order = {
@@ -713,13 +714,21 @@ export default function Dashboard() {
       const { since, until, prevSince, prevUntil } = range;
 
       const [ordersRes, partnershipsRes, clubRes, entregadoresRes, expensesRes, profitRes, prevProfitRes, creditPaymentsRes, creditDiscountsRes] = await Promise.all([
-        supabase
-          .from("orders")
-          .select("id, items, total, discount_amount, status, channel, payment_method, created_at, delivered_at, delivered_by, delivery_payout_settled")
-          .eq("store_id", store.id)
-          .gte("created_at", prevSince.toISOString())
-          .lt("created_at", until.toISOString())
-          .order("created_at", { ascending: true }),
+        // O banco devolve no máximo 1.000 linhas por consulta: 60 dias de vendas
+        // passam disso, e sem buscar página por página as vendas mais NOVAS sumiam
+        // do faturamento (o custo, que vem de outra conta, contava tudo — o lucro
+        // aparecia negativo).
+        fetchAllPages<Order>((from, to) =>
+          supabase
+            .from("orders")
+            .select("id, items, total, discount_amount, status, channel, payment_method, created_at, delivered_at, delivered_by, delivery_payout_settled")
+            .eq("store_id", store.id)
+            .gte("created_at", prevSince.toISOString())
+            .lt("created_at", until.toISOString())
+            .order("created_at", { ascending: true })
+            .order("id", { ascending: true })
+            .range(from, to),
+        ),
         supabase
           .from("affiliate_partnerships")
           .select("id, category, owner_name, active, plan_type, billing_cycle, subscription_price, subscription_due_at, balance, commission_percent")

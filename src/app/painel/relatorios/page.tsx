@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { getSupabase } from "@/lib/supabase";
 import { useStore } from "@/lib/store-context";
+import { fetchAllPages } from "@/lib/fetch-all";
 
 type OrderItem = {
   name: string;
@@ -20,6 +21,22 @@ type Order = {
   total: number;
   status: string;
   created_at: string;
+};
+
+type ExportOrder = {
+  customer_name: string;
+  customer_phone: string;
+  items: { name: string; quantity: number }[];
+  total: number;
+  status: string;
+  created_at: string;
+  coupon_code: string | null;
+  discount_amount: number;
+  neighborhood_name: string | null;
+  delivery_fee: number;
+  cashback_used: number;
+  channel: string | null;
+  payment_method: string | null;
 };
 
 type Product = {
@@ -112,12 +129,16 @@ export default function Relatorios() {
 
       const [{ data: ordersData }, { data: productsData }, { data: storeData }, { data: reviewsData }] =
         await Promise.all([
-          supabase
-            .from("orders")
-            .select("id, customer_name, customer_phone, items, total, status, created_at")
-            .eq("store_id", store.id)
-            .gte("created_at", since.toISOString())
-            .order("created_at", { ascending: true }),
+          fetchAllPages<Order>((from, to) =>
+            supabase
+              .from("orders")
+              .select("id, customer_name, customer_phone, items, total, status, created_at")
+              .eq("store_id", store.id)
+              .gte("created_at", since.toISOString())
+              .order("created_at", { ascending: true })
+              .order("id", { ascending: true })
+              .range(from, to),
+          ),
           supabase
             .from("products")
             .select("id, name, price, stock")
@@ -240,15 +261,19 @@ export default function Relatorios() {
     const until = new Date(year, month, 1);
 
     setExporting(true);
-    const { data, error } = await getSupabase()
-      .from("orders")
-      .select(
-        "customer_name, customer_phone, items, total, status, created_at, coupon_code, discount_amount, neighborhood_name, delivery_fee, cashback_used, channel, payment_method",
-      )
-      .eq("store_id", store.id)
-      .gte("created_at", since.toISOString())
-      .lt("created_at", until.toISOString())
-      .order("created_at", { ascending: true });
+    const { data, error } = await fetchAllPages<ExportOrder>((from, to) =>
+      getSupabase()
+        .from("orders")
+        .select(
+          "customer_name, customer_phone, items, total, status, created_at, coupon_code, discount_amount, neighborhood_name, delivery_fee, cashback_used, channel, payment_method",
+        )
+        .eq("store_id", store.id)
+        .gte("created_at", since.toISOString())
+        .lt("created_at", until.toISOString())
+        .order("created_at", { ascending: true })
+        .order("id", { ascending: true })
+        .range(from, to),
+    );
     setExporting(false);
 
     if (error) {
