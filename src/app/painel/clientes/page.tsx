@@ -19,6 +19,7 @@ import {
 } from "@/lib/credit";
 import { PAYMENT_METHODS, PAYMENT_METHOD_LABELS, useCreditPayment, type PaymentMethod } from "@/lib/use-credit-payment";
 import { resetCustomerAccess } from "./actions";
+import { slugify } from "@/lib/slugify";
 import { Card, Section, PrimaryButton, SecondaryButton, IconSearch, IconChevron, IconEye, IconEyeOff } from "@/components/ui";
 import { useThemeColors } from "@/components/ui/theme";
 import PixQrPanel from "@/components/PixQrPanel";
@@ -124,6 +125,22 @@ async function fetchAllCreditTransactions(customerIds: string[]) {
   return rows;
 }
 
+// WhatsApp: guarda só os números (sem espaço, parênteses, traço) e sem o 55 do
+// Brasil na frente — é assim que o resto do sistema guarda. Devolve null se o
+// número estiver incompleto.
+function normalizeWhatsapp(raw: string): string | null {
+  let digits = raw.replace(/\D/g, "");
+  if (digits.startsWith("55") && digits.length >= 12) digits = digits.slice(2);
+  return digits.length >= 10 && digits.length <= 11 ? digits : null;
+}
+
+function parseLimit(raw: string): { ok: boolean; value: number | null } {
+  const t = raw.trim();
+  if (!t) return { ok: true, value: null };
+  const v = Number(t.replace(",", "."));
+  return Number.isFinite(v) && v >= 0 ? { ok: true, value: v } : { ok: false, value: null };
+}
+
 function ClientesInner() {
   const store = useStore();
   const router = useRouter();
@@ -170,6 +187,21 @@ function ClientesInner() {
   const [extendingPhone, setExtendingPhone] = useState<string | null>(null);
   const [extendDraft, setExtendDraft] = useState("");
   const [extendSaving, setExtendSaving] = useState(false);
+
+  // Novo cliente / editar cadastro (nome, WhatsApp e limite)
+  const [notice, setNotice] = useState<string | null>(null);
+  const [newOpen, setNewOpen] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [newPhone, setNewPhone] = useState("");
+  const [newLimit, setNewLimit] = useState("");
+  const [newSaving, setNewSaving] = useState(false);
+  const [newError, setNewError] = useState<string | null>(null);
+  const [editingPhone, setEditingPhone] = useState<string | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editPhone, setEditPhone] = useState("");
+  const [editLimit, setEditLimit] = useState("");
+  const [editSaving, setEditSaving] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
 
   const [interestPercent, setInterestPercent] = useState("");
   const [creditTermDays, setCreditTermDays] = useState(30);
@@ -494,6 +526,139 @@ function ClientesInner() {
     printHtml(html);
   }
 
+  function openNewCustomer() {
+    setNewName("");
+    setNewPhone("");
+    setNewLimit("");
+    setNewError(null);
+    setNotice(null);
+    setNewOpen(true);
+  }
+
+  async function handleCreateCustomer(e: FormEvent) {
+    e.preventDefault();
+    setNewError(null);
+    const name = newName.trim();
+    if (!name) {
+      setNewError("Digite o nome do cliente.");
+      return;
+    }
+    if (name.length > 80) {
+      setNewError("Nome muito grande (máximo 80 letras).");
+      return;
+    }
+    let phone: string;
+    if (newPhone.trim()) {
+      const normalized = normalizeWhatsapp(newPhone);
+      if (!normalized) {
+        setNewError("WhatsApp incompleto. Digite o DDD e o número (ex: 75 99999-9999) ou deixe em branco.");
+        return;
+      }
+      phone = normalized;
+    } else {
+      // sem WhatsApp: o sistema usa um código provisório a partir do nome (igual aos clientes antigos)
+      phone = `sem-telefone-${slugify(name) || "cliente"}`;
+    }
+    const limit = parseLimit(newLimit);
+    if (!limit.ok) {
+      setNewError("Limite inválido. Digite um valor em reais ou deixe em branco para não ter limite.");
+      return;
+    }
+
+    setNewSaving(true);
+    const { data: existing } = await getSupabase()
+      .from("credit_customers")
+      .select("name")
+      .eq("store_id", store.id)
+      .eq("phone", phone)
+      .maybeSingle();
+    if (existing) {
+      setNewSaving(false);
+      setNewError(
+        newPhone.trim()
+          ? `Esse WhatsApp já é do cliente "${existing.name}". Procure ele na lista.`
+          : `Já existe um cliente "${existing.name}" sem WhatsApp com esse nome. Procure ele na lista ou coloque um sobrenome.`,
+      );
+      return;
+    }
+    const { error: insertError } = await getSupabase()
+      .from("credit_customers")
+      .insert({ store_id: store.id, name, phone, credit_limit: limit.value });
+    setNewSaving(false);
+    if (insertError) {
+      setNewError(insertError.code === "23505" ? "Esse cliente já existe." : "Não deu pra salvar: " + insertError.message);
+      return;
+    }
+    setNewOpen(false);
+    setSearch(name);
+    setOnlyDebt(false);
+    setNotice(`Cliente "${name}" cadastrado. Já dá pra vender no crediário pra ele no PDV.`);
+    await loadCustomers();
+  }
+
+  function openEditCustomer(customer: MergedCustomer) {
+    setEditName(customer.name);
+    setEditPhone(customer.phone.startsWith("sem-telefone-") ? "" : customer.phone);
+    setEditLimit(customer.creditLimit !== null ? String(customer.creditLimit).replace(".", ",") : "");
+    setEditError(null);
+    setNotice(null);
+    setEditingPhone(customer.phone);
+  }
+
+  async function handleSaveCustomer(customer: MergedCustomer, e: FormEvent) {
+    e.preventDefault();
+    if (!customer.creditCustomerId) return;
+    setEditError(null);
+    const name = editName.trim();
+    if (!name) {
+      setEditError("Digite o nome do cliente.");
+      return;
+    }
+    if (name.length > 80) {
+      setEditError("Nome muito grande (máximo 80 letras).");
+      return;
+    }
+    const originalShown = customer.phone.startsWith("sem-telefone-") ? "" : customer.phone;
+    let phone: string;
+    if (editPhone.trim() === originalShown) {
+      phone = customer.phone; // não mexeu no WhatsApp: mantém exatamente como está
+    } else if (!editPhone.trim()) {
+      phone = `sem-telefone-${slugify(name) || "cliente"}`;
+    } else {
+      const normalized = normalizeWhatsapp(editPhone);
+      if (!normalized) {
+        setEditError("WhatsApp incompleto. Digite o DDD e o número (ex: 75 99999-9999).");
+        return;
+      }
+      phone = normalized;
+    }
+    const limit = parseLimit(editLimit);
+    if (!limit.ok) {
+      setEditError("Limite inválido. Digite um valor em reais ou deixe em branco para não ter limite.");
+      return;
+    }
+
+    setEditSaving(true);
+    const { error: rpcError } = await getSupabase().rpc("update_credit_customer", {
+      p_customer_id: customer.creditCustomerId,
+      p_name: name,
+      p_phone: phone,
+    });
+    if (rpcError) {
+      setEditSaving(false);
+      setEditError(rpcError.message);
+      return;
+    }
+    if (limit.value !== customer.creditLimit) {
+      await getSupabase().from("credit_customers").update({ credit_limit: limit.value }).eq("id", customer.creditCustomerId);
+    }
+    setEditSaving(false);
+    setEditingPhone(null);
+    setExpandedPhone(null);
+    setNotice(`Cadastro de "${name}" atualizado.`);
+    await loadCustomers();
+  }
+
   async function handleUpdateCreditLimit(customer: MergedCustomer) {
     if (!customer.creditCustomerId) return;
     const raw = window.prompt(
@@ -679,6 +844,90 @@ function ClientesInner() {
           </Card>
         )}
 
+        {notice && (
+          <div
+            className="mt-4 flex items-start justify-between gap-3 rounded-xl border px-3 py-2 text-sm"
+            style={{ borderColor: `${COLOR_HEX.positive}40`, background: `${COLOR_HEX.positive}12`, color: COLOR_HEX.positive }}
+          >
+            <span>{notice}</span>
+            <button type="button" onClick={() => setNotice(null)} className="shrink-0 text-xs underline">
+              fechar
+            </button>
+          </div>
+        )}
+
+        <div className="mt-4 flex items-center justify-between gap-3">
+          <p className="text-[11px] font-bold uppercase tracking-wide text-white/35">Cadastro de clientes</p>
+          {!newOpen && (
+            <PrimaryButton hex={COLOR_HEX.accent} onClick={openNewCustomer}>
+              + Novo cliente
+            </PrimaryButton>
+          )}
+        </div>
+
+        {newOpen && (
+          <Card className="mt-3">
+            <form onSubmit={handleCreateCustomer} className="space-y-3">
+              <p className="text-sm font-semibold">Novo cliente (crediário)</p>
+              <div className="grid gap-2 sm:grid-cols-2">
+                <label className="text-xs text-white/45 sm:col-span-2">
+                  Nome
+                  <input
+                    value={newName}
+                    onChange={(e) => {
+                      setNewName(e.target.value);
+                      setNewError(null);
+                    }}
+                    maxLength={80}
+                    autoFocus
+                    placeholder="Ex: Maria da Silva"
+                    className={`${INPUT} mt-1 w-full`}
+                  />
+                </label>
+                <label className="text-xs text-white/45">
+                  WhatsApp (opcional)
+                  <input
+                    value={newPhone}
+                    onChange={(e) => {
+                      setNewPhone(e.target.value);
+                      setNewError(null);
+                    }}
+                    inputMode="tel"
+                    placeholder="75 99999-9999"
+                    className={`${INPUT} mt-1 w-full`}
+                  />
+                </label>
+                <label className="text-xs text-white/45">
+                  Limite de crédito em R$ (opcional)
+                  <input
+                    value={newLimit}
+                    onChange={(e) => {
+                      setNewLimit(e.target.value);
+                      setNewError(null);
+                    }}
+                    inputMode="decimal"
+                    placeholder="Sem limite"
+                    className={`${INPUT} mt-1 w-full`}
+                  />
+                </label>
+              </div>
+              {newError && (
+                <p className="text-sm" style={{ color: COLOR_HEX.negative }}>
+                  {newError}
+                </p>
+              )}
+              <div className="flex items-center gap-2">
+                <PrimaryButton type="submit" hex={COLOR_HEX.accent} disabled={newSaving}>
+                  {newSaving ? "Salvando…" : "Cadastrar cliente"}
+                </PrimaryButton>
+                <SecondaryButton type="button" onClick={() => setNewOpen(false)}>
+                  Cancelar
+                </SecondaryButton>
+              </div>
+            </form>
+          </Card>
+        )}
+
         <div className="relative mt-4">
           <IconSearch className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-white/30" />
           <input
@@ -800,6 +1049,85 @@ function ClientesInner() {
 
                 {expanded && (
                   <div className="animate-mm-slide-up space-y-5 border-t border-white/[0.06] p-4">
+                    {customer.creditCustomerId && (
+                      <Section dot={COLOR_HEX.accent} label="Cadastro">
+                        {editingPhone === customer.phone ? (
+                          <form onSubmit={(e) => handleSaveCustomer(customer, e)} className="space-y-3">
+                            <div className="grid gap-2 sm:grid-cols-2">
+                              <label className="text-xs text-white/45 sm:col-span-2">
+                                Nome
+                                <input
+                                  value={editName}
+                                  onChange={(e) => {
+                                    setEditName(e.target.value);
+                                    setEditError(null);
+                                  }}
+                                  maxLength={80}
+                                  className={`${INPUT} mt-1 w-full`}
+                                />
+                              </label>
+                              <label className="text-xs text-white/45">
+                                WhatsApp
+                                <input
+                                  value={editPhone}
+                                  onChange={(e) => {
+                                    setEditPhone(e.target.value);
+                                    setEditError(null);
+                                  }}
+                                  inputMode="tel"
+                                  placeholder="75 99999-9999"
+                                  className={`${INPUT} mt-1 w-full`}
+                                />
+                              </label>
+                              <label className="text-xs text-white/45">
+                                Limite de crédito em R$
+                                <input
+                                  value={editLimit}
+                                  onChange={(e) => {
+                                    setEditLimit(e.target.value);
+                                    setEditError(null);
+                                  }}
+                                  inputMode="decimal"
+                                  placeholder="Sem limite"
+                                  className={`${INPUT} mt-1 w-full`}
+                                />
+                              </label>
+                            </div>
+                            <p className="text-xs text-white/35">
+                              Se trocar o WhatsApp, o histórico, a nota e o bloqueio do cliente vão junto. Deixe o WhatsApp em branco se não
+                              souber.
+                            </p>
+                            {editError && (
+                              <p className="text-sm" style={{ color: COLOR_HEX.negative }}>
+                                {editError}
+                              </p>
+                            )}
+                            <div className="flex items-center gap-2">
+                              <PrimaryButton type="submit" hex={COLOR_HEX.accent} disabled={editSaving}>
+                                {editSaving ? "Salvando…" : "Salvar cadastro"}
+                              </PrimaryButton>
+                              <SecondaryButton type="button" onClick={() => setEditingPhone(null)}>
+                                Cancelar
+                              </SecondaryButton>
+                            </div>
+                          </form>
+                        ) : (
+                          <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
+                            <p className="min-w-0 text-white/60">
+                              <span className="font-semibold text-white/85">{customer.name}</span>
+                              {" · "}
+                              {customer.phone.startsWith("sem-telefone-") ? "sem WhatsApp" : customer.phone}
+                              {" · "}
+                              {customer.creditLimit !== null ? `limite ${formatCurrency(customer.creditLimit)}` : "sem limite"}
+                            </p>
+                            <SecondaryButton small onClick={() => openEditCustomer(customer)}>
+                              Editar cadastro
+                            </SecondaryButton>
+                          </div>
+                        )}
+                      </Section>
+                    )}
+
                     <Section dot="#8B8FA3" label="Nota interna">
                       <div className="flex items-center justify-between gap-2">
                         {hasRealPhone ? (
